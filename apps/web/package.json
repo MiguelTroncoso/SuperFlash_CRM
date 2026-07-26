@@ -1,0 +1,35 @@
+{
+  "name": "@superflash/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev --hostname 0.0.0.0 --port 3000",
+    "start": "next start --hostname 0.0.0.0 --port 3000",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@superflash/config": "0.1.0",
+    "@superflash/types": "0.1.0",
+    "@superflash/ui": "0.1.0",
+    "@superflash/utils": "0.1.0",
+    "@tanstack/react-query": "^5.85.5",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "next": "^15.5.22",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-hook-form": "^7.62.0",
+    "tailwind-merge": "^3.3.1",
+    "zod": "^4.0.17",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.12",
+    "@types/node": "^24.3.0",
+    "@types/react": "^19.1.10",
+    "@types/react-dom": "^19.1.7",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.12"
+  }
+}

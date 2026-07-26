@@ -1,0 +1,22 @@
+{
+  "root": true,
+  "extends": ["next/core-web-vitals", "next/typescript", "prettier"],
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": "latest",
+    "sourceType": "module"
+  },
+  "plugins": ["@typescript-eslint"],
+  "ignorePatterns": ["node_modules/", ".next/", "dist/", "coverage/", "apps/web/next-env.d.ts"],
+  "rules": {
+    "@next/next/no-html-link-for-pages": "off",
+    "@typescript-eslint/no-explicit-any": "error",
+    "@typescript-eslint/no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_"
+      }
+    ]
+  }
+}
