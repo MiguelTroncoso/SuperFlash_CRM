@@ -187,8 +187,33 @@ npm run test:integration
 - Teléfonos normalizados, SKU y ventas activas usan índices únicos parciales en PostgreSQL para respetar soft delete y valores `NULL`.
 - `AuditLog` es append-only: no tiene `updatedAt` ni `deletedAt` y no debe actualizarse ni eliminarse desde la aplicación.
 
-## Estado del Sprint 5.1
+## Seguimientos, agenda y Mi Día
 
-Este sprint contiene las correcciones de integridad de oportunidades y pipeline sobre el dominio del
-Sprint 5. No incluye frontend CRM, ventas, pagos, CRUD completo de seguimientos, dashboard, WhatsApp,
-Meta Ads, notificaciones ni importación CSV.
+El Sprint 6 agrega el backend comercial bajo estas rutas:
+
+- `/api/v1/follow-ups`: crear, listar, consultar, editar, asignar, completar, cancelar, reprogramar, archivar, restaurar y consultar historial.
+- `/api/v1/agenda` y `/api/v1/agenda/summary`: agenda diaria y resumen por día.
+- `/api/v1/my-day` y `/api/v1/my-day/summary`: bandeja backend de ocho secciones y sus conteos.
+
+Los seguimientos tienen estados `PENDING`, `COMPLETED`, `CANCELLED` y `RESCHEDULED`. Vencido es una propiedad calculada (`PENDING` y `dueAt < now`), nunca un estado persistido. La reprogramación conserva el registro original y crea un reemplazo enlazado mediante `rescheduledFromId`; su historial es append-only.
+
+La unicidad activa se protege en aplicación y PostgreSQL por organización, oportunidad, responsable y fecha. Las transiciones usan `UPDATE ... WHERE status = PENDING` dentro de transacciones, de modo que completar, cancelar o reprogramar concurrentemente no duplica efectos.
+
+La agenda recibe zonas IANA como `America/Santiago`, usa `DEFAULT_TIMEZONE` cuando no se informa y convierte el inicio/fin local a UTC con Luxon antes de consultar PostgreSQL. `limitPerSection` de Mi Día tiene un máximo de 50. Sales solo recibe los seguimientos y oportunidades permitidos por responsable; Owner/Admin ven toda su organización y Viewer conserva lectura según permisos.
+
+Las ocho etapas oficiales tienen `systemKey` estable (`NEW_LEAD`, `LEFT_ON_READ`, `DEMO_DELIVERED`, `AWAITING_CREDIT_USAGE`, `AWAITING_MONEY`, `POTENTIAL_BUYER`, `WON`, `LOST`). Las etapas custom mantienen `systemKey = NULL`; los endpoints públicos de administración no permiten asignarlo.
+
+Para validar este sprint en una base aislada:
+
+```bash
+DATABASE_URL='postgresql://superflash:superflash@localhost:5432/superflash?schema=auth_test' npm run db:migrate:deploy
+DATABASE_URL='postgresql://superflash:superflash@localhost:5432/superflash?schema=auth_test' NODE_ENV=test COOKIE_SECURE=false SWAGGER_ENABLED=false JWT_ACCESS_SECRET='ci-only-auth-test-secret-change-me-1234567890' npm run test:integration
+```
+
+La documentación detallada está en [docs/follow-ups.md](docs/follow-ups.md), [docs/agenda.md](docs/agenda.md) y [docs/my-day.md](docs/my-day.md).
+
+## Estado del Sprint 6
+
+Este sprint contiene seguimientos, historial, agenda y el backend de Mi Día sobre el dominio de
+oportunidades. No incluye frontend CRM, productos CRUD, ventas, pagos, dashboard financiero, WhatsApp,
+Meta Ads, notificaciones, recordatorios automáticos ni importación CSV.

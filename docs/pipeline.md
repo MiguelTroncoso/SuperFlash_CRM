@@ -12,7 +12,9 @@ El tablero se expone como backend bajo `/api/v1/pipeline`; no incluye todavía u
 
 Con `settings.manage` se pueden usar `POST /stages`, `PATCH /stages/:id`, `POST /stages/:id/reorder`, `POST /stages/:id/archive` y `POST /stages/:id/restore`.
 
-Las etapas tienen nombre, orden, color, `active` y categoría `OPEN`, `WON` o `LOST`. El archivado de una etapa es independiente de archivar oportunidades. No se permite archivar una etapa con oportunidades activas ni dejar al tenant sin una etapa activa de una categoría.
+Las etapas tienen nombre, orden, color, `active`, categoría `OPEN`, `WON` o `LOST` y un `systemKey` opcional. El archivado de una etapa es independiente de archivar oportunidades. No se permite archivar una etapa con oportunidades activas ni dejar al tenant sin una etapa activa de una categoría.
+
+`systemKey` es un identificador técnico estable, único por tenant cuando está activo y no nulo. Las ocho etapas oficiales del seed usan `NEW_LEAD`, `LEFT_ON_READ`, `DEMO_DELIVERED`, `AWAITING_CREDIT_USAGE`, `AWAITING_MONEY`, `POTENTIAL_BUYER`, `WON` y `LOST`. El backfill de la migración reconoce las etapas oficiales existentes por nombre y orden. Las etapas custom no reciben clave automáticamente y los DTOs públicos no exponen `systemKey` como campo modificable.
 
 El archivado comprueba uso y última etapa dentro del mismo bloqueo transaccional. El bloqueo usa dos
 claves advisory: el namespace fijo `superflash:pipeline-stage-order` y la organización; así no se

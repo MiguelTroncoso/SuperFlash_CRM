@@ -973,6 +973,7 @@ export class OpportunitiesService {
       name: string;
       color: string;
       category: PipelineStageCategory;
+      systemKey?: string | null;
       order: number;
       active: boolean;
     };
@@ -1401,6 +1402,7 @@ export class OpportunitiesService {
           name: string;
           color: string;
           category: PipelineStageCategory;
+          systemKey?: string | null;
           order: number;
           active?: boolean;
           deletedAt?: Date | null;
@@ -1411,6 +1413,7 @@ export class OpportunitiesService {
       name: stage.name,
       color: stage.color,
       category: stage.category,
+      systemKey: stage.systemKey ?? null,
       order: stage.order,
       active: stage.active ?? true,
     };

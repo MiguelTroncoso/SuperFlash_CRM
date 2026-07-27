@@ -28,6 +28,9 @@ erDiagram
     User ||--o{ Opportunity : owns
     Opportunity ||--o{ Activity : tracks
     Opportunity ||--o{ FollowUp : schedules
+    FollowUp ||--o{ FollowUpHistory : records
+    FollowUp ||--o{ Activity : relates
+    User ||--o{ FollowUpHistory : changes
     Opportunity ||--o{ OpportunityStageHistory : changes
     PipelineStage ||--o{ OpportunityStageHistory : receives
     User ||--o{ OpportunityStageHistory : changes
@@ -48,7 +51,7 @@ erDiagram
 
 ## Modelos
 
-El esquema contiene `Organization`, `Role`, `Permission`, `User`, `Contact`, `Tag`, `ContactTag`, `Opportunity`, `OpportunityStageHistory`, `PipelineStage`, `Activity`, `FollowUp`, `Product`, `Sale`, `SaleItem`, `Payment`, `Campaign`, `Expense` y `AuditLog`.
+El esquema contiene `Organization`, `Role`, `Permission`, `User`, `Contact`, `Tag`, `ContactTag`, `Opportunity`, `OpportunityStageHistory`, `PipelineStage`, `Activity`, `FollowUp`, `FollowUpHistory`, `Product`, `Sale`, `SaleItem`, `Payment`, `Campaign`, `Expense` y `AuditLog`.
 
 Todas las entidades tenant-aware usan UUID, timestamps y `organizationId`. El soft delete se representa mediante `deletedAt`, excepto `AuditLog`, que es append-only e inmutable.
 
@@ -63,9 +66,14 @@ Todas las entidades tenant-aware usan UUID, timestamps y `organizationId`. El so
 - `PipelineStageCategory`: `OPEN`, `WON`, `LOST`. El archivado es independiente y vive en `Opportunity.archivedAt`.
 - `ActivityType`: `MESSAGE`, `NOTE`, `DEMO`, `FOLLOWUP`, `PAYMENT`, `SALE`, `STATUS_CHANGE`, `SYSTEM`.
 - `FollowUpStatus`: `PENDING`, `COMPLETED`, `RESCHEDULED`, `CANCELLED`.
+- `FollowUpHistoryAction`: `CREATED`, `UPDATED`, `COMPLETED`, `CANCELLED`, `RESCHEDULED`, `ASSIGNEE_CHANGED`, `ARCHIVED`, `RESTORED`.
 - `UserStatus`, `FollowUpPriority`, `SaleStatus` y `PaymentStatus` completan los estados operativos.
 
 Las etapas del pipeline son configurables por organización. Los nombres iniciales existen únicamente en el seed.
+
+`PipelineStage.systemKey` es opcional y estable. Solo las ocho etapas oficiales lo reciben desde seed; las etapas personalizadas quedan con `NULL`. Las consultas de Mi Día usan este identificador, no el nombre visible.
+
+`FollowUpHistory` no tiene `updatedAt` ni `deletedAt`: la aplicación solo inserta eventos. `FollowUp` referencia a oportunidad, responsable, actores y reemplazo mediante claves compuestas con `organizationId`, evitando relaciones cruzadas entre tenants.
 
 El estado público de una oportunidad se deriva en servidor: `ARCHIVED` cuando existe `archivedAt`, `WON` o `LOST` según la categoría de su etapa y `OPEN` en los demás casos.
 

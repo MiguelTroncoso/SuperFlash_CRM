@@ -1,4 +1,5 @@
 import { registerAs } from '@nestjs/config';
+import { IANAZone } from 'luxon';
 
 export interface AppConfiguration {
   nodeEnv: string;
@@ -12,6 +13,7 @@ export interface AppConfiguration {
   cookieSecure: boolean;
   swaggerEnabled: boolean;
   passwordResetTtlMinutes: number;
+  defaultTimezone: string;
 }
 
 type Environment = Readonly<Record<string, string | undefined>>;
@@ -60,6 +62,11 @@ export function buildConfiguration(environment: Environment): AppConfiguration {
     );
   }
 
+  const defaultTimezone = environment.DEFAULT_TIMEZONE?.trim() || 'America/Santiago';
+  if (!IANAZone.isValidZone(defaultTimezone)) {
+    throw new Error(`DEFAULT_TIMEZONE no es una zona IANA válida: ${defaultTimezone}.`);
+  }
+
   return {
     nodeEnv,
     apiPort: parsePositiveInteger(environment.API_PORT, 3001, 'API_PORT'),
@@ -80,6 +87,7 @@ export function buildConfiguration(environment: Environment): AppConfiguration {
     cookieSecure: parseBoolean(environment.COOKIE_SECURE, nodeEnv === 'production'),
     swaggerEnabled: parseBoolean(environment.SWAGGER_ENABLED, nodeEnv !== 'production'),
     passwordResetTtlMinutes: 30,
+    defaultTimezone,
   };
 }
 

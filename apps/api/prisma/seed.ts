@@ -24,6 +24,10 @@ const permissions = [
   { key: 'opportunities.create', name: 'Crear oportunidades' },
   { key: 'opportunities.update', name: 'Actualizar oportunidades' },
   { key: 'opportunities.delete', name: 'Eliminar oportunidades' },
+  { key: 'followups.read', name: 'Leer seguimientos' },
+  { key: 'followups.create', name: 'Crear seguimientos' },
+  { key: 'followups.update', name: 'Actualizar seguimientos' },
+  { key: 'followups.delete', name: 'Archivar seguimientos' },
   { key: 'sales.read', name: 'Leer ventas' },
   { key: 'sales.create', name: 'Crear ventas' },
   { key: 'sales.update', name: 'Actualizar ventas' },
@@ -46,14 +50,54 @@ const permissions = [
 ] as const;
 
 const pipelineStages = [
-  { name: 'Nuevo Lead', color: '#64748B', category: PipelineStageCategory.OPEN },
-  { name: 'Dejó en visto', color: '#94A3B8', category: PipelineStageCategory.OPEN },
-  { name: 'Demo entregada', color: '#3B82F6', category: PipelineStageCategory.OPEN },
-  { name: 'Debe gastar créditos', color: '#8B5CF6', category: PipelineStageCategory.OPEN },
-  { name: 'Debe juntar dinero', color: '#F59E0B', category: PipelineStageCategory.OPEN },
-  { name: 'Posible comprador', color: '#F97316', category: PipelineStageCategory.OPEN },
-  { name: 'Compró', color: '#22C55E', category: PipelineStageCategory.WON },
-  { name: 'No concretado', color: '#EF4444', category: PipelineStageCategory.LOST },
+  {
+    name: 'Nuevo Lead',
+    systemKey: 'NEW_LEAD',
+    color: '#64748B',
+    category: PipelineStageCategory.OPEN,
+  },
+  {
+    name: 'Dejó en visto',
+    systemKey: 'LEFT_ON_READ',
+    color: '#94A3B8',
+    category: PipelineStageCategory.OPEN,
+  },
+  {
+    name: 'Demo entregada',
+    systemKey: 'DEMO_DELIVERED',
+    color: '#3B82F6',
+    category: PipelineStageCategory.OPEN,
+  },
+  {
+    name: 'Debe gastar créditos',
+    systemKey: 'AWAITING_CREDIT_USAGE',
+    color: '#8B5CF6',
+    category: PipelineStageCategory.OPEN,
+  },
+  {
+    name: 'Debe juntar dinero',
+    systemKey: 'AWAITING_MONEY',
+    color: '#F59E0B',
+    category: PipelineStageCategory.OPEN,
+  },
+  {
+    name: 'Posible comprador',
+    systemKey: 'POTENTIAL_BUYER',
+    color: '#F97316',
+    category: PipelineStageCategory.OPEN,
+  },
+  {
+    name: 'Compró',
+    systemKey: 'WON',
+    color: '#22C55E',
+    category: PipelineStageCategory.WON,
+  },
+  {
+    name: 'No concretado',
+    systemKey: 'LOST',
+    color: '#EF4444',
+    category: PipelineStageCategory.LOST,
+  },
 ] as const;
 
 const salesPermissionKeys = [
@@ -65,6 +109,9 @@ const salesPermissionKeys = [
   'opportunities.create',
   'opportunities.update',
   'opportunities.delete',
+  'followups.read',
+  'followups.create',
+  'followups.update',
   'sales.read',
   'sales.create',
   'sales.update',
@@ -197,6 +244,7 @@ async function seed(): Promise<void> {
           },
           update: {
             name: stage.name,
+            systemKey: stage.systemKey,
             color: stage.color,
             active: true,
             category: stage.category,
@@ -205,6 +253,7 @@ async function seed(): Promise<void> {
           create: {
             organizationId: organization.id,
             name: stage.name,
+            systemKey: stage.systemKey,
             order: index + 1,
             color: stage.color,
             category: stage.category,

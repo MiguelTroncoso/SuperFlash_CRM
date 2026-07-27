@@ -6,7 +6,15 @@ import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 const listInclude = Prisma.validator<Prisma.OpportunityInclude>()({
   contact: { select: { id: true, firstName: true, lastName: true, phone: true, country: true } },
   pipelineStage: {
-    select: { id: true, name: true, color: true, category: true, order: true, active: true },
+    select: {
+      id: true,
+      name: true,
+      color: true,
+      category: true,
+      systemKey: true,
+      order: true,
+      active: true,
+    },
   },
   owner: { select: { id: true, firstName: true, lastName: true } },
   campaign: { select: { id: true, name: true } },
@@ -33,7 +41,9 @@ const detailInclude = Prisma.validator<Prisma.OpportunityInclude>()({
     take: 50,
     include: {
       fromStage: { select: { id: true, name: true, color: true, category: true } },
-      toStage: { select: { id: true, name: true, color: true, category: true } },
+      toStage: {
+        select: { id: true, name: true, color: true, category: true, systemKey: true },
+      },
       changedBy: { select: { id: true, firstName: true, lastName: true } },
     },
   },
@@ -68,6 +78,7 @@ const mutationSelect = Prisma.validator<Prisma.OpportunitySelect>()({
       name: true,
       color: true,
       category: true,
+      systemKey: true,
       order: true,
       active: true,
       deletedAt: true,
@@ -91,6 +102,7 @@ export interface PipelineStageRecord {
   color: string;
   active: boolean;
   category: PipelineStageCategory;
+  systemKey: string | null;
   deletedAt: Date | null;
 }
 
@@ -175,6 +187,7 @@ export class OpportunitiesRepository {
         color: true,
         active: true,
         category: true,
+        systemKey: true,
         deletedAt: true,
       },
     });
@@ -197,6 +210,7 @@ export class OpportunitiesRepository {
         color: true,
         active: true,
         category: true,
+        systemKey: true,
         deletedAt: true,
       },
     });
@@ -268,8 +282,10 @@ export class OpportunitiesRepository {
       skip,
       take,
       include: {
-        fromStage: { select: { id: true, name: true, color: true, category: true } },
-        toStage: { select: { id: true, name: true, color: true, category: true } },
+        fromStage: {
+          select: { id: true, name: true, color: true, category: true, systemKey: true },
+        },
+        toStage: { select: { id: true, name: true, color: true, category: true, systemKey: true } },
         changedBy: { select: { id: true, firstName: true, lastName: true } },
       },
     });
@@ -294,6 +310,7 @@ export class OpportunitiesRepository {
         color: true,
         active: true,
         category: true,
+        systemKey: true,
         deletedAt: true,
       },
     });

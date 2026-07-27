@@ -13,6 +13,7 @@ export interface PublicOpportunityStage {
   name: string;
   color: string;
   category: PipelineStageCategory;
+  systemKey: string | null;
   order: number;
   active: boolean;
 }

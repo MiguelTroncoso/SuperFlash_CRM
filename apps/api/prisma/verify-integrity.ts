@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 
 import {
+  FollowUpPriority,
+  FollowUpStatus,
   PaymentStatus,
   PipelineStageCategory,
   Prisma,
@@ -36,6 +38,7 @@ async function cleanup(organizationIds: string[]): Promise<void> {
     prisma.payment.deleteMany({ where }),
     prisma.saleItem.deleteMany({ where }),
     prisma.activity.deleteMany({ where }),
+    prisma.followUpHistory.deleteMany({ where }),
     prisma.followUp.deleteMany({ where }),
     prisma.sale.deleteMany({ where }),
     prisma.opportunityStageHistory.deleteMany({ where }),
@@ -304,6 +307,70 @@ async function verifyIntegrity(): Promise<void> {
     const opportunity = await prisma.opportunity.create({
       data: opportunityData,
     });
+
+    const followUp = await prisma.followUp.create({
+      data: {
+        organizationId: organizationA.id,
+        userId: userA.id,
+        opportunityId: opportunity.id,
+        title: 'Integrity follow-up',
+        dueAt: new Date(),
+        priority: FollowUpPriority.NORMAL,
+        status: FollowUpStatus.PENDING,
+      },
+    });
+    const opportunityB = await prisma.opportunity.create({
+      data: {
+        organizationId: organizationB.id,
+        contactId: contactB.id,
+        pipelineStageId: stageB.id,
+        title: 'Integrity Opportunity B',
+      },
+    });
+    await expectFailure('follow-up linked to another organization opportunity', () =>
+      prisma.followUp.create({
+        data: {
+          organizationId: organizationA.id,
+          userId: userA.id,
+          opportunityId: opportunityB.id,
+          title: 'Cross Tenant Follow-up',
+          dueAt: new Date(Date.now() + 60_000),
+          priority: FollowUpPriority.NORMAL,
+          status: FollowUpStatus.PENDING,
+        },
+      }),
+    );
+    await expectFailure('follow-up assigned to another organization user', () =>
+      prisma.followUp.create({
+        data: {
+          organizationId: organizationA.id,
+          userId: userB.id,
+          opportunityId: opportunity.id,
+          title: 'Cross Tenant Assignee',
+          dueAt: new Date(Date.now() + 120_000),
+          priority: FollowUpPriority.NORMAL,
+          status: FollowUpStatus.PENDING,
+        },
+      }),
+    );
+    await prisma.followUpHistory.create({
+      data: {
+        organizationId: organizationA.id,
+        followUpId: followUp.id,
+        action: 'CREATED',
+        changedByUserId: userA.id,
+      },
+    });
+    await expectFailure('follow-up history linked to another organization actor', () =>
+      prisma.followUpHistory.create({
+        data: {
+          organizationId: organizationA.id,
+          followUpId: followUp.id,
+          action: 'UPDATED',
+          changedByUserId: userB.id,
+        },
+      }),
+    );
 
     const initialHistory = await prisma.opportunityStageHistory.create({
       data: {

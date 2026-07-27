@@ -44,6 +44,17 @@ enum FollowUpStatus {
   CANCELLED
 }
 
+enum FollowUpHistoryAction {
+  CREATED
+  UPDATED
+  COMPLETED
+  CANCELLED
+  RESCHEDULED
+  ASSIGNEE_CHANGED
+  ARCHIVED
+  RESTORED
+}
+
 enum SaleStatus {
   OPEN
   WON
@@ -85,6 +96,7 @@ model Organization {
   campaigns                 Campaign[]
   expenses                  Expense[]
   auditLogs                 AuditLog[]
+  followUpHistories         FollowUpHistory[]
 
   @@index([createdAt])
 }
@@ -147,6 +159,10 @@ model User {
   opportunityStageHistories OpportunityStageHistory[] @relation("OpportunityStageHistoryActor")
   authSessions              AuthSession[]
   passwordResetTokens       PasswordResetToken[]
+  createdFollowUps          FollowUp[]                @relation("FollowUpCreatedBy")
+  completedFollowUps        FollowUp[]                @relation("FollowUpCompletedBy")
+  cancelledFollowUps        FollowUp[]                @relation("FollowUpCancelledBy")
+  followUpHistories         FollowUpHistory[]         @relation("FollowUpHistoryActor")
 
   @@unique([organizationId, id])
   @@unique([organizationId, email])
@@ -370,6 +386,7 @@ model PipelineStage {
   color          String
   active         Boolean               @default(true)
   category       PipelineStageCategory
+  systemKey      String?
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @updatedAt
   deletedAt      DateTime?
@@ -383,6 +400,7 @@ model PipelineStage {
   @@unique([organizationId, name])
   @@unique([organizationId, order])
   @@index([organizationId])
+  @@index([organizationId, systemKey])
   @@index([category])
   @@index([createdAt])
 }
@@ -394,6 +412,7 @@ model Activity {
   contactId      String?      @db.Uuid
   opportunityId  String?      @db.Uuid
   saleId         String?      @db.Uuid
+  followUpId     String?      @db.Uuid
   type           ActivityType
   title          String?
   description    String?
@@ -408,6 +427,7 @@ model Activity {
   contact      Contact?     @relation(fields: [organizationId, contactId], references: [organizationId, id], onDelete: Restrict)
   opportunity  Opportunity? @relation(fields: [organizationId, opportunityId], references: [organizationId, id], onDelete: Restrict)
   sale         Sale?        @relation(fields: [organizationId, saleId], references: [organizationId, id], onDelete: Restrict)
+  followUp     FollowUp?    @relation(fields: [organizationId, followUpId], references: [organizationId, id], onDelete: Restrict)
 
   @@unique([organizationId, id])
   @@index([organizationId])
@@ -415,28 +435,46 @@ model Activity {
   @@index([contactId])
   @@index([opportunityId])
   @@index([saleId])
+  @@index([followUpId])
   @@index([organizationId, contactId, createdAt])
   @@index([createdAt])
 }
 
 model FollowUp {
-  id             String           @id @default(uuid()) @db.Uuid
-  organizationId String           @db.Uuid
-  userId         String           @db.Uuid
-  opportunityId  String           @db.Uuid
-  dueAt          DateTime
-  priority       FollowUpPriority
-  status         FollowUpStatus
-  note           String?
-  completedAt    DateTime?
-  cancelledAt    DateTime?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  deletedAt      DateTime?
+  id                 String           @id @default(uuid()) @db.Uuid
+  organizationId     String           @db.Uuid
+  userId             String           @db.Uuid
+  opportunityId      String           @db.Uuid
+  title              String
+  dueAt              DateTime
+  priority           FollowUpPriority
+  status             FollowUpStatus
+  note               String?
+  reminderAt         DateTime?
+  rescheduledFromId  String?          @db.Uuid
+  rescheduledAt      DateTime?
+  completionNote     String?
+  completedAt        DateTime?
+  completedByUserId  String?          @db.Uuid
+  cancelledAt        DateTime?
+  cancellationReason String?
+  cancelledByUserId  String?          @db.Uuid
+  archivedAt         DateTime?
+  createdByUserId    String?          @db.Uuid
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  deletedAt          DateTime?
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  responsible  User         @relation("FollowUpResponsible", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
-  opportunity  Opportunity  @relation(fields: [organizationId, opportunityId], references: [organizationId, id], onDelete: Restrict)
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  responsible     User              @relation("FollowUpResponsible", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
+  opportunity     Opportunity       @relation(fields: [organizationId, opportunityId], references: [organizationId, id], onDelete: Restrict)
+  createdBy       User?             @relation("FollowUpCreatedBy", fields: [organizationId, createdByUserId], references: [organizationId, id], onDelete: Restrict)
+  completedBy     User?             @relation("FollowUpCompletedBy", fields: [organizationId, completedByUserId], references: [organizationId, id], onDelete: Restrict)
+  cancelledBy     User?             @relation("FollowUpCancelledBy", fields: [organizationId, cancelledByUserId], references: [organizationId, id], onDelete: Restrict)
+  rescheduledFrom FollowUp?         @relation("FollowUpReschedule", fields: [organizationId, rescheduledFromId], references: [organizationId, id], onDelete: Restrict)
+  replacements    FollowUp[]        @relation("FollowUpReschedule")
+  histories       FollowUpHistory[]
+  activities      Activity[]
 
   @@unique([organizationId, id])
   @@index([organizationId])
@@ -444,6 +482,39 @@ model FollowUp {
   @@index([opportunityId])
   @@index([status])
   @@index([dueAt])
+  @@index([organizationId, dueAt])
+  @@index([organizationId, userId, status, dueAt])
+  @@index([organizationId, opportunityId, status])
+  @@index([organizationId, archivedAt])
+  @@index([organizationId, priority, status])
+  @@index([rescheduledFromId])
+}
+
+model FollowUpHistory {
+  id              String                @id @default(uuid()) @db.Uuid
+  organizationId  String                @db.Uuid
+  followUpId      String                @db.Uuid
+  action          FollowUpHistoryAction
+  changedByUserId String?               @db.Uuid
+  previousDueAt   DateTime?
+  newDueAt        DateTime?
+  previousStatus  FollowUpStatus?
+  newStatus       FollowUpStatus?
+  note            String?
+  metadata        Json?
+  changedAt       DateTime              @default(now())
+  createdAt       DateTime              @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  followUp     FollowUp     @relation(fields: [organizationId, followUpId], references: [organizationId, id], onDelete: Restrict)
+  changedBy    User?        @relation("FollowUpHistoryActor", fields: [organizationId, changedByUserId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@index([organizationId])
+  @@index([followUpId])
+  @@index([changedByUserId])
+  @@index([action])
+  @@index([changedAt])
 }
 
 model Product {
