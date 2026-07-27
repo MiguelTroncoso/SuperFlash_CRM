@@ -62,12 +62,31 @@ npm run build:api
 npm run format:check
 ```
 
-Prisma está configurado sin modelos de negocio. La conexión se valida al iniciar la API mediante `PrismaService`; la generación y validación del esquema se ejecutan con:
+Prisma contiene el dominio inicial del CRM y la conexión se valida al iniciar la API mediante `PrismaService`. La generación y validación del esquema se ejecutan con:
 
 ```bash
 npm run db:generate
 npm run db:validate
 ```
+
+## Migraciones y seed
+
+Con PostgreSQL disponible y `DATABASE_URL` configurado en `.env`:
+
+```bash
+npm run db:migrate
+npm run db:seed
+```
+
+`db:migrate` aplica la migración inicial en desarrollo. Para despliegues con migraciones ya generadas, usar:
+
+```bash
+npm run db:migrate:deploy
+```
+
+El seed es idempotente y crea únicamente la Organización Demo, los roles `Owner`, `Admin`, `Sales`, `Viewer` y las etapas iniciales del pipeline. No crea usuarios ni contactos.
+
+El modelo aplica `deletedAt` para soft delete en las entidades del dominio. Las eliminaciones físicas de información crítica deben evitarse en las capas futuras de aplicación.
 
 ## Estructura
 
@@ -93,6 +112,6 @@ El backend usa Feature First: cada módulo de negocio vive en `apps/api/src/modu
 
 GitHub Actions instala dependencias, genera Prisma Client, ejecuta lint, typecheck y construye frontend y backend.
 
-## Estado del Sprint 1
+## Estado del Sprint 2
 
-Este sprint contiene únicamente bootstrap y configuración. No incluye login, CRUD, tablas de negocio, endpoints ni pantallas funcionales.
+Este sprint contiene exclusivamente el modelo de datos, la migración inicial y el seed de referencia. No incluye login, CRUD, endpoints, servicios ni pantallas funcionales.

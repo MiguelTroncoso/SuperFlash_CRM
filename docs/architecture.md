@@ -22,4 +22,6 @@ Next.js usa App Router y un layout raíz compuesto por Sidebar, Header y conteni
 
 ## Multiempresa
 
-No se crean tablas ni reglas de tenancy en este sprint. La separación de módulos y paquetes deja el límite de organizaciones preparado para implementar el contexto de tenant en el siguiente diseño de dominio.
+El dominio ya incorpora `Organization` como límite de tenant y `organizationId` en todas las entidades que pertenecen a una organización. Las relaciones y los índices de tenant quedan preparados para aplicar aislamiento en las capas futuras de aplicación.
+
+Las reglas de acceso por organización todavía no se implementan: este sprint se limita al esquema, la migración y el seed de referencia.

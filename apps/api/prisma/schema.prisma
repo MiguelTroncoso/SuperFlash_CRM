@@ -6,3 +6,454 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+}
+
+enum PipelineStageCategory {
+  OPEN
+  WON
+  ARCHIVED
+}
+
+enum ActivityType {
+  MESSAGE
+  NOTE
+  DEMO
+  FOLLOWUP
+  PAYMENT
+  SALE
+  STATUS_CHANGE
+  SYSTEM
+}
+
+enum FollowUpPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum FollowUpStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+enum SaleStatus {
+  OPEN
+  WON
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+model Organization {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  users          User[]
+  roles          Role[]
+  contacts       Contact[]
+  tags           Tag[]
+  contactTags    ContactTag[]
+  opportunities  Opportunity[]
+  pipelineStages PipelineStage[]
+  activities     Activity[]
+  followUps      FollowUp[]
+  products       Product[]
+  sales          Sale[]
+  payments       Payment[]
+  campaigns      Campaign[]
+  expenses       Expense[]
+  auditLogs      AuditLog[]
+
+  @@index([createdAt])
+}
+
+model Role {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  name           String
+  description    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  users        User[]
+  permissions  Permission[]
+
+  @@unique([organizationId, name])
+  @@index([createdAt])
+}
+
+model Permission {
+  id          String    @id @default(uuid()) @db.Uuid
+  key         String    @unique
+  name        String
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  roles Role[]
+
+  @@index([createdAt])
+}
+
+model User {
+  id             String     @id @default(uuid()) @db.Uuid
+  organizationId String     @db.Uuid
+  roleId         String     @db.Uuid
+  email          String
+  firstName      String
+  lastName       String?
+  phone          String?
+  passwordHash   String?
+  status         UserStatus @default(INVITED)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  deletedAt      DateTime?
+
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  role          Role          @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  contacts      Contact[]     @relation("ContactAssignee")
+  opportunities Opportunity[] @relation("OpportunityOwner")
+  activities    Activity[]    @relation("ActivityAuthor")
+  followUps     FollowUp[]    @relation("FollowUpResponsible")
+  sales         Sale[]        @relation("SaleSeller")
+  campaigns     Campaign[]    @relation("CampaignOwner")
+  auditLogs     AuditLog[]    @relation("AuditActor")
+
+  @@unique([organizationId, email])
+  @@index([organizationId])
+  @@index([roleId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Contact {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @db.Uuid
+  userId          String?   @db.Uuid
+  firstName       String
+  lastName        String?
+  email           String?
+  phone           String?
+  phoneNormalized String?
+  country         String?
+  status          String
+  source          String?
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  assignedTo    User?         @relation("ContactAssignee", fields: [userId], references: [id], onDelete: SetNull)
+  tags          ContactTag[]
+  opportunities Opportunity[]
+  activities    Activity[]
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([phoneNormalized])
+  @@index([status])
+  @@index([country])
+  @@index([createdAt])
+}
+
+model Tag {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  name           String
+  color          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  contacts     ContactTag[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([createdAt])
+}
+
+model ContactTag {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  contactId      String    @db.Uuid
+  tagId          String    @db.Uuid
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  contact      Contact      @relation(fields: [contactId], references: [id], onDelete: Restrict)
+  tag          Tag          @relation(fields: [tagId], references: [id], onDelete: Restrict)
+
+  @@unique([contactId, tagId])
+  @@index([organizationId])
+  @@index([contactId])
+  @@index([tagId])
+  @@index([createdAt])
+}
+
+model Opportunity {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @db.Uuid
+  contactId       String    @db.Uuid
+  pipelineStageId String    @db.Uuid
+  userId          String?   @db.Uuid
+  title           String
+  amount          Decimal?  @db.Decimal(14, 2)
+  currency        String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  contact       Contact       @relation(fields: [contactId], references: [id], onDelete: Restrict)
+  pipelineStage PipelineStage @relation(fields: [pipelineStageId], references: [id], onDelete: Restrict)
+  owner         User?         @relation("OpportunityOwner", fields: [userId], references: [id], onDelete: SetNull)
+  activities    Activity[]
+  followUps     FollowUp[]
+  sales         Sale[]
+
+  @@index([organizationId])
+  @@index([contactId])
+  @@index([pipelineStageId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model PipelineStage {
+  id             String                @id @default(uuid()) @db.Uuid
+  organizationId String                @db.Uuid
+  name           String
+  order          Int
+  color          String
+  active         Boolean               @default(true)
+  category       PipelineStageCategory
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  deletedAt      DateTime?
+
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  opportunities Opportunity[]
+
+  @@unique([organizationId, order])
+  @@index([organizationId])
+  @@index([category])
+  @@index([createdAt])
+}
+
+model Activity {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  userId         String?      @db.Uuid
+  contactId      String?      @db.Uuid
+  opportunityId  String?      @db.Uuid
+  saleId         String?      @db.Uuid
+  type           ActivityType
+  title          String?
+  description    String?
+  occurredAt     DateTime     @default(now())
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  author       User?        @relation("ActivityAuthor", fields: [userId], references: [id], onDelete: SetNull)
+  contact      Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  opportunity  Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  sale         Sale?        @relation(fields: [saleId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([contactId])
+  @@index([opportunityId])
+  @@index([saleId])
+  @@index([createdAt])
+}
+
+model FollowUp {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  userId         String           @db.Uuid
+  opportunityId  String           @db.Uuid
+  date           DateTime
+  priority       FollowUpPriority
+  status         FollowUpStatus
+  note           String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  responsible  User         @relation("FollowUpResponsible", fields: [userId], references: [id], onDelete: Restrict)
+  opportunity  Opportunity  @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([opportunityId])
+  @@index([status])
+  @@index([date])
+  @@index([createdAt])
+}
+
+model Product {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  name           String
+  sku            String?
+  description    String?
+  price          Decimal   @db.Decimal(14, 2)
+  currency       String
+  active         Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  sales        Sale[]
+
+  @@unique([organizationId, sku])
+  @@index([organizationId])
+  @@index([active])
+  @@index([createdAt])
+}
+
+model Sale {
+  id             String     @id @default(uuid()) @db.Uuid
+  organizationId String     @db.Uuid
+  opportunityId  String     @db.Uuid
+  userId         String?    @db.Uuid
+  status         SaleStatus
+  total          Decimal    @db.Decimal(14, 2)
+  currency       String
+  soldAt         DateTime?
+  note           String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  opportunity  Opportunity  @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  seller       User?        @relation("SaleSeller", fields: [userId], references: [id], onDelete: SetNull)
+  products     Product[]
+  payments     Payment[]
+  activities   Activity[]
+
+  @@index([organizationId])
+  @@index([opportunityId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Payment {
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String        @db.Uuid
+  saleId         String        @db.Uuid
+  amount         Decimal       @db.Decimal(14, 2)
+  currency       String
+  method         String
+  reference      String?
+  status         PaymentStatus
+  paymentDate    DateTime
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  sale         Sale         @relation(fields: [saleId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([saleId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Campaign {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  userId         String?   @db.Uuid
+  name           String
+  source         String
+  platform       String
+  active         Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  owner        User?        @relation("CampaignOwner", fields: [userId], references: [id], onDelete: SetNull)
+  expenses     Expense[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([userId])
+  @@index([active])
+  @@index([createdAt])
+}
+
+model Expense {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  campaignId     String?   @db.Uuid
+  amount         Decimal   @db.Decimal(14, 2)
+  currency       String
+  expenseDate    DateTime
+  description    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  campaign     Campaign?    @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([campaignId])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  userId         String?   @db.Uuid
+  action         String
+  tableName      String
+  recordId       String
+  previousValue  Json?
+  newValue       Json?
+  ip             String?
+  occurredAt     DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user         User?        @relation("AuditActor", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([tableName, recordId])
+  @@index([createdAt])
+}

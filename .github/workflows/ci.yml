@@ -13,6 +13,20 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: postgresql://superflash:superflash@localhost:5432/superflash?schema=public
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: superflash
+          POSTGRES_PASSWORD: superflash
+          POSTGRES_USER: superflash
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout
@@ -29,6 +43,9 @@ jobs:
 
       - name: Generate Prisma Client
         run: npm run db:generate
+
+      - name: Apply database migrations
+        run: npm run db:migrate:deploy
 
       - name: Lint
         run: npm run lint
