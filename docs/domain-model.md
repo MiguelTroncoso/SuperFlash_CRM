@@ -10,6 +10,7 @@ erDiagram
     Organization ||--o{ Activity : contains
     Organization ||--o{ FollowUp : contains
     Organization ||--o{ Sale : contains
+    Organization ||--o{ SaleItem : contains
     Organization ||--o{ Payment : contains
     Organization ||--o{ Campaign : contains
     Organization ||--o{ Expense : contains
@@ -22,18 +23,21 @@ erDiagram
     User ||--o{ Contact : manages
     Contact ||--o{ Opportunity : owns
     Opportunity }o--|| PipelineStage : uses
+    Opportunity }o--o| Campaign : attributes
+    Opportunity }o--o| Product : interests
     User ||--o{ Opportunity : owns
     Opportunity ||--o{ Activity : tracks
     Opportunity ||--o{ FollowUp : schedules
     User ||--o{ FollowUp : responsible
     Opportunity ||--o{ Sale : converts
+    Sale ||--o{ SaleItem : contains
+    SaleItem }o--o| Product : snapshots
     Sale ||--o{ Payment : receives
 
     Contact ||--o{ ContactTag : tagged
     Tag ||--o{ ContactTag : classifies
     Organization ||--o{ Tag : defines
 
-    Sale }o--o{ Product : includes
     Campaign ||--o{ Expense : funds
     User ||--o{ Activity : authors
     User ||--o{ AuditLog : acts
@@ -41,18 +45,33 @@ erDiagram
 
 ## Modelos
 
-El esquema contiene únicamente `Organization`, `Role`, `Permission`, `User`, `Contact`, `Tag`, `ContactTag`, `Opportunity`, `PipelineStage`, `Activity`, `FollowUp`, `Product`, `Sale`, `Payment`, `Campaign`, `Expense` y `AuditLog`.
+El esquema contiene `Organization`, `Role`, `Permission`, `User`, `Contact`, `Tag`, `ContactTag`, `Opportunity`, `PipelineStage`, `Activity`, `FollowUp`, `Product`, `Sale`, `SaleItem`, `Payment`, `Campaign`, `Expense` y `AuditLog`.
 
-Todas las entidades usan UUID, timestamps y `deletedAt` nullable para soft delete. Las relaciones tenant-aware incluyen `organizationId`.
+Todas las entidades tenant-aware usan UUID, timestamps y `organizationId`. El soft delete se representa mediante `deletedAt`, excepto `AuditLog`, que es append-only e inmutable.
+
+## Oportunidades y ventas
+
+`Opportunity.expectedAmount` es una proyección comercial antes del cierre. `Sale.subtotal` y `Sale.total` representan importes confirmados de una venta. Una oportunidad puede tener como máximo una venta activa principal; las ventas canceladas históricas se conservan.
+
+`SaleItem` es explícito y conserva `productNameSnapshot`, `skuSnapshot`, `quantity`, `unitPrice`, `total` y `currency`. Los snapshots no cambian cuando se actualiza el producto de referencia.
 
 ## Enumeraciones
 
 - `PipelineStageCategory`: `OPEN`, `WON`, `ARCHIVED`.
 - `ActivityType`: `MESSAGE`, `NOTE`, `DEMO`, `FOLLOWUP`, `PAYMENT`, `SALE`, `STATUS_CHANGE`, `SYSTEM`.
-- `UserStatus`, `FollowUpPriority`, `FollowUpStatus`, `SaleStatus` y `PaymentStatus` completan los estados operativos del dominio.
+- `FollowUpStatus`: `PENDING`, `COMPLETED`, `RESCHEDULED`, `CANCELLED`.
+- `UserStatus`, `FollowUpPriority`, `SaleStatus` y `PaymentStatus` completan los estados operativos.
 
-Las etapas del pipeline son datos configurables por organización; los nombres del pipeline inicial están únicamente en el seed.
+Las etapas del pipeline son configurables por organización. Los nombres iniciales existen únicamente en el seed.
 
-## Auditoría e índices
+## Integridad multiempresa
 
-`AuditLog` conserva actor, acción, tabla, registro, valores anterior/nuevo, IP y fecha. El esquema indexa las claves de tenant, estado, teléfono normalizado, país, campaña, usuario y timestamps de creación, además de las claves de relación principales.
+Cada entidad tenant-aware expone `@@unique([organizationId, id])`. Las relaciones sensibles referencian pares `(organizationId, id)`, de modo que una fila de una organización no puede apuntar a una fila de otra organización, incluso mediante SQL directo.
+
+Teléfonos normalizados de contactos, SKU de productos y `opportunityId` de ventas activas usan índices únicos parciales en PostgreSQL. PostgreSQL permite múltiples valores `NULL` en los índices únicos compuestos; los índices parciales además excluyen filas eliminadas o ventas canceladas.
+
+## Auditoría y checks
+
+`AuditLog` conserva actor, acción, tabla, registro, valores anterior/nuevo, IP y fecha. No tiene `updatedAt` ni `deletedAt`; la aplicación debe tratarlo como append-only y nunca actualizarlo o eliminarlo.
+
+La migración agrega checks para órdenes positivas, cantidades mayores que cero y montos no negativos. En pagos valida `netAmount <= grossAmount`.

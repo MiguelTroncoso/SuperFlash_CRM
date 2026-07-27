@@ -76,6 +76,7 @@ Con PostgreSQL disponible y `DATABASE_URL` configurado en `.env`:
 ```bash
 npm run db:migrate
 npm run db:seed
+npm run db:verify-integrity
 ```
 
 `db:migrate` aplica la migración inicial en desarrollo. Para despliegues con migraciones ya generadas, usar:
@@ -85,6 +86,8 @@ npm run db:migrate:deploy
 ```
 
 El seed es idempotente y crea únicamente la Organización Demo, los roles `Owner`, `Admin`, `Sales`, `Viewer` y las etapas iniciales del pipeline. No crea usuarios ni contactos.
+
+`db:verify-integrity` crea fixtures temporales aislados, comprueba unicidad, claves foráneas multiempresa, ventas, snapshots y checks monetarios, y elimina los fixtures al terminar.
 
 El modelo aplica `deletedAt` para soft delete en las entidades del dominio. Las eliminaciones físicas de información crítica deben evitarse en las capas futuras de aplicación.
 
@@ -112,6 +115,14 @@ El backend usa Feature First: cada módulo de negocio vive en `apps/api/src/modu
 
 GitHub Actions instala dependencias, genera Prisma Client, ejecuta lint, typecheck y construye frontend y backend.
 
-## Estado del Sprint 2
+## Integridad del dominio
 
-Este sprint contiene exclusivamente el modelo de datos, la migración inicial y el seed de referencia. No incluye login, CRUD, endpoints, servicios ni pantallas funcionales.
+- `Opportunity.expectedAmount` representa el valor comercial esperado; `Sale.subtotal` y `Sale.total` representan el cierre económico real.
+- `SaleItem` conserva nombre, SKU, cantidad y precio históricos, aunque el producto cambie después.
+- Las relaciones sensibles usan claves foráneas compuestas con `organizationId`.
+- Teléfonos normalizados, SKU y ventas activas usan índices únicos parciales en PostgreSQL para respetar soft delete y valores `NULL`.
+- `AuditLog` es append-only: no tiene `updatedAt` ni `deletedAt` y no debe actualizarse ni eliminarse desde la aplicación.
+
+## Estado del Sprint 2.1
+
+Este sprint contiene exclusivamente correcciones de integridad del modelo, migración correctiva, seed y verificación automatizada. No incluye login, CRUD, endpoints, servicios ni pantallas funcionales.

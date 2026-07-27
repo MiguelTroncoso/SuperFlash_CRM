@@ -47,6 +47,12 @@ jobs:
       - name: Apply database migrations
         run: npm run db:migrate:deploy
 
+      - name: Run seed twice
+        run: npm run db:seed && npm run db:seed
+
+      - name: Verify database integrity
+        run: npm run db:verify-integrity
+
       - name: Lint
         run: npm run lint
 

@@ -40,6 +40,7 @@ enum FollowUpPriority {
 enum FollowUpStatus {
   PENDING
   COMPLETED
+  RESCHEDULED
   CANCELLED
 }
 
@@ -76,6 +77,7 @@ model Organization {
   followUps      FollowUp[]
   products       Product[]
   sales          Sale[]
+  saleItems      SaleItem[]
   payments       Payment[]
   campaigns      Campaign[]
   expenses       Expense[]
@@ -97,6 +99,7 @@ model Role {
   users        User[]
   permissions  Permission[]
 
+  @@unique([organizationId, id])
   @@unique([organizationId, name])
   @@index([createdAt])
 }
@@ -130,7 +133,7 @@ model User {
   deletedAt      DateTime?
 
   organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  role          Role          @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  role          Role          @relation(fields: [organizationId, roleId], references: [organizationId, id], onDelete: Restrict)
   contacts      Contact[]     @relation("ContactAssignee")
   opportunities Opportunity[] @relation("OpportunityOwner")
   activities    Activity[]    @relation("ActivityAuthor")
@@ -139,6 +142,7 @@ model User {
   campaigns     Campaign[]    @relation("CampaignOwner")
   auditLogs     AuditLog[]    @relation("AuditActor")
 
+  @@unique([organizationId, id])
   @@unique([organizationId, email])
   @@index([organizationId])
   @@index([roleId])
@@ -150,29 +154,33 @@ model Contact {
   id              String    @id @default(uuid()) @db.Uuid
   organizationId  String    @db.Uuid
   userId          String?   @db.Uuid
-  firstName       String
+  firstName       String?
   lastName        String?
   email           String?
   phone           String?
   phoneNormalized String?
   country         String?
-  status          String
   source          String?
   notes           String?
+  lastActivityAt  DateTime?
+  isCustomer      Boolean   @default(false)
+  archivedAt      DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
 
   organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  assignedTo    User?         @relation("ContactAssignee", fields: [userId], references: [id], onDelete: SetNull)
+  assignedTo    User?         @relation("ContactAssignee", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
   tags          ContactTag[]
   opportunities Opportunity[]
   activities    Activity[]
 
+  @@unique([organizationId, id])
   @@index([organizationId])
+  // Partial uniqueness for active, non-null phones is defined in the SQL migration.
+  @@index([organizationId, phoneNormalized])
   @@index([userId])
   @@index([phoneNormalized])
-  @@index([status])
   @@index([country])
   @@index([createdAt])
 }
@@ -189,6 +197,7 @@ model Tag {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   contacts     ContactTag[]
 
+  @@unique([organizationId, id])
   @@unique([organizationId, name])
   @@index([organizationId])
   @@index([createdAt])
@@ -204,9 +213,10 @@ model ContactTag {
   deletedAt      DateTime?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  contact      Contact      @relation(fields: [contactId], references: [id], onDelete: Restrict)
-  tag          Tag          @relation(fields: [tagId], references: [id], onDelete: Restrict)
+  contact      Contact      @relation(fields: [organizationId, contactId], references: [organizationId, id], onDelete: Restrict)
+  tag          Tag          @relation(fields: [organizationId, tagId], references: [organizationId, id], onDelete: Restrict)
 
+  @@unique([organizationId, id])
   @@unique([contactId, tagId])
   @@index([organizationId])
   @@index([contactId])
@@ -219,27 +229,39 @@ model Opportunity {
   organizationId  String    @db.Uuid
   contactId       String    @db.Uuid
   pipelineStageId String    @db.Uuid
+  campaignId      String?   @db.Uuid
+  productId       String?   @db.Uuid
   userId          String?   @db.Uuid
   title           String
-  amount          Decimal?  @db.Decimal(14, 2)
+  expectedAmount  Decimal?  @db.Decimal(14, 2)
   currency        String?
+  closedAt        DateTime?
+  archivedAt      DateTime?
+  archiveReason   String?
+  wonAt           DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
 
   organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  contact       Contact       @relation(fields: [contactId], references: [id], onDelete: Restrict)
-  pipelineStage PipelineStage @relation(fields: [pipelineStageId], references: [id], onDelete: Restrict)
-  owner         User?         @relation("OpportunityOwner", fields: [userId], references: [id], onDelete: SetNull)
+  contact       Contact       @relation(fields: [organizationId, contactId], references: [organizationId, id], onDelete: Restrict)
+  pipelineStage PipelineStage @relation(fields: [organizationId, pipelineStageId], references: [organizationId, id], onDelete: Restrict)
+  campaign      Campaign?     @relation(fields: [organizationId, campaignId], references: [organizationId, id], onDelete: Restrict)
+  product       Product?      @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
+  owner         User?         @relation("OpportunityOwner", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
   activities    Activity[]
   followUps     FollowUp[]
   sales         Sale[]
 
+  @@unique([organizationId, id])
   @@index([organizationId])
-  @@index([contactId])
+  @@index([campaignId])
+  @@index([productId])
   @@index([pipelineStageId])
+  @@index([contactId])
   @@index([userId])
   @@index([createdAt])
+  @@index([closedAt])
 }
 
 model PipelineStage {
@@ -257,6 +279,8 @@ model PipelineStage {
   organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   opportunities Opportunity[]
 
+  @@unique([organizationId, id])
+  @@unique([organizationId, name])
   @@unique([organizationId, order])
   @@index([organizationId])
   @@index([category])
@@ -280,11 +304,12 @@ model Activity {
   deletedAt      DateTime?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  author       User?        @relation("ActivityAuthor", fields: [userId], references: [id], onDelete: SetNull)
-  contact      Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
-  opportunity  Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
-  sale         Sale?        @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  author       User?        @relation("ActivityAuthor", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
+  contact      Contact?     @relation(fields: [organizationId, contactId], references: [organizationId, id], onDelete: Restrict)
+  opportunity  Opportunity? @relation(fields: [organizationId, opportunityId], references: [organizationId, id], onDelete: Restrict)
+  sale         Sale?        @relation(fields: [organizationId, saleId], references: [organizationId, id], onDelete: Restrict)
 
+  @@unique([organizationId, id])
   @@index([organizationId])
   @@index([userId])
   @@index([contactId])
@@ -298,24 +323,26 @@ model FollowUp {
   organizationId String           @db.Uuid
   userId         String           @db.Uuid
   opportunityId  String           @db.Uuid
-  date           DateTime
+  dueAt          DateTime
   priority       FollowUpPriority
   status         FollowUpStatus
   note           String?
+  completedAt    DateTime?
+  cancelledAt    DateTime?
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
   deletedAt      DateTime?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  responsible  User         @relation("FollowUpResponsible", fields: [userId], references: [id], onDelete: Restrict)
-  opportunity  Opportunity  @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  responsible  User         @relation("FollowUpResponsible", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
+  opportunity  Opportunity  @relation(fields: [organizationId, opportunityId], references: [organizationId, id], onDelete: Restrict)
 
+  @@unique([organizationId, id])
   @@index([organizationId])
   @@index([userId])
   @@index([opportunityId])
   @@index([status])
-  @@index([date])
-  @@index([createdAt])
+  @@index([dueAt])
 }
 
 model Product {
@@ -324,6 +351,9 @@ model Product {
   name           String
   sku            String?
   description    String?
+  category       String?
+  billingType    String?
+  durationDays   Int?
   price          Decimal   @db.Decimal(14, 2)
   currency       String
   active         Boolean   @default(true)
@@ -331,40 +361,75 @@ model Product {
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  sales        Sale[]
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  opportunities Opportunity[]
+  saleItems     SaleItem[]
 
-  @@unique([organizationId, sku])
+  @@unique([organizationId, id])
   @@index([organizationId])
+  // Partial uniqueness for active, non-null SKUs is defined in the SQL migration.
+  @@index([organizationId, sku])
   @@index([active])
   @@index([createdAt])
 }
 
 model Sale {
-  id             String     @id @default(uuid()) @db.Uuid
-  organizationId String     @db.Uuid
-  opportunityId  String     @db.Uuid
-  userId         String?    @db.Uuid
-  status         SaleStatus
-  total          Decimal    @db.Decimal(14, 2)
-  currency       String
-  soldAt         DateTime?
-  note           String?
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
-  deletedAt      DateTime?
+  id                 String     @id @default(uuid()) @db.Uuid
+  organizationId     String     @db.Uuid
+  opportunityId      String     @db.Uuid
+  userId             String?    @db.Uuid
+  status             SaleStatus
+  subtotal           Decimal    @db.Decimal(14, 2)
+  total              Decimal    @db.Decimal(14, 2)
+  currency           String
+  soldAt             DateTime?
+  cancelledAt        DateTime?
+  cancellationReason String?
+  note               String?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  deletedAt          DateTime?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  opportunity  Opportunity  @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
-  seller       User?        @relation("SaleSeller", fields: [userId], references: [id], onDelete: SetNull)
-  products     Product[]
+  opportunity  Opportunity  @relation(fields: [organizationId, opportunityId], references: [organizationId, id], onDelete: Restrict)
+  seller       User?        @relation("SaleSeller", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
+  items        SaleItem[]
   payments     Payment[]
   activities   Activity[]
 
+  @@unique([organizationId, id])
   @@index([organizationId])
+  // The active-sale uniqueness rule is defined as a partial SQL index.
   @@index([opportunityId])
   @@index([userId])
   @@index([status])
+  @@index([soldAt])
+  @@index([createdAt])
+}
+
+model SaleItem {
+  id                  String    @id @default(uuid()) @db.Uuid
+  organizationId      String    @db.Uuid
+  saleId              String    @db.Uuid
+  productId           String?   @db.Uuid
+  productNameSnapshot String
+  skuSnapshot         String?
+  quantity            Decimal   @db.Decimal(14, 3)
+  unitPrice           Decimal   @db.Decimal(14, 2)
+  total               Decimal   @db.Decimal(14, 2)
+  currency            String
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  deletedAt           DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  sale         Sale         @relation(fields: [organizationId, saleId], references: [organizationId, id], onDelete: Restrict)
+  product      Product?     @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@index([organizationId])
+  @@index([saleId])
+  @@index([productId])
   @@index([createdAt])
 }
 
@@ -372,22 +437,27 @@ model Payment {
   id             String        @id @default(uuid()) @db.Uuid
   organizationId String        @db.Uuid
   saleId         String        @db.Uuid
-  amount         Decimal       @db.Decimal(14, 2)
+  grossAmount    Decimal       @db.Decimal(14, 2)
+  feeAmount      Decimal       @default(0) @db.Decimal(14, 2)
+  netAmount      Decimal       @db.Decimal(14, 2)
   currency       String
   method         String
   reference      String?
   status         PaymentStatus
   paymentDate    DateTime
+  note           String?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   deletedAt      DateTime?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  sale         Sale         @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  sale         Sale         @relation(fields: [organizationId, saleId], references: [organizationId, id], onDelete: Restrict)
 
+  @@unique([organizationId, id])
   @@index([organizationId])
   @@index([saleId])
   @@index([status])
+  @@index([paymentDate])
   @@index([createdAt])
 }
 
@@ -395,21 +465,26 @@ model Campaign {
   id             String    @id @default(uuid()) @db.Uuid
   organizationId String    @db.Uuid
   userId         String?   @db.Uuid
+  externalId     String?
   name           String
   source         String
   platform       String
   active         Boolean   @default(true)
+  startDate      DateTime?
+  endDate        DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  owner        User?        @relation("CampaignOwner", fields: [userId], references: [id], onDelete: SetNull)
-  expenses     Expense[]
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  owner         User?         @relation("CampaignOwner", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
+  opportunities Opportunity[]
+  expenses      Expense[]
 
-  @@unique([organizationId, name])
+  @@unique([organizationId, id])
+  @@unique([organizationId, platform, externalId])
   @@index([organizationId])
-  @@index([userId])
+  @@index([platform])
   @@index([active])
   @@index([createdAt])
 }
@@ -427,31 +502,31 @@ model Expense {
   deletedAt      DateTime?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  campaign     Campaign?    @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  campaign     Campaign?    @relation(fields: [organizationId, campaignId], references: [organizationId, id], onDelete: Restrict)
 
+  @@unique([organizationId, id])
   @@index([organizationId])
   @@index([campaignId])
   @@index([createdAt])
 }
 
 model AuditLog {
-  id             String    @id @default(uuid()) @db.Uuid
-  organizationId String    @db.Uuid
-  userId         String?   @db.Uuid
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  userId         String?  @db.Uuid
   action         String
   tableName      String
   recordId       String
   previousValue  Json?
   newValue       Json?
   ip             String?
-  occurredAt     DateTime  @default(now())
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  deletedAt      DateTime?
+  occurredAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  user         User?        @relation("AuditActor", fields: [userId], references: [id], onDelete: SetNull)
+  user         User?        @relation("AuditActor", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
 
+  @@unique([organizationId, id])
   @@index([organizationId])
   @@index([userId])
   @@index([tableName, recordId])
