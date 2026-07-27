@@ -14,6 +14,8 @@ interface ErrorResponseBody {
   message?: unknown;
   existingContactId?: unknown;
   existingTagId?: unknown;
+  existingOpportunityId?: unknown;
+  existingStageId?: unknown;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -53,6 +55,12 @@ export class HttpExceptionFilter implements ExceptionFilter {
     }
     if (typeof body?.existingTagId === 'string') {
       details.existingTagId = body.existingTagId;
+    }
+    if (typeof body?.existingOpportunityId === 'string') {
+      details.existingOpportunityId = body.existingOpportunityId;
+    }
+    if (typeof body?.existingStageId === 'string') {
+      details.existingStageId = body.existingStageId;
     }
     return details;
   }

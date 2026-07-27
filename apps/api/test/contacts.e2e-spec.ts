@@ -86,6 +86,7 @@ describe('Contacts and lead intake HTTP flow', () => {
     await prisma.saleItem.deleteMany();
     await prisma.payment.deleteMany();
     await prisma.sale.deleteMany();
+    await prisma.opportunityStageHistory.deleteMany();
     await prisma.opportunity.deleteMany();
     await prisma.contact.deleteMany();
     await prisma.campaign.deleteMany();
@@ -148,6 +149,11 @@ describe('Contacts and lead intake HTTP flow', () => {
     expect(contact(phoneLead).activeOpportunity).not.toBeNull();
     expect(emailLead.status).toBe(201);
     expect(contact(emailLead).activeOpportunity).not.toBeNull();
+    const initialHistory = await prisma.opportunityStageHistory.findFirst({
+      where: { opportunityId: contact(phoneLead).activeOpportunity?.id },
+    });
+    expect(initialHistory?.fromStageId).toBeNull();
+    expect(initialHistory?.reason).toBe('Oportunidad creada');
     expect(contact(phoneLead).organizationId).toBeUndefined();
   });
 

@@ -248,6 +248,7 @@ export class ContactsService {
               ...(campaignId ? { campaignId } : {}),
               ...(productId ? { productId } : {}),
               userId: assignedUserId,
+              lastStageChangedAt: now,
               title: buildInitialOpportunityTitle(
                 contact.firstName,
                 contact.lastName,
@@ -257,6 +258,16 @@ export class ContactsService {
             select: { id: true },
           });
           opportunityId = opportunity.id;
+          await transaction.opportunityStageHistory.create({
+            data: {
+              organizationId: context.user.organizationId,
+              opportunityId: opportunity.id,
+              toStageId: stage.id,
+              changedByUserId: context.user.userId,
+              reason: 'Oportunidad creada',
+              changedAt: now,
+            },
+          });
         }
 
         if (tags.length > 0) {

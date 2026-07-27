@@ -16,7 +16,7 @@ enum UserStatus {
 enum PipelineStageCategory {
   OPEN
   WON
-  ARCHIVED
+  LOST
 }
 
 enum ActivityType {
@@ -66,24 +66,25 @@ model Organization {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  users               User[]
-  authSessions        AuthSession[]
-  passwordResetTokens PasswordResetToken[]
-  roles               Role[]
-  contacts            Contact[]
-  tags                Tag[]
-  contactTags         ContactTag[]
-  opportunities       Opportunity[]
-  pipelineStages      PipelineStage[]
-  activities          Activity[]
-  followUps           FollowUp[]
-  products            Product[]
-  sales               Sale[]
-  saleItems           SaleItem[]
-  payments            Payment[]
-  campaigns           Campaign[]
-  expenses            Expense[]
-  auditLogs           AuditLog[]
+  users                     User[]
+  authSessions              AuthSession[]
+  passwordResetTokens       PasswordResetToken[]
+  roles                     Role[]
+  contacts                  Contact[]
+  tags                      Tag[]
+  contactTags               ContactTag[]
+  opportunities             Opportunity[]
+  opportunityStageHistories OpportunityStageHistory[]
+  pipelineStages            PipelineStage[]
+  activities                Activity[]
+  followUps                 FollowUp[]
+  products                  Product[]
+  sales                     Sale[]
+  saleItems                 SaleItem[]
+  payments                  Payment[]
+  campaigns                 Campaign[]
+  expenses                  Expense[]
+  auditLogs                 AuditLog[]
 
   @@index([createdAt])
 }
@@ -134,17 +135,18 @@ model User {
   updatedAt      DateTime   @updatedAt
   deletedAt      DateTime?
 
-  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  role                Role                 @relation(fields: [organizationId, roleId], references: [organizationId, id], onDelete: Restrict)
-  contacts            Contact[]            @relation("ContactAssignee")
-  opportunities       Opportunity[]        @relation("OpportunityOwner")
-  activities          Activity[]           @relation("ActivityAuthor")
-  followUps           FollowUp[]           @relation("FollowUpResponsible")
-  sales               Sale[]               @relation("SaleSeller")
-  campaigns           Campaign[]           @relation("CampaignOwner")
-  auditLogs           AuditLog[]           @relation("AuditActor")
-  authSessions        AuthSession[]
-  passwordResetTokens PasswordResetToken[]
+  organization              Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  role                      Role                      @relation(fields: [organizationId, roleId], references: [organizationId, id], onDelete: Restrict)
+  contacts                  Contact[]                 @relation("ContactAssignee")
+  opportunities             Opportunity[]             @relation("OpportunityOwner")
+  activities                Activity[]                @relation("ActivityAuthor")
+  followUps                 FollowUp[]                @relation("FollowUpResponsible")
+  sales                     Sale[]                    @relation("SaleSeller")
+  campaigns                 Campaign[]                @relation("CampaignOwner")
+  auditLogs                 AuditLog[]                @relation("AuditActor")
+  opportunityStageHistories OpportunityStageHistory[] @relation("OpportunityStageHistoryActor")
+  authSessions              AuthSession[]
+  passwordResetTokens       PasswordResetToken[]
 
   @@unique([organizationId, id])
   @@unique([organizationId, email])
@@ -284,33 +286,38 @@ model ContactTag {
 }
 
 model Opportunity {
-  id              String    @id @default(uuid()) @db.Uuid
-  organizationId  String    @db.Uuid
-  contactId       String    @db.Uuid
-  pipelineStageId String    @db.Uuid
-  campaignId      String?   @db.Uuid
-  productId       String?   @db.Uuid
-  userId          String?   @db.Uuid
-  title           String
-  expectedAmount  Decimal?  @db.Decimal(14, 2)
-  currency        String?
-  closedAt        DateTime?
-  archivedAt      DateTime?
-  archiveReason   String?
-  wonAt           DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  deletedAt       DateTime?
+  id                 String    @id @default(uuid()) @db.Uuid
+  organizationId     String    @db.Uuid
+  contactId          String    @db.Uuid
+  pipelineStageId    String    @db.Uuid
+  campaignId         String?   @db.Uuid
+  productId          String?   @db.Uuid
+  userId             String?   @db.Uuid
+  title              String
+  notes              String?
+  expectedAmount     Decimal?  @db.Decimal(14, 2)
+  currency           String?
+  closedAt           DateTime?
+  archivedAt         DateTime?
+  archiveReason      String?
+  wonAt              DateTime?
+  lastStageChangedAt DateTime?
+  lostAt             DateTime?
+  lostReason         String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  deletedAt          DateTime?
 
-  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  contact       Contact       @relation(fields: [organizationId, contactId], references: [organizationId, id], onDelete: Restrict)
-  pipelineStage PipelineStage @relation(fields: [organizationId, pipelineStageId], references: [organizationId, id], onDelete: Restrict)
-  campaign      Campaign?     @relation(fields: [organizationId, campaignId], references: [organizationId, id], onDelete: Restrict)
-  product       Product?      @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
-  owner         User?         @relation("OpportunityOwner", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
+  organization  Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  contact       Contact                   @relation(fields: [organizationId, contactId], references: [organizationId, id], onDelete: Restrict)
+  pipelineStage PipelineStage             @relation(fields: [organizationId, pipelineStageId], references: [organizationId, id], onDelete: Restrict)
+  campaign      Campaign?                 @relation(fields: [organizationId, campaignId], references: [organizationId, id], onDelete: Restrict)
+  product       Product?                  @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
+  owner         User?                     @relation("OpportunityOwner", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
   activities    Activity[]
   followUps     FollowUp[]
   sales         Sale[]
+  stageHistory  OpportunityStageHistory[]
 
   @@unique([organizationId, id])
   @@index([organizationId])
@@ -319,9 +326,40 @@ model Opportunity {
   @@index([pipelineStageId])
   @@index([contactId])
   @@index([organizationId, contactId, deletedAt])
+  @@index([organizationId, pipelineStageId, deletedAt])
+  @@index([organizationId, archivedAt])
+  @@index([organizationId, lastStageChangedAt])
+  @@index([organizationId, wonAt])
+  @@index([organizationId, lostAt])
   @@index([userId])
   @@index([createdAt])
   @@index([closedAt])
+}
+
+model OpportunityStageHistory {
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String   @db.Uuid
+  opportunityId   String   @db.Uuid
+  fromStageId     String?  @db.Uuid
+  toStageId       String   @db.Uuid
+  changedByUserId String?  @db.Uuid
+  reason          String?
+  changedAt       DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  opportunity  Opportunity    @relation(fields: [organizationId, opportunityId], references: [organizationId, id], onDelete: Restrict)
+  fromStage    PipelineStage? @relation("OpportunityStageHistoryFrom", fields: [organizationId, fromStageId], references: [organizationId, id], onDelete: Restrict)
+  toStage      PipelineStage  @relation("OpportunityStageHistoryTo", fields: [organizationId, toStageId], references: [organizationId, id], onDelete: Restrict)
+  changedBy    User?          @relation("OpportunityStageHistoryActor", fields: [organizationId, changedByUserId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@index([organizationId])
+  @@index([opportunityId])
+  @@index([fromStageId])
+  @@index([toStageId])
+  @@index([changedByUserId])
+  @@index([changedAt])
 }
 
 model PipelineStage {
@@ -336,8 +374,10 @@ model PipelineStage {
   updatedAt      DateTime              @updatedAt
   deletedAt      DateTime?
 
-  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  opportunities Opportunity[]
+  organization     Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  opportunities    Opportunity[]
+  stageHistoryFrom OpportunityStageHistory[] @relation("OpportunityStageHistoryFrom")
+  stageHistoryTo   OpportunityStageHistory[] @relation("OpportunityStageHistoryTo")
 
   @@unique([organizationId, id])
   @@unique([organizationId, name])

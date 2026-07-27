@@ -100,6 +100,7 @@ describe('Auth HTTP flow', () => {
     await prisma.saleItem.deleteMany();
     await prisma.payment.deleteMany();
     await prisma.sale.deleteMany();
+    await prisma.opportunityStageHistory.deleteMany();
     await prisma.opportunity.deleteMany();
     await prisma.contact.deleteMany();
     await prisma.campaign.deleteMany();

@@ -38,6 +38,7 @@ async function cleanup(organizationIds: string[]): Promise<void> {
     prisma.activity.deleteMany({ where }),
     prisma.followUp.deleteMany({ where }),
     prisma.sale.deleteMany({ where }),
+    prisma.opportunityStageHistory.deleteMany({ where }),
     prisma.opportunity.deleteMany({ where }),
     prisma.expense.deleteMany({ where }),
     prisma.contactTag.deleteMany({ where }),
@@ -303,6 +304,30 @@ async function verifyIntegrity(): Promise<void> {
     const opportunity = await prisma.opportunity.create({
       data: opportunityData,
     });
+
+    const initialHistory = await prisma.opportunityStageHistory.create({
+      data: {
+        organizationId: organizationA.id,
+        opportunityId: opportunity.id,
+        toStageId: stageA.id,
+        changedByUserId: userA.id,
+        reason: 'Integrity initial stage',
+      },
+    });
+    assert(
+      initialHistory.fromStageId === null,
+      'initial stage history must have no previous stage',
+    );
+    await expectFailure('stage history linked to another organization actor', () =>
+      prisma.opportunityStageHistory.create({
+        data: {
+          organizationId: organizationA.id,
+          opportunityId: opportunity.id,
+          toStageId: stageA.id,
+          changedByUserId: userB.id,
+        },
+      }),
+    );
 
     const sale = await prisma.sale.create({
       data: {

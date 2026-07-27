@@ -152,6 +152,26 @@ El Sprint 4 incorpora el módulo de contactos y etiquetas, sin frontend CRM ni f
 
 Los teléfonos usan `libphonenumber-js`; `phone` conserva la entrada visible y `phoneNormalized` almacena E.164. La documentación detallada está en [docs/contacts.md](docs/contacts.md). Las pruebas de integración de contactos se ejecutan junto con autenticación usando el esquema PostgreSQL aislado `auth_test`.
 
+## Oportunidades y pipeline
+
+El Sprint 5 incorpora el dominio de oportunidades y la gestión backend del pipeline, sin frontend CRM ni funcionalidades comerciales posteriores:
+
+- `POST`, `GET`, `GET/:id` y `PATCH/:id` bajo `/api/v1/opportunities`.
+- Asignación, movimiento, reapertura, archivado, restauración e historial de etapas.
+- `GET /api/v1/pipeline`, `/summary` y columnas paginadas por cursor.
+- Administración de etapas mediante `settings.manage`, con bloqueo transaccional por organización.
+
+Las oportunidades mantienen `expectedAmount` como Decimal, derivan su estado desde la categoría de etapa y registran cada transición en `OpportunityStageHistory`. La documentación está en [docs/opportunities.md](docs/opportunities.md) y [docs/pipeline.md](docs/pipeline.md).
+
+Para ejecutar las pruebas de integración del Sprint 5 usa el esquema aislado `auth_test`:
+
+```bash
+DATABASE_URL='postgresql://superflash:superflash@localhost:5432/superflash?schema=auth_test' \
+NODE_ENV=test COOKIE_SECURE=false SWAGGER_ENABLED=false \
+JWT_ACCESS_SECRET='ci-only-auth-test-secret-change-me-1234567890' \
+npm run test:integration
+```
+
 ## Integridad del dominio
 
 - `Opportunity.expectedAmount` representa el valor comercial esperado; `Sale.subtotal` y `Sale.total` representan el cierre económico real.
@@ -160,6 +180,6 @@ Los teléfonos usan `libphonenumber-js`; `phone` conserva la entrada visible y `
 - Teléfonos normalizados, SKU y ventas activas usan índices únicos parciales en PostgreSQL para respetar soft delete y valores `NULL`.
 - `AuditLog` es append-only: no tiene `updatedAt` ni `deletedAt` y no debe actualizarse ni eliminarse desde la aplicación.
 
-## Estado del Sprint 4
+## Estado del Sprint 5
 
-Este sprint contiene contactos, lead intake, etiquetas, políticas de responsable, auditoría y pruebas. No incluye frontend CRM, Kanban, movimientos de pipeline, ventas, pagos, seguimientos, dashboard, WhatsApp ni importación CSV.
+Este sprint contiene contactos, lead intake, oportunidades, pipeline, historial de etapas, políticas de responsable, auditoría y pruebas. No incluye frontend CRM, ventas, pagos, CRUD completo de seguimientos, dashboard, WhatsApp, Meta Ads, notificaciones ni importación CSV.

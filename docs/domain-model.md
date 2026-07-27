@@ -28,6 +28,9 @@ erDiagram
     User ||--o{ Opportunity : owns
     Opportunity ||--o{ Activity : tracks
     Opportunity ||--o{ FollowUp : schedules
+    Opportunity ||--o{ OpportunityStageHistory : changes
+    PipelineStage ||--o{ OpportunityStageHistory : receives
+    User ||--o{ OpportunityStageHistory : changes
     User ||--o{ FollowUp : responsible
     Opportunity ||--o{ Sale : converts
     Sale ||--o{ SaleItem : contains
@@ -45,24 +48,26 @@ erDiagram
 
 ## Modelos
 
-El esquema contiene `Organization`, `Role`, `Permission`, `User`, `Contact`, `Tag`, `ContactTag`, `Opportunity`, `PipelineStage`, `Activity`, `FollowUp`, `Product`, `Sale`, `SaleItem`, `Payment`, `Campaign`, `Expense` y `AuditLog`.
+El esquema contiene `Organization`, `Role`, `Permission`, `User`, `Contact`, `Tag`, `ContactTag`, `Opportunity`, `OpportunityStageHistory`, `PipelineStage`, `Activity`, `FollowUp`, `Product`, `Sale`, `SaleItem`, `Payment`, `Campaign`, `Expense` y `AuditLog`.
 
 Todas las entidades tenant-aware usan UUID, timestamps y `organizationId`. El soft delete se representa mediante `deletedAt`, excepto `AuditLog`, que es append-only e inmutable.
 
 ## Oportunidades y ventas
 
-`Opportunity.expectedAmount` es una proyección comercial antes del cierre. `Sale.subtotal` y `Sale.total` representan importes confirmados de una venta. Una oportunidad puede tener como máximo una venta activa principal; las ventas canceladas históricas se conservan.
+`Opportunity.expectedAmount` es una proyección comercial antes del cierre. `OpportunityStageHistory` es append-only y registra la etapa anterior, nueva etapa, actor, motivo y fecha. `Sale.subtotal` y `Sale.total` representan importes confirmados de una venta. Una oportunidad puede tener como máximo una venta activa principal; las ventas canceladas históricas se conservan.
 
 `SaleItem` es explícito y conserva `productNameSnapshot`, `skuSnapshot`, `quantity`, `unitPrice`, `total` y `currency`. Los snapshots no cambian cuando se actualiza el producto de referencia.
 
 ## Enumeraciones
 
-- `PipelineStageCategory`: `OPEN`, `WON`, `ARCHIVED`.
+- `PipelineStageCategory`: `OPEN`, `WON`, `LOST`. El archivado es independiente y vive en `Opportunity.archivedAt`.
 - `ActivityType`: `MESSAGE`, `NOTE`, `DEMO`, `FOLLOWUP`, `PAYMENT`, `SALE`, `STATUS_CHANGE`, `SYSTEM`.
 - `FollowUpStatus`: `PENDING`, `COMPLETED`, `RESCHEDULED`, `CANCELLED`.
 - `UserStatus`, `FollowUpPriority`, `SaleStatus` y `PaymentStatus` completan los estados operativos.
 
 Las etapas del pipeline son configurables por organización. Los nombres iniciales existen únicamente en el seed.
+
+El estado público de una oportunidad se deriva en servidor: `ARCHIVED` cuando existe `archivedAt`, `WON` o `LOST` según la categoría de su etapa y `OPEN` en los demás casos.
 
 ## Integridad multiempresa
 

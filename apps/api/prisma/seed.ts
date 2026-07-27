@@ -53,6 +53,7 @@ const pipelineStages = [
   { name: 'Debe juntar dinero', color: '#F59E0B', category: PipelineStageCategory.OPEN },
   { name: 'Posible comprador', color: '#F97316', category: PipelineStageCategory.OPEN },
   { name: 'Compró', color: '#22C55E', category: PipelineStageCategory.WON },
+  { name: 'No concretado', color: '#EF4444', category: PipelineStageCategory.LOST },
 ] as const;
 
 const salesPermissionKeys = [
