@@ -5,6 +5,7 @@ export interface AuthenticatedUser {
   organizationId: string;
   sessionId: string;
   roleId: string;
+  roleName: string;
   permissions: readonly string[];
 }
 

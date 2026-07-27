@@ -398,6 +398,7 @@ export class AuthService {
       organizationId: session.organizationId,
       sessionId: session.id,
       roleId: session.user.role.id,
+      roleName: session.user.role.name,
       permissions: session.user.role.permissions.map((permission) => permission.key),
     };
   }

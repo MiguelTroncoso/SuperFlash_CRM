@@ -14,12 +14,18 @@ export interface AuditRecordInput {
   ip?: string | undefined;
 }
 
+type AuditClient = PrismaService | Prisma.TransactionClient;
+
 @Injectable()
 export class AuditService {
   constructor(private readonly prisma: PrismaService) {}
 
   async record(input: AuditRecordInput): Promise<void> {
-    await this.prisma.auditLog.create({
+    await this.recordWithClient(this.prisma, input);
+  }
+
+  async recordWithClient(client: AuditClient, input: AuditRecordInput): Promise<void> {
+    await client.auditLog.create({
       data: {
         ...(input.organizationId ? { organizationId: input.organizationId } : {}),
         ...(input.userId ? { userId: input.userId } : {}),

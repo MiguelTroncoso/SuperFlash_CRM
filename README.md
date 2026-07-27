@@ -138,6 +138,20 @@ DATABASE_URL='postgresql://superflash:superflash@localhost:5432/superflash?schem
 
 La explicación completa de sesiones, cookies, rotación, permisos y aislamiento multiempresa está en [docs/authentication.md](docs/authentication.md).
 
+## Contactos y lead intake
+
+El Sprint 4 incorpora el módulo de contactos y etiquetas, sin frontend CRM ni funcionalidades posteriores. La API expone:
+
+- `POST /api/v1/contacts` para crear leads con validación estricta, normalización E.164, detección de duplicados y oportunidad inicial opcional.
+- `GET /api/v1/contacts` y `GET /api/v1/contacts/:id` para listado, búsqueda, filtros, detalle y resumen acotado.
+- `PATCH /api/v1/contacts/:id` para actualización parcial.
+- `PATCH /api/v1/contacts/:id/assignee` para asignación multiempresa.
+- `POST /api/v1/contacts/:id/archive` y `POST /api/v1/contacts/:id/restore` para archivado reversible.
+- `POST` y `DELETE /api/v1/contacts/:id/tags/:tagId` para asociaciones soft delete.
+- `GET`, `POST`, `PATCH`, `POST /archive` y `POST /restore` bajo `/api/v1/tags` para administrar etiquetas.
+
+Los teléfonos usan `libphonenumber-js`; `phone` conserva la entrada visible y `phoneNormalized` almacena E.164. La documentación detallada está en [docs/contacts.md](docs/contacts.md). Las pruebas de integración de contactos se ejecutan junto con autenticación usando el esquema PostgreSQL aislado `auth_test`.
+
 ## Integridad del dominio
 
 - `Opportunity.expectedAmount` representa el valor comercial esperado; `Sale.subtotal` y `Sale.total` representan el cierre económico real.
@@ -146,6 +160,6 @@ La explicación completa de sesiones, cookies, rotación, permisos y aislamiento
 - Teléfonos normalizados, SKU y ventas activas usan índices únicos parciales en PostgreSQL para respetar soft delete y valores `NULL`.
 - `AuditLog` es append-only: no tiene `updatedAt` ni `deletedAt` y no debe actualizarse ni eliminarse desde la aplicación.
 
-## Estado del Sprint 3
+## Estado del Sprint 4
 
-Este sprint contiene exclusivamente autenticación, sesiones, autorización, auditoría de seguridad, pruebas y documentación. No incluye CRUD de usuarios, frontend de login ni funcionalidades CRM.
+Este sprint contiene contactos, lead intake, etiquetas, políticas de responsable, auditoría y pruebas. No incluye frontend CRM, Kanban, movimientos de pipeline, ventas, pagos, seguimientos, dashboard, WhatsApp ni importación CSV.

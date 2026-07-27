@@ -233,6 +233,12 @@ model Contact {
   @@index([userId])
   @@index([phoneNormalized])
   @@index([country])
+  @@index([firstName])
+  @@index([lastName])
+  @@index([email])
+  @@index([source])
+  @@index([archivedAt])
+  @@index([lastActivityAt])
   @@index([createdAt])
 }
 
@@ -251,6 +257,7 @@ model Tag {
   @@unique([organizationId, id])
   @@unique([organizationId, name])
   @@index([organizationId])
+  @@index([deletedAt])
   @@index([createdAt])
 }
 
@@ -272,6 +279,7 @@ model ContactTag {
   @@index([organizationId])
   @@index([contactId])
   @@index([tagId])
+  @@index([contactId, deletedAt])
   @@index([createdAt])
 }
 
@@ -310,6 +318,7 @@ model Opportunity {
   @@index([productId])
   @@index([pipelineStageId])
   @@index([contactId])
+  @@index([organizationId, contactId, deletedAt])
   @@index([userId])
   @@index([createdAt])
   @@index([closedAt])
@@ -366,6 +375,7 @@ model Activity {
   @@index([contactId])
   @@index([opportunityId])
   @@index([saleId])
+  @@index([organizationId, contactId, createdAt])
   @@index([createdAt])
 }
 

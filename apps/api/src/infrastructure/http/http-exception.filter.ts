@@ -12,6 +12,8 @@ interface ErrorResponseBody {
   statusCode?: unknown;
   code?: unknown;
   message?: unknown;
+  existingContactId?: unknown;
+  existingTagId?: unknown;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -40,7 +42,19 @@ export class HttpExceptionFilter implements ExceptionFilter {
       statusCode: status,
       code,
       message,
+      ...this.safeDetails(body),
     });
+  }
+
+  private safeDetails(body: ErrorResponseBody | undefined): Record<string, string> {
+    const details: Record<string, string> = {};
+    if (typeof body?.existingContactId === 'string') {
+      details.existingContactId = body.existingContactId;
+    }
+    if (typeof body?.existingTagId === 'string') {
+      details.existingTagId = body.existingTagId;
+    }
+    return details;
   }
 
   private normalizeMessage(value: unknown, status: number): string {
@@ -77,6 +91,12 @@ export class HttpExceptionFilter implements ExceptionFilter {
     }
     if (status === HttpStatus.BAD_REQUEST) {
       return 'VALIDATION_ERROR';
+    }
+    if (status === HttpStatus.NOT_FOUND) {
+      return 'NOT_FOUND';
+    }
+    if (status === HttpStatus.CONFLICT) {
+      return 'CONFLICT';
     }
     return 'INTERNAL_SERVER_ERROR';
   }

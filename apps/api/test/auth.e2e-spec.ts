@@ -94,6 +94,18 @@ describe('Auth HTTP flow', () => {
 
   beforeEach(async () => {
     await prisma.auditLog.deleteMany();
+    await prisma.contactTag.deleteMany();
+    await prisma.activity.deleteMany();
+    await prisma.followUp.deleteMany();
+    await prisma.saleItem.deleteMany();
+    await prisma.payment.deleteMany();
+    await prisma.sale.deleteMany();
+    await prisma.opportunity.deleteMany();
+    await prisma.contact.deleteMany();
+    await prisma.campaign.deleteMany();
+    await prisma.product.deleteMany();
+    await prisma.pipelineStage.deleteMany();
+    await prisma.tag.deleteMany();
     await prisma.passwordResetToken.deleteMany();
     await prisma.authSession.deleteMany();
     await prisma.user.deleteMany();

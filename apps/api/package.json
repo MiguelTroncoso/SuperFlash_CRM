@@ -11,8 +11,8 @@
     "prisma:verify-integrity": "tsx prisma/verify-integrity.ts",
     "prisma:validate": "prisma validate --schema prisma/schema.prisma",
     "test": "jest --runInBand",
-    "test:unit": "jest --runInBand test/auth.security.spec.ts",
-    "test:integration": "jest --runInBand test/auth.e2e-spec.ts",
+    "test:unit": "jest --runInBand test/auth.security.spec.ts test/contacts.unit.spec.ts",
+    "test:integration": "jest --runInBand test/auth.e2e-spec.ts test/contacts.e2e-spec.ts",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "typecheck": "tsc --noEmit"
@@ -33,6 +33,7 @@
     "cookie-parser": "^1.4.7",
     "helmet": "^8.3.0",
     "ioredis": "^5.7.0",
+    "libphonenumber-js": "^1.13.9",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
   },
