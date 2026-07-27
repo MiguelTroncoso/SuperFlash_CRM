@@ -10,6 +10,9 @@
     "prisma:seed": "tsx prisma/seed.ts",
     "prisma:verify-integrity": "tsx prisma/verify-integrity.ts",
     "prisma:validate": "prisma validate --schema prisma/schema.prisma",
+    "test": "jest --runInBand",
+    "test:unit": "jest --runInBand test/auth.security.spec.ts",
+    "test:integration": "jest --runInBand test/auth.e2e-spec.ts",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "typecheck": "tsc --noEmit"
@@ -18,9 +21,17 @@
     "@nestjs/common": "^11.1.28",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.1.28",
+    "@nestjs/jwt": "^11.0.2",
     "@nestjs/platform-express": "^11.1.28",
+    "@nestjs/swagger": "^11.4.6",
+    "@nestjs/throttler": "^6.5.0",
     "@prisma/client": "^6.19.3",
+    "argon2": "^0.45.1",
     "bullmq": "^5.58.5",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
+    "cookie-parser": "^1.4.7",
+    "helmet": "^8.3.0",
     "ioredis": "^5.7.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
@@ -28,11 +39,36 @@
   "devDependencies": {
     "@nestjs/cli": "^11.0.10",
     "@nestjs/schematics": "^11.0.7",
+    "@nestjs/testing": "^11.1.28",
+    "@types/cookie-parser": "^1.4.10",
+    "@types/express": "^5.0.6",
+    "@types/jest": "^30.0.0",
     "@types/node": "^24.3.0",
+    "@types/supertest": "^7.2.1",
+    "jest": "^30.4.2",
     "prisma": "^6.19.3",
+    "supertest": "^7.2.2",
+    "ts-jest": "^29.4.12",
     "tsx": "^4.20.3"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
+  },
+  "jest": {
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
+    "rootDir": ".",
+    "roots": [
+      "<rootDir>/test"
+    ],
+    "testRegex": ".*\\.(e2e-)?spec\\.ts$",
+    "transform": {
+      "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "testEnvironment": "node",
+    "watchman": false
   }
 }

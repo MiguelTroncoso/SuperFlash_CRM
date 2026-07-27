@@ -66,22 +66,24 @@ model Organization {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  users          User[]
-  roles          Role[]
-  contacts       Contact[]
-  tags           Tag[]
-  contactTags    ContactTag[]
-  opportunities  Opportunity[]
-  pipelineStages PipelineStage[]
-  activities     Activity[]
-  followUps      FollowUp[]
-  products       Product[]
-  sales          Sale[]
-  saleItems      SaleItem[]
-  payments       Payment[]
-  campaigns      Campaign[]
-  expenses       Expense[]
-  auditLogs      AuditLog[]
+  users               User[]
+  authSessions        AuthSession[]
+  passwordResetTokens PasswordResetToken[]
+  roles               Role[]
+  contacts            Contact[]
+  tags                Tag[]
+  contactTags         ContactTag[]
+  opportunities       Opportunity[]
+  pipelineStages      PipelineStage[]
+  activities          Activity[]
+  followUps           FollowUp[]
+  products            Product[]
+  sales               Sale[]
+  saleItems           SaleItem[]
+  payments            Payment[]
+  campaigns           Campaign[]
+  expenses            Expense[]
+  auditLogs           AuditLog[]
 
   @@index([createdAt])
 }
@@ -132,21 +134,70 @@ model User {
   updatedAt      DateTime   @updatedAt
   deletedAt      DateTime?
 
-  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  role          Role          @relation(fields: [organizationId, roleId], references: [organizationId, id], onDelete: Restrict)
-  contacts      Contact[]     @relation("ContactAssignee")
-  opportunities Opportunity[] @relation("OpportunityOwner")
-  activities    Activity[]    @relation("ActivityAuthor")
-  followUps     FollowUp[]    @relation("FollowUpResponsible")
-  sales         Sale[]        @relation("SaleSeller")
-  campaigns     Campaign[]    @relation("CampaignOwner")
-  auditLogs     AuditLog[]    @relation("AuditActor")
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  role                Role                 @relation(fields: [organizationId, roleId], references: [organizationId, id], onDelete: Restrict)
+  contacts            Contact[]            @relation("ContactAssignee")
+  opportunities       Opportunity[]        @relation("OpportunityOwner")
+  activities          Activity[]           @relation("ActivityAuthor")
+  followUps           FollowUp[]           @relation("FollowUpResponsible")
+  sales               Sale[]               @relation("SaleSeller")
+  campaigns           Campaign[]           @relation("CampaignOwner")
+  auditLogs           AuditLog[]           @relation("AuditActor")
+  authSessions        AuthSession[]
+  passwordResetTokens PasswordResetToken[]
 
   @@unique([organizationId, id])
   @@unique([organizationId, email])
   @@index([organizationId])
   @@index([roleId])
   @@index([status])
+  @@index([createdAt])
+}
+
+model AuthSession {
+  id               String    @id @default(uuid()) @db.Uuid
+  organizationId   String    @db.Uuid
+  userId           String    @db.Uuid
+  refreshTokenHash String
+  familyId         String    @db.Uuid
+  userAgent        String?
+  ipAddress        String?
+  expiresAt        DateTime
+  lastUsedAt       DateTime?
+  revokedAt        DateTime?
+  revokeReason     String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user         User         @relation(fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@index([organizationId])
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+  @@index([createdAt])
+}
+
+model PasswordResetToken {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  userId         String    @db.Uuid
+  tokenHash      String
+  expiresAt      DateTime
+  usedAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user         User         @relation(fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@index([organizationId])
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([usedAt])
   @@index([createdAt])
 }
 
@@ -512,7 +563,7 @@ model Expense {
 
 model AuditLog {
   id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @db.Uuid
+  organizationId String?  @db.Uuid
   userId         String?  @db.Uuid
   action         String
   tableName      String
@@ -523,8 +574,8 @@ model AuditLog {
   occurredAt     DateTime @default(now())
   createdAt      DateTime @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  user         User?        @relation("AuditActor", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user         User?         @relation("AuditActor", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
 
   @@unique([organizationId, id])
   @@index([organizationId])

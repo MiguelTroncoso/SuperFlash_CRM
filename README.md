@@ -85,7 +85,7 @@ npm run db:verify-integrity
 npm run db:migrate:deploy
 ```
 
-El seed es idempotente y crea únicamente la Organización Demo, los roles `Owner`, `Admin`, `Sales`, `Viewer` y las etapas iniciales del pipeline. No crea usuarios ni contactos.
+El seed es idempotente y crea la Organización Demo, los roles `Owner`, `Admin`, `Sales`, `Viewer`, permisos base y las etapas iniciales del pipeline. Si se definen `SEED_OWNER_EMAIL`, `SEED_OWNER_PASSWORD`, `SEED_OWNER_FIRST_NAME` y `SEED_OWNER_LAST_NAME`, también crea el Owner de desarrollo con password Argon2id. Sin esas variables, omite el usuario con un mensaje claro. No crea contactos.
 
 `db:verify-integrity` crea fixtures temporales aislados, comprueba unicidad, claves foráneas multiempresa, ventas, snapshots y checks monetarios, y elimina los fixtures al terminar.
 
@@ -113,7 +113,30 @@ El backend usa Feature First: cada módulo de negocio vive en `apps/api/src/modu
 
 ## CI
 
-GitHub Actions instala dependencias, genera Prisma Client, ejecuta lint, typecheck y construye frontend y backend.
+GitHub Actions instala dependencias, genera Prisma Client, ejecuta migraciones públicas y aisladas, seed, verificación de integridad, pruebas unitarias e integración, Prettier, lint, typecheck y builds frontend/backend.
+
+## Autenticación
+
+La API expone la autenticación bajo `/api/v1/auth`:
+
+- `POST /login` valida un usuario activo, entrega un access token JWT de 15 minutos y establece `superflash_refresh_token` como cookie HttpOnly.
+- `POST /refresh` rota el refresh token opaco, conserva su `familyId` y detecta reutilización.
+- `POST /logout` y `POST /logout-all` revocan sesiones.
+- `GET /me` retorna el contexto efectivo del usuario autenticado.
+- `POST /forgot-password` genera un token opaco con hash y respuesta anti-enumeración. En desarrollo se registra el token para pruebas locales; nunca se registra en producción.
+- `POST /reset-password` consume el token una sola vez, actualiza la contraseña Argon2id y revoca sesiones.
+- `GET /security-check` es un endpoint técnico protegido por `audit.read`.
+
+Configura las variables de autenticación en `.env`. En producción `JWT_ACCESS_SECRET` debe existir, ser único y tener al menos 32 caracteres. Swagger está disponible en `/api/docs` cuando `SWAGGER_ENABLED=true`.
+
+Para ejecutar las pruebas de integración sin tocar la base de desarrollo, usa un esquema aislado:
+
+```bash
+DATABASE_URL='postgresql://superflash:superflash@localhost:5432/superflash?schema=auth_test' npm run db:migrate:deploy
+DATABASE_URL='postgresql://superflash:superflash@localhost:5432/superflash?schema=auth_test' NODE_ENV=test npm run test:integration
+```
+
+La explicación completa de sesiones, cookies, rotación, permisos y aislamiento multiempresa está en [docs/authentication.md](docs/authentication.md).
 
 ## Integridad del dominio
 
@@ -123,6 +146,6 @@ GitHub Actions instala dependencias, genera Prisma Client, ejecuta lint, typeche
 - Teléfonos normalizados, SKU y ventas activas usan índices únicos parciales en PostgreSQL para respetar soft delete y valores `NULL`.
 - `AuditLog` es append-only: no tiene `updatedAt` ni `deletedAt` y no debe actualizarse ni eliminarse desde la aplicación.
 
-## Estado del Sprint 2.1
+## Estado del Sprint 3
 
-Este sprint contiene exclusivamente correcciones de integridad del modelo, migración correctiva, seed y verificación automatizada. No incluye login, CRUD, endpoints, servicios ni pantallas funcionales.
+Este sprint contiene exclusivamente autenticación, sesiones, autorización, auditoría de seguridad, pruebas y documentación. No incluye CRUD de usuarios, frontend de login ni funcionalidades CRM.

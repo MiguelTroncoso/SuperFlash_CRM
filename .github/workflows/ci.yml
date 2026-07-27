@@ -53,6 +53,26 @@ jobs:
       - name: Verify database integrity
         run: npm run db:verify-integrity
 
+      - name: Prettier
+        run: npm run format:check
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Apply isolated auth integration migrations
+        env:
+          DATABASE_URL: postgresql://superflash:superflash@localhost:5432/superflash?schema=auth_test
+        run: npm run db:migrate:deploy
+
+      - name: Integration tests
+        env:
+          DATABASE_URL: postgresql://superflash:superflash@localhost:5432/superflash?schema=auth_test
+          NODE_ENV: test
+          COOKIE_SECURE: 'false'
+          SWAGGER_ENABLED: 'false'
+          JWT_ACCESS_SECRET: ci-only-auth-test-secret-change-me-1234567890
+        run: npm run test:integration
+
       - name: Lint
         run: npm run lint
 
