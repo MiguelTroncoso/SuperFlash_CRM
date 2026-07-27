@@ -69,4 +69,21 @@ describe('contacts domain primitives', () => {
     ).toBe(true);
     expect(policy.canMutate(user('Viewer', ['contacts.read']), { userId: null })).toBe(false);
   });
+
+  it('applies the opportunity creation ownership policy independently of contact editing', () => {
+    const policy = new ContactAccessPolicy();
+    const seller = user('Sales', ['opportunities.create']);
+    expect(policy.canCreateOpportunity(seller, { userId: null })).toBe(true);
+    expect(policy.canCreateOpportunity(seller, { userId: seller.userId })).toBe(true);
+    expect(
+      policy.canCreateOpportunity(seller, {
+        userId: '00000000-0000-0000-0000-000000000099',
+      }),
+    ).toBe(false);
+    expect(
+      policy.canCreateOpportunity(user('Owner', ['opportunities.create']), {
+        userId: '00000000-0000-0000-0000-000000000099',
+      }),
+    ).toBe(true);
+  });
 });

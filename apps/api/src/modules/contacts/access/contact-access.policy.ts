@@ -23,6 +23,11 @@ export class ContactAccessPolicy {
     return false;
   }
 
+  canCreateOpportunity(user: AuthenticatedUser, contact: Pick<ContactMutation, 'userId'>): boolean {
+    if (user.roleName === 'Owner' || user.roleName === 'Admin') return true;
+    return user.roleName === 'Sales' && (contact.userId === null || contact.userId === user.userId);
+  }
+
   assertCanRead(user: AuthenticatedUser): void {
     if (!this.canRead(user)) {
       throw contactException(

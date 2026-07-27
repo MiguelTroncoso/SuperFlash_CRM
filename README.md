@@ -163,6 +163,13 @@ El Sprint 5 incorpora el dominio de oportunidades y la gestión backend del pipe
 
 Las oportunidades mantienen `expectedAmount` como Decimal, derivan su estado desde la categoría de etapa y registran cada transición en `OpportunityStageHistory`. La documentación está en [docs/opportunities.md](docs/opportunities.md) y [docs/pipeline.md](docs/pipeline.md).
 
+Las correcciones de Sprint 5.1 endurecen la integridad de las transiciones: la creación comienza
+únicamente en etapas `OPEN`, respeta el estado y ownership del contacto, y aplica una prioridad
+determinista para el responsable. La restauración valida el contacto dentro de la transacción y
+actualiza `lastActivityAt` junto con Activity y AuditLog. El pipeline usa locks advisory con namespace
+y organización, normaliza órdenes al restaurar y protege los conflictos concurrentes de archivado y
+movimiento.
+
 Para ejecutar las pruebas de integración del Sprint 5 usa el esquema aislado `auth_test`:
 
 ```bash
@@ -180,6 +187,8 @@ npm run test:integration
 - Teléfonos normalizados, SKU y ventas activas usan índices únicos parciales en PostgreSQL para respetar soft delete y valores `NULL`.
 - `AuditLog` es append-only: no tiene `updatedAt` ni `deletedAt` y no debe actualizarse ni eliminarse desde la aplicación.
 
-## Estado del Sprint 5
+## Estado del Sprint 5.1
 
-Este sprint contiene contactos, lead intake, oportunidades, pipeline, historial de etapas, políticas de responsable, auditoría y pruebas. No incluye frontend CRM, ventas, pagos, CRUD completo de seguimientos, dashboard, WhatsApp, Meta Ads, notificaciones ni importación CSV.
+Este sprint contiene las correcciones de integridad de oportunidades y pipeline sobre el dominio del
+Sprint 5. No incluye frontend CRM, ventas, pagos, CRUD completo de seguimientos, dashboard, WhatsApp,
+Meta Ads, notificaciones ni importación CSV.

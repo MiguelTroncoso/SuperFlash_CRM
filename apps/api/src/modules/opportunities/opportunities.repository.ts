@@ -348,44 +348,4 @@ export class OpportunitiesRepository {
       select: { id: true },
     });
   }
-
-  async countActiveOpportunitiesForStage(organizationId: string, stageId: string): Promise<number> {
-    return this.prisma.opportunity.count({
-      where: { organizationId, pipelineStageId: stageId, deletedAt: null, archivedAt: null },
-    });
-  }
-
-  async countActiveStagesByCategory(
-    organizationId: string,
-    category: PipelineStageCategory,
-  ): Promise<number> {
-    return this.prisma.pipelineStage.count({
-      where: { organizationId, category, active: true, deletedAt: null },
-    });
-  }
-
-  async findStageByName(
-    organizationId: string,
-    name: string,
-    excludedId?: string,
-  ): Promise<PipelineStageRecord | null> {
-    return this.prisma.pipelineStage.findFirst({
-      where: {
-        organizationId,
-        name: { equals: name, mode: 'insensitive' },
-        deletedAt: null,
-        ...(excludedId ? { id: { not: excludedId } } : {}),
-      },
-      select: {
-        id: true,
-        organizationId: true,
-        name: true,
-        order: true,
-        color: true,
-        active: true,
-        category: true,
-        deletedAt: true,
-      },
-    });
-  }
 }

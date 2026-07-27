@@ -50,6 +50,7 @@ interface OpportunityResponse {
   pipelineStage: { id: string; category: string };
   expectedAmount: string | null;
   currency: string | null;
+  assignedTo?: { id: string } | null;
 }
 
 function requireIsolatedDatabase(): void {
@@ -188,6 +189,68 @@ describe('Opportunities and pipeline HTTP flow', () => {
     ).send({ productId: fixture.productB });
     expect(crossProduct.status).toBe(404);
     expect(crossProduct.body.code).toBe('OPPORTUNITY_PRODUCT_NOT_FOUND');
+  });
+
+  it('aplica las reglas de contacto archivado y de responsable por defecto', async () => {
+    const ownerToken = await login(fixture.ownerA);
+    const salesToken = await login(fixture.salesA);
+    await prisma.contact.update({
+      where: { id: fixture.contactA },
+      data: { archivedAt: new Date() },
+    });
+
+    const salesArchived = await authorized('post', '/api/v1/opportunities', salesToken).send({
+      contactId: fixture.contactA,
+      title: 'Archived by sales',
+    });
+    expect(salesArchived.status).toBe(403);
+    expect(salesArchived.body.code).toBe('OPPORTUNITY_CONTACT_ARCHIVED_FORBIDDEN');
+
+    const ownerArchived = await authorized('post', '/api/v1/opportunities', ownerToken).send({
+      contactId: fixture.contactA,
+      title: 'Archived by owner',
+    });
+    expect(ownerArchived.status).toBe(201);
+    expect(body(ownerArchived).assignedTo).toBeNull();
+
+    await prisma.contact.update({
+      where: { id: fixture.contactA },
+      data: { archivedAt: null },
+    });
+    const salesOwns = await authorized('post', '/api/v1/opportunities', salesToken).send({
+      contactId: fixture.contactA,
+      title: 'Sales default owner',
+    });
+    expect(salesOwns.status).toBe(201);
+    expect(body(salesOwns).assignedTo?.id).toBe(fixture.salesA.id);
+  });
+
+  it('rechaza contactos eliminados y etapas iniciales cerradas', async () => {
+    const token = await login(fixture.ownerA);
+    await prisma.contact.update({
+      where: { id: fixture.contactA },
+      data: { deletedAt: new Date() },
+    });
+    const deletedContact = await authorized('post', '/api/v1/opportunities', token).send({
+      contactId: fixture.contactA,
+      title: 'Deleted contact',
+    });
+    expect(deletedContact.status).toBe(404);
+    expect(deletedContact.body.code).toBe('OPPORTUNITY_CONTACT_NOT_FOUND');
+
+    await prisma.contact.update({ where: { id: fixture.contactA }, data: { deletedAt: null } });
+    for (const pipelineStageId of [fixture.wonA, fixture.lostA]) {
+      const response = await authorized('post', '/api/v1/opportunities', token).send({
+        contactId: fixture.contactA,
+        title: 'Closed initial stage',
+        pipelineStageId,
+      });
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('OPPORTUNITY_INITIAL_STAGE_MUST_BE_OPEN');
+    }
+    expect(
+      await prisma.opportunity.count({ where: { organizationId: fixture.organizationA } }),
+    ).toBe(0);
   });
 
   it('actualiza campos permitidos y conserva el modelo monetario decimal', async () => {
@@ -364,6 +427,51 @@ describe('Opportunities and pipeline HTTP flow', () => {
     ).toBe(1);
   });
 
+  it('restaurar rechaza contacto eliminado, permite archivado y actualiza actividad', async () => {
+    const token = await login(fixture.ownerA);
+    const created = await authorized('post', '/api/v1/opportunities', token).send({
+      contactId: fixture.contactA,
+      title: 'Restore integrity',
+    });
+    await authorized('post', `/api/v1/opportunities/${body(created).id}/archive`, token).send({});
+    const archivedAt = (await prisma.contact.findUniqueOrThrow({ where: { id: fixture.contactA } }))
+      .lastActivityAt;
+    await prisma.contact.update({
+      where: { id: fixture.contactA },
+      data: { deletedAt: new Date() },
+    });
+    const unavailable = await authorized(
+      'post',
+      `/api/v1/opportunities/${body(created).id}/restore`,
+      token,
+    ).send({});
+    expect(unavailable.status).toBe(409);
+    expect(unavailable.body.code).toBe('OPPORTUNITY_CONTACT_UNAVAILABLE');
+    expect(
+      await prisma.auditLog.count({
+        where: { action: 'OPPORTUNITY_RESTORED', recordId: body(created).id },
+      }),
+    ).toBe(0);
+
+    await prisma.contact.update({
+      where: { id: fixture.contactA },
+      data: { deletedAt: null, archivedAt: new Date() },
+    });
+    const restored = await authorized(
+      'post',
+      `/api/v1/opportunities/${body(created).id}/restore`,
+      token,
+    ).send({});
+    expect(restored.status).toBe(201);
+    const contact = await prisma.contact.findUniqueOrThrow({ where: { id: fixture.contactA } });
+    expect(contact.lastActivityAt?.getTime()).toBeGreaterThan(archivedAt?.getTime() ?? 0);
+    expect(
+      await prisma.auditLog.count({
+        where: { action: 'OPPORTUNITY_RESTORED', recordId: body(created).id },
+      }),
+    ).toBe(1);
+  });
+
   it('lista, busca, filtra y pagina oportunidades sin exponer organizationId', async () => {
     const token = await login(fixture.ownerA);
     for (const title of ['Alpha lead', 'Beta lead', 'Gamma lead']) {
@@ -502,6 +610,107 @@ describe('Opportunities and pipeline HTTP flow', () => {
     ).send({});
     expect(restored.status).toBe(201);
     expect((restored.body as { active: boolean }).active).toBe(true);
+    const restoredStages = await prisma.pipelineStage.findMany({
+      where: { organizationId: fixture.organizationA, deletedAt: null },
+      orderBy: { order: 'asc' },
+    });
+    expect(restoredStages.map((stage) => stage.order)).toEqual([1, 2, 3, 4]);
+  });
+
+  it('actualiza la etapa de forma atómica y delega activación y archivado', async () => {
+    const token = await login(fixture.ownerA);
+    const archived = await authorized(
+      'post',
+      `/api/v1/pipeline/stages/${fixture.openA2}/archive`,
+      token,
+    ).send({});
+    expect(archived.status).toBe(201);
+    const restored = await authorized(
+      'patch',
+      `/api/v1/pipeline/stages/${fixture.openA2}`,
+      token,
+    ).send({ active: true });
+    expect(restored.status).toBe(200);
+    expect(restored.body.active).toBe(true);
+    expect(restored.body.name).toBe('Open A2');
+    expect(
+      await prisma.auditLog.count({
+        where: { action: 'PIPELINE_STAGE_RESTORED', recordId: fixture.openA2 },
+      }),
+    ).toBe(1);
+    const archivedAgain = await authorized(
+      'patch',
+      `/api/v1/pipeline/stages/${fixture.openA2}`,
+      token,
+    ).send({ active: false });
+    expect(archivedAgain.status).toBe(200);
+    expect(archivedAgain.body.active).toBe(false);
+    expect(
+      await prisma.auditLog.count({
+        where: { action: 'PIPELINE_STAGE_ARCHIVED', recordId: fixture.openA2 },
+      }),
+    ).toBe(2);
+  });
+
+  it('protege concurrentemente la última etapa activa de cada categoría', async () => {
+    const token = await login(fixture.ownerA);
+    const wonA2 = await prisma.pipelineStage.create({
+      data: {
+        organizationId: fixture.organizationA,
+        name: 'Won A2',
+        order: 5,
+        color: '#555555',
+        category: PipelineStageCategory.WON,
+      },
+    });
+    const lostA2 = await prisma.pipelineStage.create({
+      data: {
+        organizationId: fixture.organizationA,
+        name: 'Lost A2',
+        order: 6,
+        color: '#666666',
+        category: PipelineStageCategory.LOST,
+      },
+    });
+    const archivePair = async (firstId: string, secondId: string) =>
+      Promise.all([
+        authorized('post', `/api/v1/pipeline/stages/${firstId}/archive`, token).send({}),
+        authorized('post', `/api/v1/pipeline/stages/${secondId}/archive`, token).send({}),
+      ]);
+    for (const [firstId, secondId, code] of [
+      [fixture.openA, fixture.openA2, 'PIPELINE_LAST_OPEN_STAGE'],
+      [fixture.wonA, wonA2.id, 'PIPELINE_LAST_WON_STAGE'],
+      [fixture.lostA, lostA2.id, 'PIPELINE_LAST_LOST_STAGE'],
+    ] as const) {
+      const responses = await archivePair(firstId, secondId);
+      expect(responses.map((response) => response.status).sort()).toEqual([201, 409]);
+      expect(responses.find((response) => response.status === 409)?.body.code).toBe(code);
+    }
+  });
+
+  it('permite una sola transición concurrente de una oportunidad', async () => {
+    const token = await login(fixture.ownerA);
+    const created = await authorized('post', '/api/v1/opportunities', token).send({
+      contactId: fixture.contactA,
+      title: 'Concurrent move',
+    });
+    const responses = await Promise.all([
+      authorized('post', `/api/v1/opportunities/${body(created).id}/move`, token).send({
+        pipelineStageId: fixture.openA2,
+      }),
+      authorized('post', `/api/v1/opportunities/${body(created).id}/move`, token).send({
+        pipelineStageId: fixture.wonA,
+      }),
+    ]);
+    expect(responses.map((response) => response.status).sort()).toEqual([201, 409]);
+    expect(
+      await prisma.opportunityStageHistory.count({ where: { opportunityId: body(created).id } }),
+    ).toBe(2);
+    expect(
+      await prisma.auditLog.count({
+        where: { action: 'OPPORTUNITY_STAGE_CHANGED', recordId: body(created).id },
+      }),
+    ).toBe(1);
   });
 
   it('protege endpoints, permisos y auditoría multiempresa', async () => {

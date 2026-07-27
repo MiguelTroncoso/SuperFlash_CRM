@@ -4,6 +4,7 @@ import { ActivityType, PipelineStageCategory, Prisma } from '@prisma/client';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser, RequestMetadata } from '../auth/auth.types';
+import { ContactAccessPolicy } from '../contacts/access/contact-access.policy';
 import { OpportunityAccessPolicy } from './access/opportunity-access.policy';
 import {
   OPPORTUNITY_ERROR_CODES,
@@ -77,6 +78,7 @@ export class OpportunitiesService {
     private readonly repository: OpportunitiesRepository,
     private readonly audit: AuditService,
     private readonly accessPolicy: OpportunityAccessPolicy,
+    private readonly contactAccessPolicy: ContactAccessPolicy,
   ) {}
 
   async create(
@@ -91,27 +93,48 @@ export class OpportunitiesService {
     try {
       const opportunityId = await this.prisma.$transaction(async (transaction) => {
         const contact = await transaction.contact.findFirst({
-          where: { organizationId, id: dto.contactId, deletedAt: null, archivedAt: null },
-          select: { id: true, firstName: true, lastName: true, phone: true, userId: true },
+          where: { organizationId, id: dto.contactId, deletedAt: null },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            phone: true,
+            userId: true,
+            archivedAt: true,
+            deletedAt: true,
+          },
         });
         if (!contact) {
           throw opportunityException(
             HttpStatus.NOT_FOUND,
             OPPORTUNITY_ERROR_CODES.CONTACT_NOT_FOUND,
-            'El contacto no existe o está archivado.',
+            'El contacto no existe.',
+          );
+        }
+
+        if (context.user.roleName === 'Sales' && contact.archivedAt) {
+          throw opportunityException(
+            HttpStatus.FORBIDDEN,
+            OPPORTUNITY_ERROR_CODES.CONTACT_ARCHIVED_FORBIDDEN,
+            'Un vendedor no puede crear oportunidades para contactos archivados.',
+          );
+        }
+        if (!this.contactAccessPolicy.canCreateOpportunity(context.user, contact)) {
+          throw opportunityException(
+            HttpStatus.FORBIDDEN,
+            OPPORTUNITY_ERROR_CODES.CONTACT_ACCESS_FORBIDDEN,
+            'No tienes acceso al contacto para crear esta oportunidad.',
           );
         }
 
         const assignedUserId =
-          dto.assignedUserId !== undefined ? (dto.assignedUserId ?? null) : contact.userId;
-        if (
-          context.user.roleName === 'Sales' &&
-          assignedUserId !== null &&
-          assignedUserId !== context.user.userId
-        ) {
+          dto.assignedUserId !== undefined
+            ? (dto.assignedUserId ?? null)
+            : (contact.userId ?? (context.user.roleName === 'Sales' ? context.user.userId : null));
+        if (context.user.roleName === 'Sales' && assignedUserId !== context.user.userId) {
           throw opportunityException(
             HttpStatus.FORBIDDEN,
-            OPPORTUNITY_ERROR_CODES.UPDATE_FORBIDDEN,
+            OPPORTUNITY_ERROR_CODES.CONTACT_ACCESS_FORBIDDEN,
             'Un vendedor solo puede asignarse oportunidades a sí mismo.',
           );
         }
@@ -169,6 +192,13 @@ export class OpportunitiesService {
             'La etapa no existe o no está activa.',
           );
         }
+        if (stage.category !== PipelineStageCategory.OPEN) {
+          throw opportunityException(
+            HttpStatus.BAD_REQUEST,
+            OPPORTUNITY_ERROR_CODES.INITIAL_STAGE_MUST_BE_OPEN,
+            'Una oportunidad nueva debe comenzar en una etapa abierta.',
+          );
+        }
         await this.assertRelations(transaction, organizationId, dto.campaignId, dto.productId);
 
         const now = new Date();
@@ -185,15 +215,6 @@ export class OpportunitiesService {
             ...(dto.campaignId ? { campaignId: dto.campaignId } : {}),
             ...(dto.productId ? { productId: dto.productId } : {}),
             lastStageChangedAt: now,
-            ...(stage.category === PipelineStageCategory.WON
-              ? { wonAt: now, closedAt: now }
-              : stage.category === PipelineStageCategory.LOST
-                ? {
-                    lostAt: now,
-                    closedAt: now,
-                    lostReason: 'Oportunidad creada como no concretada',
-                  }
-                : {}),
           },
           select: { id: true },
         });
@@ -665,6 +686,15 @@ export class OpportunitiesService {
           where: { organizationId_id: { organizationId: context.user.organizationId, id } },
           data: { archivedAt: now, archiveReason: dto.reason ?? null },
         });
+        await transaction.contact.update({
+          where: {
+            organizationId_id: {
+              organizationId: context.user.organizationId,
+              id: current.contactId,
+            },
+          },
+          data: { lastActivityAt: now },
+        });
         await transaction.activity.create({
           data: {
             organizationId: context.user.organizationId,
@@ -701,9 +731,36 @@ export class OpportunitiesService {
     if (current.archivedAt) {
       const now = new Date();
       await this.prisma.$transaction(async (transaction) => {
-        await transaction.opportunity.update({
-          where: { organizationId_id: { organizationId: context.user.organizationId, id } },
+        const contact = await transaction.contact.findFirst({
+          where: { organizationId: context.user.organizationId, id: current.contactId },
+          select: { id: true, deletedAt: true },
+        });
+        if (!contact || contact.deletedAt) {
+          throw opportunityException(
+            HttpStatus.CONFLICT,
+            OPPORTUNITY_ERROR_CODES.CONTACT_UNAVAILABLE,
+            'El contacto asociado no está disponible para restaurar la oportunidad.',
+          );
+        }
+        const restored = await transaction.opportunity.updateMany({
+          where: {
+            organizationId: context.user.organizationId,
+            id,
+            archivedAt: { not: null },
+            deletedAt: null,
+            contact: { deletedAt: null },
+          },
           data: { archivedAt: null, archiveReason: null },
+        });
+        if (restored.count !== 1) return;
+        await transaction.contact.update({
+          where: {
+            organizationId_id: {
+              organizationId: context.user.organizationId,
+              id: current.contactId,
+            },
+          },
+          data: { lastActivityAt: now },
         });
         await transaction.activity.create({
           data: {
@@ -909,11 +966,8 @@ export class OpportunitiesService {
     const current = await this.repository.findStage(organizationId, id);
     if (!current || current.deletedAt) throw this.pipelineStageNotFound();
     if (dto.active === false) return this.archiveStage(id, context);
+    if (dto.active === true && !current.active) return this.restoreStage(id, context);
     const name = dto.name ?? current.name;
-    if (dto.name) {
-      const conflict = await this.repository.findStageByName(organizationId, name, id);
-      if (conflict) throw this.stageNameConflict();
-    }
     let updated: {
       id: string;
       name: string;
@@ -923,28 +977,31 @@ export class OpportunitiesService {
       active: boolean;
     };
     try {
-      updated = await this.prisma.pipelineStage.update({
-        where: { organizationId_id: { organizationId, id } },
-        data: {
-          ...(dto.name ? { name } : {}),
-          ...(dto.color ? { color: dto.color } : {}),
-          ...(dto.active === true ? { active: true } : {}),
-        },
-        select: { id: true, name: true, color: true, category: true, order: true, active: true },
+      updated = await this.withPipelineLock(organizationId, async (transaction) => {
+        if (dto.name) await this.assertStageNameAvailable(transaction, organizationId, name, id);
+        const stage = await transaction.pipelineStage.update({
+          where: { organizationId_id: { organizationId, id } },
+          data: {
+            ...(dto.name ? { name } : {}),
+            ...(dto.color ? { color: dto.color } : {}),
+          },
+          select: { id: true, name: true, color: true, category: true, order: true, active: true },
+        });
+        await this.audit.recordWithClient(transaction, {
+          organizationId,
+          userId: context.user.userId,
+          action: 'PIPELINE_STAGE_UPDATED',
+          tableName: 'PipelineStage',
+          recordId: id,
+          previousValue: { name: current.name, color: current.color, active: current.active },
+          newValue: { name: stage.name, color: stage.color, active: stage.active },
+          ip: context.metadata.ipAddress,
+        });
+        return stage;
       });
     } catch (error: unknown) {
       this.rethrowPipelineConflict(error);
     }
-    await this.audit.record({
-      organizationId,
-      userId: context.user.userId,
-      action: 'PIPELINE_STAGE_UPDATED',
-      tableName: 'PipelineStage',
-      recordId: id,
-      previousValue: { name: current.name, color: current.color, active: current.active },
-      newValue: { name: updated.name, color: updated.color, active: updated.active },
-      ip: context.metadata.ipAddress,
-    });
     return this.mapStage(updated);
   }
 
@@ -1002,30 +1059,53 @@ export class OpportunitiesService {
     context: OpportunityRequestContext,
   ): Promise<PublicOpportunityStage> {
     const organizationId = context.user.organizationId;
-    const current = await this.repository.findStage(organizationId, id);
-    if (!current || current.deletedAt) throw this.pipelineStageNotFound();
-    if (!current.active) return this.mapStage(current);
-    const inUse = await this.repository.countActiveOpportunitiesForStage(organizationId, id);
-    if (inUse > 0) throw this.stageInUse();
-    const categoryCount = await this.repository.countActiveStagesByCategory(
-      organizationId,
-      current.category,
-    );
-    if (categoryCount <= 1) throw this.lastCategoryStage(current.category);
-    const updated = await this.prisma.pipelineStage.update({
-      where: { organizationId_id: { organizationId, id } },
-      data: { active: false },
-      select: { id: true, name: true, color: true, category: true, order: true, active: true },
-    });
-    await this.audit.record({
-      organizationId,
-      userId: context.user.userId,
-      action: 'PIPELINE_STAGE_ARCHIVED',
-      tableName: 'PipelineStage',
-      recordId: id,
-      previousValue: { active: true },
-      newValue: { active: false },
-      ip: context.metadata.ipAddress,
+    const updated = await this.withPipelineLock(organizationId, async (transaction) => {
+      const current = await transaction.pipelineStage.findFirst({
+        where: { organizationId, id },
+        select: {
+          id: true,
+          name: true,
+          color: true,
+          category: true,
+          order: true,
+          active: true,
+          deletedAt: true,
+        },
+      });
+      if (!current || current.deletedAt) throw this.pipelineStageNotFound();
+      if (!current.active) return current;
+      const inUse = await transaction.opportunity.count({
+        where: { organizationId, pipelineStageId: id, archivedAt: null, deletedAt: null },
+      });
+      if (inUse > 0) throw this.stageInUse();
+      const categoryCount = await transaction.pipelineStage.count({
+        where: { organizationId, category: current.category, active: true, deletedAt: null },
+      });
+      if (categoryCount <= 1) throw this.lastCategoryStage(current.category);
+      const archived = await transaction.pipelineStage.update({
+        where: { organizationId_id: { organizationId, id } },
+        data: { active: false },
+        select: {
+          id: true,
+          name: true,
+          color: true,
+          category: true,
+          order: true,
+          active: true,
+          deletedAt: true,
+        },
+      });
+      await this.audit.recordWithClient(transaction, {
+        organizationId,
+        userId: context.user.userId,
+        action: 'PIPELINE_STAGE_ARCHIVED',
+        tableName: 'PipelineStage',
+        recordId: id,
+        previousValue: { active: true },
+        newValue: { active: false },
+        ip: context.metadata.ipAddress,
+      });
+      return archived;
     });
     return this.mapStage(updated);
   }
@@ -1035,23 +1115,61 @@ export class OpportunitiesService {
     context: OpportunityRequestContext,
   ): Promise<PublicOpportunityStage> {
     const organizationId = context.user.organizationId;
-    const current = await this.repository.findStage(organizationId, id);
-    if (!current || current.deletedAt) throw this.pipelineStageNotFound();
-    if (current.active) return this.mapStage(current);
-    const updated = await this.prisma.pipelineStage.update({
-      where: { organizationId_id: { organizationId, id } },
-      data: { active: true },
-      select: { id: true, name: true, color: true, category: true, order: true, active: true },
-    });
-    await this.audit.record({
-      organizationId,
-      userId: context.user.userId,
-      action: 'PIPELINE_STAGE_RESTORED',
-      tableName: 'PipelineStage',
-      recordId: id,
-      previousValue: { active: false },
-      newValue: { active: true },
-      ip: context.metadata.ipAddress,
+    const updated = await this.withPipelineLock(organizationId, async (transaction) => {
+      const current = await transaction.pipelineStage.findFirst({
+        where: { organizationId, id },
+        select: {
+          id: true,
+          name: true,
+          color: true,
+          category: true,
+          order: true,
+          active: true,
+          deletedAt: true,
+        },
+      });
+      if (!current || current.deletedAt) throw this.pipelineStageNotFound();
+      if (current.active) return current;
+      const stages = await transaction.pipelineStage.findMany({
+        where: { organizationId, deletedAt: null },
+        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+        select: { id: true },
+      });
+      const offset = stages.length + 1;
+      await transaction.pipelineStage.updateMany({
+        where: { organizationId, deletedAt: null },
+        data: { order: { increment: offset } },
+      });
+      for (const [index, stage] of stages.entries()) {
+        await transaction.pipelineStage.update({
+          where: { organizationId_id: { organizationId, id: stage.id } },
+          data: { order: index + 1 },
+        });
+      }
+      const restored = await transaction.pipelineStage.update({
+        where: { organizationId_id: { organizationId, id } },
+        data: { active: true },
+        select: {
+          id: true,
+          name: true,
+          color: true,
+          category: true,
+          order: true,
+          active: true,
+          deletedAt: true,
+        },
+      });
+      await this.audit.recordWithClient(transaction, {
+        organizationId,
+        userId: context.user.userId,
+        action: 'PIPELINE_STAGE_RESTORED',
+        tableName: 'PipelineStage',
+        recordId: id,
+        previousValue: { active: false, order: current.order },
+        newValue: { active: true, order: restored.order },
+        ip: context.metadata.ipAddress,
+      });
+      return restored;
     });
     return this.mapStage(updated);
   }
@@ -1442,7 +1560,12 @@ export class OpportunitiesService {
     callback: (transaction: Prisma.TransactionClient) => Promise<T>,
   ): Promise<T> {
     return this.prisma.$transaction(async (transaction) => {
-      await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${organizationId}))`;
+      await transaction.$executeRaw`
+        SELECT pg_advisory_xact_lock(
+          hashtext('superflash:pipeline-stage-order'),
+          hashtext(${organizationId})
+        )
+      `;
       return callback(transaction);
     });
   }
@@ -1451,9 +1574,15 @@ export class OpportunitiesService {
     transaction: Prisma.TransactionClient,
     organizationId: string,
     name: string,
+    excludedId?: string,
   ): Promise<void> {
     const existing = await transaction.pipelineStage.findFirst({
-      where: { organizationId, deletedAt: null, name: { equals: name, mode: 'insensitive' } },
+      where: {
+        organizationId,
+        deletedAt: null,
+        ...(excludedId ? { id: { not: excludedId } } : {}),
+        name: { equals: name, mode: 'insensitive' },
+      },
       select: { id: true },
     });
     if (existing) throw this.stageNameConflict();
