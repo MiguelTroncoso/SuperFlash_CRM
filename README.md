@@ -17,8 +17,10 @@ Architecture v1.1 (Operations and Fulfillment) está **IMPLEMENTED / PENDING
 REVIEW**. Architecture v1.2 (Communications and Automations) está
 **IMPLEMENTED / PENDING REVIEW**. v1.3 (Analytics and Reporting) permanece
 planificada. Architecture
-v2.0 — Revenue Intelligence está en estado **ROADMAP / NOT IMPLEMENTED**; su
-alcance se documenta en [docs/roadmap/revenue-intelligence.md](docs/roadmap/revenue-intelligence.md).
+v2.0 — Revenue Intelligence está **IMPLEMENTED / PHASE 1** para KPIs, funnels,
+cohortes, tendencias, forecast básico y dashboard ejecutivo de solo lectura.
+Las integraciones externas, atribución avanzada, IA y Analytical Event Store
+siguen en roadmap en [docs/roadmap/revenue-intelligence.md](docs/roadmap/revenue-intelligence.md).
 
 La implementación v1.1 agrega exclusivamente la capa operativa posterior a la
 venta. No incluye integraciones externas reales, WhatsApp, automatizaciones,
@@ -74,6 +76,24 @@ npm run dev:api
 ```
 
 Los comandos se ejecutan en terminales separadas.
+
+## Revenue Intelligence
+
+El dashboard ejecutivo está disponible en `/` y `/revenue`. Sus vistas de KPIs,
+funnels, cohortes, tendencias y forecast están bajo `/revenue/*` y requieren el
+permiso `reports.read`. La capa analítica nunca acepta `organizationId` desde el
+cliente, no modifica el núcleo transaccional y agrupa los resultados por
+moneda.
+
+Para refrescar los agregados PostgreSQL cuando se ejecute un scheduler operativo:
+
+```bash
+npm run db:refresh-revenue-views
+```
+
+Consulta [docs/revenue-intelligence.md](docs/revenue-intelligence.md),
+[docs/kpis.md](docs/kpis.md) y [docs/funnels.md](docs/funnels.md) para las
+definiciones, filtros y limitaciones de Phase 1.
 
 ## Calidad y verificación
 

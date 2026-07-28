@@ -197,3 +197,17 @@ erDiagram
 `Subscription` nace de un `SaleItem` y conserva su snapshot. `Renewal` pertenece a una suscripción y a la venta fuente; al pagarse crea una venta nueva con sus propios ítems y pago, sin modificar la venta anterior.
 
 Las confirmaciones de ventas, confirmaciones de pagos, creación/pago de renovaciones y conversiones de oportunidades bloquean la fila agregada con `FOR UPDATE`. Las operaciones se mantienen dentro de transacciones cortas y escriben eventos durables en Outbox dentro del commit.
+
+## Revenue Intelligence (Architecture v2.0 Phase 1)
+
+Revenue Intelligence no agrega entidades transaccionales al modelo. Lee las
+tablas del núcleo mediante consultas tenant-scoped y tres materialized views:
+`revenue_sales_daily`, `revenue_subscriptions_monthly` y
+`revenue_funnel_daily`. Son agregados derivados, refrescables y descartables;
+los snapshots de SaleItem y Subscription continúan siendo la fuente histórica
+del acuerdo.
+
+La capa analítica agrupa monedas, nunca las convierte, y devuelve únicamente
+proyecciones autorizadas por `reports.read`. La futura atribución y el
+Analytical Event Store consumirán eventos durables del Transactional Outbox sin
+alterar estas entidades.

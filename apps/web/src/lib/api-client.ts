@@ -19,6 +19,12 @@ import type {
   PipelineResponse,
   ProductOffer,
   Provider,
+  RevenueCohortRow,
+  RevenueDashboard,
+  RevenueFunnel,
+  RevenueKpis,
+  RevenueForecast,
+  RevenueTrendPoint,
   Sale,
   Tag,
   Trial,
@@ -170,6 +176,18 @@ export const api = {
     request<void>(`/notifications/${id}/archive`, { method: 'POST' }),
   readAllNotifications: () =>
     request<{ updated: number }>('/notifications/read-all', { method: 'POST' }),
+  getRevenueDashboard: (query = '') =>
+    request<RevenueDashboard>(`/revenue-intelligence/dashboard${query}`),
+  getRevenueKpis: (query = '') =>
+    request<{ data: RevenueKpis }>(`/revenue-intelligence/kpis${query}`),
+  getRevenueFunnels: (query = '') =>
+    request<{ data: RevenueFunnel }>(`/revenue-intelligence/funnels${query}`),
+  getRevenueCohorts: (query = '') =>
+    request<{ data: RevenueCohortRow[] }>(`/revenue-intelligence/cohorts${query}`),
+  getRevenueTrends: (query = '') =>
+    request<{ data: RevenueTrendPoint[] }>(`/revenue-intelligence/trends${query}`),
+  getRevenueForecast: (query = '') =>
+    request<{ data: RevenueForecast[] }>(`/revenue-intelligence/forecast${query}`),
 };
 
 export function queryString(params: Record<string, string | number | boolean | undefined>): string {

@@ -19,6 +19,7 @@ const sections: { label: string; items: NavItem[] }[] = [
     items: [
       { label: 'Dashboard', href: '/', icon: '⌂' },
       { label: 'Mi Día', href: '/my-day', icon: '◷', permission: 'followups.read' },
+      { label: 'Revenue Intelligence', href: '/revenue', icon: '▥', permission: 'reports.read' },
     ],
   },
   {

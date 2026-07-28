@@ -9,6 +9,15 @@ import { useUiStore } from '@/lib/ui-store';
 
 const titles: Record<string, { title: string; subtitle: string }> = {
   '/': { title: 'Dashboard', subtitle: 'Una lectura rápida de tu operación comercial.' },
+  '/revenue': {
+    title: 'Revenue Intelligence',
+    subtitle: 'Métricas comerciales y señales ejecutivas.',
+  },
+  '/revenue/kpis': { title: 'KPIs', subtitle: 'Indicadores comerciales calculados desde el core.' },
+  '/revenue/funnels': { title: 'Funnels', subtitle: 'Conversión configurable por etapa.' },
+  '/revenue/cohorts': { title: 'Cohortes', subtitle: 'Retención y revenue de clientes.' },
+  '/revenue/trends': { title: 'Tendencias', subtitle: 'Evolución histórica de los indicadores.' },
+  '/revenue/forecast': { title: 'Forecast', subtitle: 'Proyección histórica básica.' },
   '/my-day': { title: 'Mi Día', subtitle: 'Prioriza el trabajo que mueve el negocio.' },
   '/contacts': { title: 'Contactos', subtitle: 'Tu relación comercial en un solo lugar.' },
   '/pipeline': { title: 'Pipeline', subtitle: 'Visualiza y mueve tus oportunidades.' },

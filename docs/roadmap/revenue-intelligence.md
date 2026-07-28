@@ -3,10 +3,12 @@
 ## Estado
 
 **Architecture v2.0 — Revenue Intelligence**
-Estado: **ROADMAP / NOT IMPLEMENTED**
+Estado: **IMPLEMENTED / PHASE 1**
 
-Este documento define una dirección futura. No crea módulos, tablas, migraciones,
-endpoints, jobs, integraciones ni modelos analíticos en la versión actual.
+La Phase 1 implementa únicamente lectura analítica, KPIs, funnels, cohortes,
+tendencias, forecast histórico básico y dashboard ejecutivo usando datos ya
+existentes. Las capacidades de atribución, gasto publicitario, IA,
+integraciones externas y Analytical Event Store siguen siendo roadmap.
 
 ## Principio rector
 
@@ -109,7 +111,8 @@ operacionales del CRM.
 - No iniciar Providers ni Fulfillment.
 - No iniciar Communications and Automations.
 - No implementar WhatsApp, IA ni integraciones externas.
-- No añadir tablas o migraciones para analítica.
+- La Phase 1 añade únicamente materialized views derivadas; no añade tablas ni
+  modelos transaccionales. No se aceptan mutaciones desde la capa analítica.
 - No usar dashboards o reportes como fuente de verdad transaccional.
 - No exponer costos, revenue o métricas sin políticas de autorización y privacidad.
 - La implementación futura deberá pasar por una nueva revisión y ADRs específicos.
@@ -123,4 +126,5 @@ operacionales del CRM.
 5. Agregar forecast y rankings con explicabilidad.
 6. Evaluar capacidades de recomendación, cross-selling, upselling y predicción.
 
-Todos los pasos permanecen planificados.
+Los pasos de métricas, cohortes, funnel y forecast básico están implementados en
+Phase 1. Los restantes permanecen planificados.

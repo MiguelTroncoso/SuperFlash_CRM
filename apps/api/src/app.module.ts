@@ -31,6 +31,7 @@ import { FulfillmentModule } from './modules/fulfillment/fulfillment.module';
 import { ProvidersModule } from './modules/providers/providers.module';
 import { TrialsModule } from './modules/trials/trials.module';
 import { AutomationModule } from './modules/automation/automation.module';
+import { RevenueIntelligenceModule } from './modules/revenue-intelligence/revenue-intelligence.module';
 
 @Module({
   imports: [
@@ -79,6 +80,7 @@ import { AutomationModule } from './modules/automation/automation.module';
     TrialsModule,
     ActivationsModule,
     AutomationModule,
+    RevenueIntelligenceModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
