@@ -530,7 +530,8 @@ export class CreatePriceBookDto {
 
   @IsOptional()
   @IsInt()
-  @Min(0)
+  @Min(-10000)
+  @Max(10000)
   priority?: number;
 }
 
@@ -579,7 +580,8 @@ export class UpdatePriceBookDto {
 
   @IsOptional()
   @IsInt()
-  @Min(0)
+  @Min(-10000)
+  @Max(10000)
   priority?: number;
 }
 

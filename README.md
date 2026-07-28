@@ -218,11 +218,16 @@ El Sprint 7 incorpora el catálogo backend multiproducto sin frontend CRM, venta
 
 - Categorías, productos, planes y variantes bajo `/api/v1/catalog`.
 - Price books, entradas de precio e historial append-only.
-- Resolución vigente por segmento, país, moneda, default y prioridad.
-- Ofertas activas agrupadas por producto.
+- Resolución vigente por segmento, país, moneda, default y prioridad con ranking lexicográfico estable.
+- Ofertas activas agrupadas por producto con exactamente los mismos filtros temporales del resolvedor.
 - Integridad multiempresa mediante claves compuestas, índices parciales y locks advisory.
+- Productos `ACTIVE`, planes y variantes activos, price books/entradas vigentes y costos protegidos por
+  `catalog.costs.read` (`includeCosts=true` sin permiso responde `403`).
 
 La documentación está en [docs/catalog.md](docs/catalog.md), [docs/products.md](docs/products.md) y [docs/pricing.md](docs/pricing.md).
+La vigencia usa `validFrom <= at` y `validUntil > at`; `validUntil` es exclusivo. Los defaults se
+protegen por transacción, lock advisory por organización e índice único parcial; las entradas incluyen
+sus límites de vigencia en la unicidad y usan `NULLS NOT DISTINCT`.
 El seed no crea ejemplos por defecto; para datos de desarrollo usar `SEED_CATALOG_EXAMPLES=true npm run db:seed`.
 
 La migración del catálogo se aplica junto con las anteriores:
@@ -232,11 +237,13 @@ npm run db:migrate:deploy
 npm run db:generate
 ```
 
-## Estado del Sprint 7
+## Estado del Sprint 7.1
 
-Este sprint contiene únicamente catálogo multiproducto, planes, variantes, price books, resolución de
-precios y ofertas backend. No incluye CRUD de ventas/pagos, suscripciones, fulfillment, frontend CRM,
-checkout, cupones, impuestos avanzados, proveedores externos ni automatizaciones posteriores.
+Este sprint endurece exclusivamente el catálogo multiproducto, planes, variantes, price books, resolución
+de precios y ofertas backend. Aplica vigencia inclusiva/exclusiva, ranking lexicográfico, estados
+comercializables, protección de costos, defaults concurrentes y duplicados por periodo. No incluye CRUD de
+ventas/pagos, suscripciones, fulfillment, frontend CRM, checkout, cupones, impuestos avanzados,
+proveedores externos ni automatizaciones posteriores.
 
 ## Estado del Sprint 6
 

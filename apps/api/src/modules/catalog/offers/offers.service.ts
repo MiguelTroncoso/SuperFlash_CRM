@@ -4,6 +4,7 @@ import { ProductStatus } from '@prisma/client';
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CatalogAccessPolicy } from '../access/catalog-access.policy';
+import { normalizeCurrency, normalizeIsoCountry } from '../catalog.types';
 import { OffersQueryDto } from '../dto/catalog.dto';
 import { PricingService } from '../pricing/pricing.service';
 
@@ -18,6 +19,9 @@ export class OffersService {
   async list(query: OffersQueryDto, user: AuthenticatedUser): Promise<Record<string, unknown>> {
     this.access.assertRead(user);
     if (query.includeCosts) this.access.assertCostsRead(user);
+    const resolvedAt = new Date();
+    const countryCode = normalizeIsoCountry(query.countryCode);
+    const currency = normalizeCurrency(query.currency);
     const products = await this.prisma.product.findMany({
       where: {
         organizationId: user.organizationId,
@@ -57,8 +61,9 @@ export class OffersService {
               planId: plan.id,
               variantId: variant.id,
               customerSegment: query.customerSegment,
-              countryCode: query.countryCode ?? null,
-              currency: query.currency,
+              countryCode,
+              currency,
+              at: resolvedAt,
               includeCosts: Boolean(query.includeCosts),
             });
             variantOffers.push({
@@ -78,8 +83,9 @@ export class OffersService {
             planId: plan.id,
             variantId: null,
             customerSegment: query.customerSegment,
-            countryCode: query.countryCode ?? null,
-            currency: query.currency,
+            countryCode,
+            currency,
+            at: resolvedAt,
             includeCosts: Boolean(query.includeCosts),
           });
           plans.push({
@@ -105,8 +111,9 @@ export class OffersService {
         basePrice = await this.pricing.resolveInternal(user.organizationId, {
           productId: product.id,
           customerSegment: query.customerSegment,
-          countryCode: query.countryCode ?? null,
-          currency: query.currency,
+          countryCode,
+          currency,
+          at: resolvedAt,
           includeCosts: Boolean(query.includeCosts),
         });
       } catch {
@@ -134,9 +141,9 @@ export class OffersService {
       data,
       selection: {
         customerSegment: query.customerSegment,
-        countryCode: query.countryCode ?? null,
-        currency: query.currency,
-        resolvedAt: new Date(),
+        countryCode,
+        currency,
+        resolvedAt,
       },
     };
   }

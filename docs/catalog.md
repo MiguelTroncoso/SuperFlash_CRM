@@ -18,7 +18,8 @@ Todos los endpoints requieren JWT y viven bajo `/api/v1/catalog`:
 La autorización usa `catalog.read`, `catalog.create`, `catalog.update`, `catalog.delete`,
 `catalog.prices.read`, `catalog.prices.manage` y `catalog.costs.read`. Sales puede leer catálogo y
 precios; Viewer solo lee; Owner/Admin administran el catálogo. Costos nunca se incluyen salvo que el
-contexto autenticado tenga `catalog.costs.read` y solicite explícitamente `includeCosts=true`.
+contexto autenticado tenga `catalog.costs.read` y solicite explícitamente `includeCosts=true`; si lo
+solicita sin ese permiso, `/offers` y `/pricing/resolve` responden `403`.
 
 ## Integridad
 
@@ -29,6 +30,11 @@ PostgreSQL por organización y se renumeran sin huecos dentro de una transacció
 
 Los montos se reciben y devuelven como strings Decimal. PostgreSQL aplica checks de no negatividad,
 vigencia, orden, moneda ISO 4217 y país ISO 3166-1 alpha-2. No se ejecuta ningún fulfillment API.
+
+Un producto, plan o variante solo participa en resolución cuando está activo, no eliminado y, para el
+producto, en estado `ACTIVE`. Un price book y su entrada deben estar activos, no archivados/eliminados y
+vigentes en el instante consultado. `validFrom` es inclusivo y `validUntil` exclusivo. Los defaults se
+mantienen transaccionalmente con lock advisory por organización.
 
 ## Seed de desarrollo
 

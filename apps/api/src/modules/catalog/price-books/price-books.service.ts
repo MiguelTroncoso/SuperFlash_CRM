@@ -59,13 +59,7 @@ export class PriceBooksService {
       const book = values.isDefault
         ? await this.prisma
             .$transaction(async (transaction) => {
-              await this.lockDefault(
-                transaction,
-                context.user.organizationId,
-                values.customerSegment,
-                values.countryCode,
-                values.currency,
-              );
+              await this.lockDefault(transaction, context.user.organizationId);
               return create(transaction);
             })
             .then((value) => value)
@@ -153,13 +147,7 @@ export class PriceBooksService {
       const book =
         values.isDefault || current.isDefault
           ? await this.prisma.$transaction(async (transaction) => {
-              await this.lockDefault(
-                transaction,
-                context.user.organizationId,
-                values.customerSegment,
-                values.countryCode,
-                values.currency,
-              );
+              await this.lockDefault(transaction, context.user.organizationId);
               return update(transaction);
             })
           : await this.prisma.$transaction(update);
@@ -249,13 +237,7 @@ export class PriceBooksService {
             CATALOG_ERROR_CODES.PRICE_BOOK_INVALID,
             'Solo un price book activo puede ser default.',
           );
-        await this.lockDefault(
-          transaction,
-          organizationId,
-          current.customerSegment,
-          current.countryCode,
-          current.currency,
-        );
+        await this.lockDefault(transaction, organizationId);
         await this.clearDefault(
           transaction,
           organizationId,
@@ -387,6 +369,8 @@ export class PriceBooksService {
       !values.name ||
       !/^[A-Z]{3}$/.test(values.currency) ||
       (values.countryCode !== null && !/^[A-Z]{2}$/.test(values.countryCode)) ||
+      values.priority < -10000 ||
+      values.priority > 10000 ||
       !isValidDateRange(values.validFrom, values.validUntil)
     )
       throw catalogException(
@@ -429,12 +413,12 @@ export class PriceBooksService {
   private async lockDefault(
     transaction: Prisma.TransactionClient,
     organizationId: string,
-    segment: CustomerSegment,
-    country: string | null,
-    currency: string,
   ): Promise<void> {
     await transaction.$executeRaw`
-      SELECT pg_advisory_xact_lock(hashtext('superflash:catalog-pricebook-default'), hashtext(${organizationId || `${segment}:${country ?? ''}:${currency}`}))
+      SELECT pg_advisory_xact_lock(
+        hashtext('superflash:catalog-pricebook-default'),
+        hashtext(${organizationId})
+      )
     `;
   }
 

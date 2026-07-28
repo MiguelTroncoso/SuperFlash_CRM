@@ -49,15 +49,28 @@ export class PricesService {
     );
     const values = this.values(dto);
     this.validateValues(values);
-    await this.assertDuplicate(
-      organizationId,
-      priceBookId,
-      dto.productId,
-      relation.planId,
-      relation.variantId,
-    );
     try {
       const entry = await this.prisma.$transaction(async (transaction) => {
+        await this.lockEntryCombination(
+          transaction,
+          organizationId,
+          priceBookId,
+          dto.productId,
+          relation.planId,
+          relation.variantId,
+          values.validFrom,
+          values.validUntil,
+        );
+        await this.assertDuplicate(
+          transaction,
+          organizationId,
+          priceBookId,
+          dto.productId,
+          relation.planId,
+          relation.variantId,
+          values.validFrom,
+          values.validUntil,
+        );
         const created = await transaction.priceBookEntry.create({
           data: {
             organizationId,
@@ -162,6 +175,28 @@ export class PricesService {
       !this.equalsNullable(values.minimumPrice, current.minimumPrice);
     try {
       const entry = await this.prisma.$transaction(async (transaction) => {
+        await this.lockEntryCombination(
+          transaction,
+          context.user.organizationId,
+          priceBookId,
+          current.productId,
+          current.planId,
+          current.variantId,
+          values.validFrom,
+          values.validUntil,
+        );
+        if (values.active)
+          await this.assertDuplicate(
+            transaction,
+            context.user.organizationId,
+            priceBookId,
+            current.productId,
+            current.planId,
+            current.variantId,
+            values.validFrom,
+            values.validUntil,
+            id,
+          );
         const updated = await transaction.priceBookEntry.update({
           where: { organizationId_id: { organizationId: context.user.organizationId, id } },
           data: {
@@ -272,26 +307,58 @@ export class PricesService {
     if (!current) this.notFound();
     if (Boolean(current.deletedAt) === archived)
       return this.map(current, context.user.permissions.includes('catalog.costs.read'));
-    const entry = await this.prisma.$transaction(async (transaction) => {
-      const updated = await transaction.priceBookEntry.update({
-        where: { organizationId_id: { organizationId: context.user.organizationId, id } },
-        data: {
-          deletedAt: archived ? new Date() : null,
-          active: archived ? false : current.active,
-        },
+    try {
+      const entry = await this.prisma.$transaction(async (transaction) => {
+        await this.lockEntryCombination(
+          transaction,
+          context.user.organizationId,
+          priceBookId,
+          current.productId,
+          current.planId,
+          current.variantId,
+          current.validFrom,
+          current.validUntil,
+        );
+        if (!archived && current.active)
+          await this.assertDuplicate(
+            transaction,
+            context.user.organizationId,
+            priceBookId,
+            current.productId,
+            current.planId,
+            current.variantId,
+            current.validFrom,
+            current.validUntil,
+            id,
+          );
+        const updated = await transaction.priceBookEntry.update({
+          where: { organizationId_id: { organizationId: context.user.organizationId, id } },
+          data: {
+            deletedAt: archived ? new Date() : null,
+            active: archived ? false : current.active,
+          },
+        });
+        await this.audit.recordWithClient(transaction, {
+          organizationId: context.user.organizationId,
+          userId: context.user.userId,
+          action: archived ? 'CATALOG_PRICE_ENTRY_ARCHIVED' : 'CATALOG_PRICE_ENTRY_RESTORED',
+          tableName: 'PriceBookEntry',
+          recordId: id,
+          newValue: { archived },
+          ip: context.metadata.ipAddress,
+        });
+        return updated;
       });
-      await this.audit.recordWithClient(transaction, {
-        organizationId: context.user.organizationId,
-        userId: context.user.userId,
-        action: archived ? 'CATALOG_PRICE_ENTRY_ARCHIVED' : 'CATALOG_PRICE_ENTRY_RESTORED',
-        tableName: 'PriceBookEntry',
-        recordId: id,
-        newValue: { archived },
-        ip: context.metadata.ipAddress,
-      });
-      return updated;
-    });
-    return this.map(entry, context.user.permissions.includes('catalog.costs.read'));
+      return this.map(entry, context.user.permissions.includes('catalog.costs.read'));
+    } catch (error: unknown) {
+      if (isUniqueConstraint(error))
+        throw catalogException(
+          HttpStatus.CONFLICT,
+          CATALOG_ERROR_CODES.PRICE_ENTRY_DUPLICATE,
+          'Ya existe un precio activo para esa combinación y vigencia.',
+        );
+      throw error;
+    }
   }
 
   private async assertPriceBook(organizationId: string, id: string): Promise<void> {
@@ -314,7 +381,11 @@ export class PricesService {
     variantId?: string,
   ): Promise<{ planId: string | null; variantId: string | null }> {
     const product = await this.prisma.product.findFirst({
-      where: { id: productId, organizationId, deletedAt: null },
+      where: {
+        id: productId,
+        organizationId,
+        deletedAt: null,
+      },
       select: { id: true },
     });
     if (!product)
@@ -349,6 +420,12 @@ export class PricesService {
           'La variante no pertenece al producto.',
         );
       variantPlanId = variant.planId;
+      if (variantPlanId && !resolvedPlanId)
+        throw catalogException(
+          HttpStatus.NOT_FOUND,
+          CATALOG_ERROR_CODES.PRICE_RELATION_NOT_FOUND,
+          'La variante requiere un plan asociado.',
+        );
       if (resolvedPlanId && variantPlanId && resolvedPlanId !== variantPlanId)
         throw catalogException(
           HttpStatus.BAD_REQUEST,
@@ -361,21 +438,28 @@ export class PricesService {
   }
 
   private async assertDuplicate(
+    transaction: Prisma.TransactionClient,
     organizationId: string,
     priceBookId: string,
     productId: string,
     planId: string | null,
     variantId: string | null,
+    validFrom: Date | null,
+    validUntil: Date | null,
+    excludedId?: string,
   ): Promise<void> {
-    const found = await this.prisma.priceBookEntry.findFirst({
+    const found = await transaction.priceBookEntry.findFirst({
       where: {
         organizationId,
         priceBookId,
         productId,
         planId,
         variantId,
+        validFrom,
+        validUntil,
         active: true,
         deletedAt: null,
+        ...(excludedId ? { id: { not: excludedId } } : {}),
       },
       select: { id: true },
     });
@@ -385,6 +469,33 @@ export class PricesService {
         CATALOG_ERROR_CODES.PRICE_ENTRY_DUPLICATE,
         'Ya existe un precio activo para esa combinación.',
       );
+  }
+
+  private async lockEntryCombination(
+    transaction: Prisma.TransactionClient,
+    organizationId: string,
+    priceBookId: string,
+    productId: string,
+    planId: string | null,
+    variantId: string | null,
+    validFrom: Date | null,
+    validUntil: Date | null,
+  ): Promise<void> {
+    const lockKey = [
+      organizationId,
+      priceBookId,
+      productId,
+      planId ?? '<null>',
+      variantId ?? '<null>',
+      validFrom?.toISOString() ?? '<null>',
+      validUntil?.toISOString() ?? '<null>',
+    ].join(':');
+    await transaction.$executeRaw`
+      SELECT pg_advisory_xact_lock(
+        hashtext('superflash:catalog-price-entry'),
+        hashtext(${lockKey})
+      )
+    `;
   }
 
   private values(

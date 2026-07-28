@@ -23,4 +23,10 @@ créditos deben informar `creditAmount`. Una variante puede pertenecer a un plan
 sus `attributes` solo pueden ser un objeto JSON raíz.
 
 Archivar es reversible y no elimina hijos ni historial. Restaurar deja el producto/plan/variante inactivo
-hasta que un usuario autorizado lo active explícitamente.
+hasta que un usuario autorizado lo active explícitamente. Para resolver un precio, el producto debe tener
+`active=true`, `status=ACTIVE` y `deletedAt=NULL`; los planes y variantes deben tener `active=true` y
+`deletedAt=NULL`.
+
+Una variante ligada a un plan requiere que el request informe ese mismo `planId`. Una variante sin plan
+puede resolverse sin `planId`; las relaciones siempre se validan dentro de la organización y también en
+la consulta final de precios.

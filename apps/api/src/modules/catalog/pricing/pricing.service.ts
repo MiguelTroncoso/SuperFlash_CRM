@@ -54,6 +54,48 @@ interface ResolutionInput {
   includeCosts: boolean;
 }
 
+export interface PricingCandidate {
+  id: string;
+  createdAt: Date;
+  priceBook: {
+    customerSegment: CustomerSegment;
+    countryCode: string | null;
+    isDefault: boolean;
+    priority: number;
+  };
+}
+
+/**
+ * Candidates are compared lexicographically. A lower return value means the
+ * left candidate wins. Priority is intentionally evaluated only after all
+ * business-match dimensions, so it can never override segment or country.
+ */
+export function comparePricingCandidates(
+  left: PricingCandidate,
+  right: PricingCandidate,
+  customerSegment: CustomerSegment,
+  countryCode: string | null,
+): number {
+  const leftExactSegment = left.priceBook.customerSegment === customerSegment;
+  const rightExactSegment = right.priceBook.customerSegment === customerSegment;
+  if (leftExactSegment !== rightExactSegment) return leftExactSegment ? -1 : 1;
+
+  const leftExactCountry = countryCode !== null && left.priceBook.countryCode === countryCode;
+  const rightExactCountry = countryCode !== null && right.priceBook.countryCode === countryCode;
+  if (leftExactCountry !== rightExactCountry) return leftExactCountry ? -1 : 1;
+
+  if (left.priceBook.isDefault !== right.priceBook.isDefault)
+    return left.priceBook.isDefault ? -1 : 1;
+
+  if (left.priceBook.priority !== right.priceBook.priority)
+    return right.priceBook.priority - left.priceBook.priority;
+
+  const createdAtComparison = right.createdAt.getTime() - left.createdAt.getTime();
+  if (createdAtComparison !== 0) return createdAtComparison;
+
+  return left.id.localeCompare(right.id);
+}
+
 @Injectable()
 export class PricingService {
   constructor(
@@ -99,6 +141,10 @@ export class PricingService {
       variantId: input.variantId ?? null,
       active: true,
       deletedAt: null,
+      AND: [
+        { OR: [{ validFrom: null }, { validFrom: { lte: at } }] },
+        { OR: [{ validUntil: null }, { validUntil: { gt: at } }] },
+      ],
       product: {
         organizationId,
         id: input.productId,
@@ -106,6 +152,32 @@ export class PricingService {
         status: ProductStatus.ACTIVE,
         deletedAt: null,
       },
+      ...(input.planId
+        ? {
+            plan: {
+              is: {
+                organizationId,
+                id: input.planId,
+                productId: input.productId,
+                active: true,
+                deletedAt: null,
+              },
+            },
+          }
+        : {}),
+      ...(input.variantId
+        ? {
+            variant: {
+              is: {
+                organizationId,
+                id: input.variantId,
+                productId: input.productId,
+                active: true,
+                deletedAt: null,
+              },
+            },
+          }
+        : {}),
       priceBook: {
         is: {
           organizationId,
@@ -128,8 +200,8 @@ export class PricingService {
       where,
       include: { priceBook: true },
     });
-    const selected = candidates.sort(
-      (left, right) => this.rank(right, input, countryCode) - this.rank(left, input, countryCode),
+    const selected = candidates.sort((left, right) =>
+      comparePricingCandidates(left, right, input.customerSegment, countryCode),
     )[0];
     if (!selected)
       throw catalogException(
@@ -174,28 +246,6 @@ export class PricingService {
     };
   }
 
-  private rank(
-    entry: {
-      priceBook: {
-        customerSegment: CustomerSegment;
-        countryCode: string | null;
-        isDefault: boolean;
-        priority: number;
-      };
-      createdAt: Date;
-    },
-    input: ResolutionInput,
-    countryCode: string | null,
-  ): number {
-    const segment = entry.priceBook.customerSegment === input.customerSegment ? 100000 : 1000;
-    const country =
-      countryCode !== null && entry.priceBook.countryCode === countryCode ? 10000 : 100;
-    const defaultBook = entry.priceBook.isDefault ? 10 : 0;
-    return (
-      segment + country + defaultBook + entry.priceBook.priority + entry.createdAt.getTime() / 1e15
-    );
-  }
-
   private async assertCombination(
     organizationId: string,
     productId: string,
@@ -203,7 +253,13 @@ export class PricingService {
     variantId: string | null,
   ): Promise<void> {
     const product = await this.prisma.product.findFirst({
-      where: { organizationId, id: productId, deletedAt: null },
+      where: {
+        organizationId,
+        id: productId,
+        active: true,
+        status: ProductStatus.ACTIVE,
+        deletedAt: null,
+      },
       select: { id: true },
     });
     if (!product)
@@ -214,7 +270,7 @@ export class PricingService {
       );
     if (planId) {
       const plan = await this.prisma.productPlan.findFirst({
-        where: { organizationId, productId, id: planId, deletedAt: null },
+        where: { organizationId, productId, id: planId, active: true, deletedAt: null },
         select: { id: true },
       });
       if (!plan)
@@ -226,7 +282,7 @@ export class PricingService {
     }
     if (variantId) {
       const variant = await this.prisma.productVariant.findFirst({
-        where: { organizationId, productId, id: variantId, deletedAt: null },
+        where: { organizationId, productId, id: variantId, active: true, deletedAt: null },
         select: { id: true, planId: true },
       });
       if (!variant)
@@ -234,6 +290,12 @@ export class PricingService {
           HttpStatus.NOT_FOUND,
           CATALOG_ERROR_CODES.PRICE_RELATION_NOT_FOUND,
           'La variante no pertenece al producto.',
+        );
+      if (variant.planId && !planId)
+        throw catalogException(
+          HttpStatus.NOT_FOUND,
+          CATALOG_ERROR_CODES.PRICE_RELATION_NOT_FOUND,
+          'La variante requiere un plan asociado.',
         );
       if (variant.planId && variant.planId !== planId)
         throw catalogException(

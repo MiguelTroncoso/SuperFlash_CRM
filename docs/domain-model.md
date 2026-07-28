@@ -97,8 +97,10 @@ Cada entidad tenant-aware expone `@@unique([organizationId, id])`. Las relacione
 Teléfonos normalizados de contactos, SKU de productos y `opportunityId` de ventas activas usan índices únicos parciales en PostgreSQL. PostgreSQL permite múltiples valores `NULL` en los índices únicos compuestos; los índices parciales además excluyen filas eliminadas o ventas canceladas.
 
 Los slugs/códigos activos del catálogo, el default de price books y las combinaciones activas de entradas
-de precio también están protegidos por índices parciales. Los montos del catálogo son `Decimal(18,2)`;
-`PriceHistory` es append-only y conserva cada alta o modificación de precio.
+de precio también están protegidos por índices parciales. La combinación de entrada incluye el periodo
+(`validFrom`, `validUntil`) y PostgreSQL usa `NULLS NOT DISTINCT` para los límites abiertos. Los montos
+del catálogo son `Decimal(18,2)`; `PriceHistory` es append-only y conserva cada alta o modificación de
+precio. `PriceBook.priority` está limitada a `-10000..10000`.
 
 ## Auditoría y checks
 
