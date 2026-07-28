@@ -2,6 +2,7 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { ActivityType, PipelineStageCategory, Prisma } from '@prisma/client';
 
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import { OutboxService } from '../../infrastructure/outbox/outbox.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser, RequestMetadata } from '../auth/auth.types';
 import { ContactAccessPolicy } from './access/contact-access.policy';
@@ -85,6 +86,7 @@ export class ContactsService {
     private readonly repository: ContactsRepository,
     private readonly phoneNormalizer: PhoneNormalizerService,
     private readonly audit: AuditService,
+    private readonly outbox: OutboxService,
     private readonly accessPolicy: ContactAccessPolicy,
   ) {}
 
@@ -295,6 +297,7 @@ export class ContactsService {
             title: 'Contacto creado',
             occurredAt: now,
             metadata: activityMetadata,
+            requestId: context.metadata.requestId ?? null,
           },
         });
 
@@ -306,6 +309,26 @@ export class ContactsService {
           recordId: contact.id,
           newValue: this.contactAuditValue(values),
           ip: context.metadata.ipAddress,
+          requestId: context.metadata.requestId,
+        });
+
+        await this.outbox.enqueueWithClient(transaction, {
+          eventType: 'ContactCreated',
+          organizationId: context.user.organizationId,
+          aggregateType: 'Contact',
+          aggregateId: contact.id,
+          actorId: context.user.userId,
+          requestId: context.metadata.requestId ?? contact.id,
+          payload: {
+            contact: {
+              id: contact.id,
+              name: displayName(contact.firstName, contact.lastName),
+              email: values.email,
+              phone: values.phone,
+            },
+            opportunityId,
+            source: values.source,
+          },
         });
 
         return contact.id;

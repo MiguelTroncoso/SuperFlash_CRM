@@ -30,6 +30,7 @@ import { CredentialsModule } from './modules/credentials/credentials.module';
 import { FulfillmentModule } from './modules/fulfillment/fulfillment.module';
 import { ProvidersModule } from './modules/providers/providers.module';
 import { TrialsModule } from './modules/trials/trials.module';
+import { AutomationModule } from './modules/automation/automation.module';
 
 @Module({
   imports: [
@@ -77,6 +78,7 @@ import { TrialsModule } from './modules/trials/trials.module';
     CredentialsModule,
     TrialsModule,
     ActivationsModule,
+    AutomationModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

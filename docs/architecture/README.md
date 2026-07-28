@@ -54,10 +54,20 @@ acuerdo, el dinero y los ciclos comerciales. Audit and Activity proporcionan
 trazabilidad; Transactional Outbox entrega eventos durables a consumidores
 asíncronos.
 
+### Communications and Automations
+
+Communications and Automations consume eventos del Transactional Outbox y
+transforman triggers en acciones internas idempotentes. Templates, reglas,
+ejecuciones, historial de acciones y notificaciones permanecen dentro del
+tenant y no introducen dependencias con proveedores externos. El motor usa una
+cola durable respaldada por PostgreSQL, reintentos con backoff y `requestId`
+end-to-end.
+
 ### Evolución y roadmap futuro
 
 Operations and Fulfillment está implementado como Architecture v1.1 y pendiente
-de revisión formal. Communications and Automations, Analytics and Reporting y
+de revisión formal. Communications and Automations está implementado como
+Architecture v1.2 y pendiente de revisión formal. Analytics and Reporting y
 Revenue Intelligence permanecen fuera de la implementación actual. El detalle
 de Revenue Intelligence está en
 [docs/roadmap/revenue-intelligence.md](../roadmap/revenue-intelligence.md).
@@ -96,13 +106,13 @@ Una versión arquitectónica solo puede aprobarse cuando:
 
 ## Versiones de arquitectura
 
-| Versión           | Nombre                         | Estado                           | Alcance                                                                  |
-| ----------------- | ------------------------------ | -------------------------------- | ------------------------------------------------------------------------ |
-| Architecture v1.0 | Commercial Core                | **APPROVED / FROZEN**            | Núcleo CRM, catálogo y ciclo comercial transaccional.                    |
-| Architecture v1.1 | Operations and Fulfillment     | **IMPLEMENTED / PENDING REVIEW** | Providers, fulfillment, provisioning, credentials, trials y activations. |
-| Architecture v1.2 | Communications and Automations | **PLANNED**                      | Comunicaciones y automatizaciones; no iniciado.                          |
-| Architecture v1.3 | Analytics and Reporting        | **PLANNED**                      | Analítica y reporting; no iniciado.                                      |
-| Architecture v2.0 | Revenue Intelligence           | **ROADMAP / NOT IMPLEMENTED**    | Inteligencia de ingresos, atribución, predicción y recomendación.        |
+| Versión           | Nombre                         | Estado                           | Alcance                                                                                  |
+| ----------------- | ------------------------------ | -------------------------------- | ---------------------------------------------------------------------------------------- |
+| Architecture v1.0 | Commercial Core                | **APPROVED / FROZEN**            | Núcleo CRM, catálogo y ciclo comercial transaccional.                                    |
+| Architecture v1.1 | Operations and Fulfillment     | **IMPLEMENTED / PENDING REVIEW** | Providers, fulfillment, provisioning, credentials, trials y activations.                 |
+| Architecture v1.2 | Communications and Automations | **IMPLEMENTED / PENDING REVIEW** | Templates, variables, reglas, triggers, acciones, ejecuciones y notificaciones internas. |
+| Architecture v1.3 | Analytics and Reporting        | **PLANNED**                      | Analítica y reporting; no iniciado.                                                      |
+| Architecture v2.0 | Revenue Intelligence           | **ROADMAP / NOT IMPLEMENTED**    | Inteligencia de ingresos, atribución, predicción y recomendación.                        |
 
 ### Architecture v1.0 — Commercial Core
 

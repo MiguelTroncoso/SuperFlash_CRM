@@ -63,7 +63,7 @@ services:
     volumes:
       - ./apps:/app/apps
       - ./packages:/app/packages
-    command: ['npm', 'run', 'dev:api']
+    command: ['sh', '-c', 'npm run db:migrate:deploy && npm run dev:api']
 
   web:
     build:

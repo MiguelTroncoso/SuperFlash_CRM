@@ -83,7 +83,7 @@ export class OutboxProcessor implements OnModuleInit, OnModuleDestroy {
   private async dispatch(event: ClaimedOutboxEvent): Promise<void> {
     try {
       if (!isJsonObject(event.payload)) throw new Error('Outbox payload must be a JSON object');
-      this.events.publish(event.eventType as CommercialEventName, {
+      await this.events.publishAsync(event.eventType as CommercialEventName, {
         eventId: event.id,
         occurredAt: event.occurredAt,
         organizationId: event.organizationId,

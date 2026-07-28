@@ -40,6 +40,30 @@ const sections: { label: string; items: NavItem[] }[] = [
       { label: 'Activaciones', href: '/activations', icon: '✓', permission: 'activations.read' },
     ],
   },
+  {
+    label: 'Comunicaciones',
+    items: [
+      {
+        label: 'Automatizaciones',
+        href: '/automations',
+        icon: '↯',
+        permission: 'automations.read',
+      },
+      { label: 'Plantillas', href: '/templates', icon: '✎', permission: 'templates.read' },
+      {
+        label: 'Notificaciones',
+        href: '/notifications',
+        icon: '●',
+        permission: 'notifications.read',
+      },
+      {
+        label: 'Ejecuciones',
+        href: '/automation-executions',
+        icon: '↻',
+        permission: 'automation_executions.read',
+      },
+    ],
+  },
 ];
 
 export function Sidebar(): React.ReactElement {

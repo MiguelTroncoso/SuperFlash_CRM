@@ -155,6 +155,22 @@ precio. `PriceBook.priority` está limitada a `-10000..10000`.
 
 `AuditLog` conserva actor, acción, tabla, registro, valores anterior/nuevo, IP y fecha. No tiene `updatedAt` ni `deletedAt`; la aplicación debe tratarlo como append-only y nunca actualizarlo o eliminarlo.
 
+## Communications and Automations (Architecture v1.2)
+
+`MessageTemplate` mantiene el contenido, canal, variables detectadas y versión.
+`AutomationRule` define un trigger, condiciones JSON declarativas y una lista
+ordenada de `AutomationAction`. `AutomationExecution` es la cola durable e
+idempotente de cada regla/evento; `AutomationExecutionAction` conserva el
+resultado independiente de cada acción para permitir retries sin repetir las
+acciones ya completadas. `Notification` representa el centro interno por
+usuario y utiliza los estados `UNREAD`, `READ` y `ARCHIVED`.
+
+El motor se activa al procesar eventos del Transactional Outbox, nunca desde
+una llamada externa dentro de la transacción de negocio. Todas las filas
+incluyen `organizationId` y las claves compuestas evitan referencias cruzadas
+entre tenants. Las condiciones y configuraciones de acciones se interpolan
+con paths propios; no se ejecutan expresiones ni plantillas como código.
+
 La migración agrega checks para órdenes positivas, cantidades mayores que cero y montos no negativos. En pagos valida `netAmount <= grossAmount`.
 
 ## Núcleo comercial (Sprint 8–11)

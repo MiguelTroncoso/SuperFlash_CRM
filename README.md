@@ -14,8 +14,9 @@ Actions por Node.js 20, observabilidad operacional del Outbox y ampliación
 progresiva de pruebas legacy y de concurrencia.
 
 Architecture v1.1 (Operations and Fulfillment) está **IMPLEMENTED / PENDING
-REVIEW**. v1.2 (Communications and Automations) y v1.3 (Analytics and
-Reporting) están planificadas. Architecture
+REVIEW**. Architecture v1.2 (Communications and Automations) está
+**IMPLEMENTED / PENDING REVIEW**. v1.3 (Analytics and Reporting) permanece
+planificada. Architecture
 v2.0 — Revenue Intelligence está en estado **ROADMAP / NOT IMPLEMENTED**; su
 alcance se documenta en [docs/roadmap/revenue-intelligence.md](docs/roadmap/revenue-intelligence.md).
 
@@ -41,7 +42,8 @@ El archivo `.env` es local y no debe subirse al repositorio.
 
 ## Desarrollo con Docker
 
-Un solo comando levanta PostgreSQL, Redis, Mailpit, Adminer, la API y el frontend:
+Un solo comando levanta PostgreSQL, Redis, Mailpit, Adminer, aplica las migraciones
+pendientes y levanta la API y el frontend:
 
 ```bash
 docker compose up -d
@@ -247,6 +249,27 @@ npm run test:integration
 - Las relaciones sensibles usan claves foráneas compuestas con `organizationId`.
 - Teléfonos normalizados, SKU y ventas activas usan índices únicos parciales en PostgreSQL para respetar soft delete y valores `NULL`.
 - `AuditLog` es append-only: no tiene `updatedAt` ni `deletedAt` y no debe actualizarse ni eliminarse desde la aplicación.
+
+## Communications and Automation Engine
+
+Architecture v1.2 agrega el motor interno de comunicaciones y automatizaciones
+sin proveedores externos. Las APIs Feature First están disponibles bajo:
+
+- `/api/v1/templates` para plantillas versionadas y vista previa segura;
+- `/api/v1/automations` para reglas activas/inactivas y sus acciones;
+- `/api/v1/automation-executions` para historial, intentos y errores;
+- `/api/v1/notifications` para el centro interno por usuario.
+
+Los eventos de dominio se consumen desde Transactional Outbox. Cada ejecución
+se deduplica por organización, regla y `sourceEventId`, se procesa en una cola
+durable PostgreSQL con `FOR UPDATE SKIP LOCKED`, conserva el estado por acción y
+reintenta fallos con backoff. Los templates admiten variables seguras como
+`{{contact.name}}`, `{{sale.total}}`, `{{subscription.nextBilling}}` y
+`{{trial.endsAt}}`; valores ausentes se informan en la vista previa y no se
+evalúan como código. No se implementan email, WhatsApp ni webhooks externos.
+
+La guía completa está en [docs/automation-engine.md](docs/automation-engine.md),
+[docs/templates.md](docs/templates.md) y [docs/notifications.md](docs/notifications.md).
 
 ## Seguimientos, agenda y Mi Día
 

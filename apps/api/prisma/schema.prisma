@@ -114,6 +114,64 @@ enum OutboxEventStatus {
   FAILED
 }
 
+enum MessageTemplateStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum MessageTemplateChannel {
+  INTERNAL
+  EMAIL
+  WHATSAPP
+  SMS
+  PUSH
+  WEBHOOK
+}
+
+enum AutomationTrigger {
+  CONTACT_CREATED
+  OPPORTUNITY_STAGE_CHANGED
+  SALE_CONFIRMED
+  PAYMENT_CONFIRMED
+  TRIAL_EXPIRING
+  TRIAL_EXPIRED
+  SUBSCRIPTION_RENEWAL_DUE
+  FULFILLMENT_COMPLETED
+  ACTIVATION_CREATED
+}
+
+enum AutomationActionType {
+  CREATE_TASK
+  CREATE_NOTIFICATION
+  ADD_ACTIVITY
+  CREATE_FOLLOW_UP
+  ENQUEUE_OUTBOX
+  INTERNAL_WEBHOOK
+}
+
+enum AutomationExecutionStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+}
+
+enum AutomationActionStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+}
+
+enum NotificationStatus {
+  UNREAD
+  READ
+  ARCHIVED
+}
+
 enum ProductType {
   SUBSCRIPTION
   CREDIT_PACKAGE
@@ -279,6 +337,12 @@ model Organization {
   credentialRecords         CredentialRecord[]
   trials                    Trial[]
   activations               Activation[]
+  messageTemplates          MessageTemplate[]
+  automationRules           AutomationRule[]
+  automationActions         AutomationAction[]
+  automationExecutions      AutomationExecution[]
+  automationActionRuns      AutomationExecutionAction[]
+  notifications             Notification[]
 
   @@index([createdAt])
 }
@@ -352,6 +416,10 @@ model User {
   assignedFulfillments      Fulfillment[]             @relation("FulfillmentAssignee")
   ownedTrials               Trial[]                   @relation("TrialOwner")
   credentialReveals         CredentialRecord[]        @relation("CredentialRevealedBy")
+  createdMessageTemplates   MessageTemplate[]         @relation("MessageTemplateCreator")
+  createdAutomationRules   AutomationRule[]          @relation("AutomationRuleCreator")
+  automationExecutions     AutomationExecution[]     @relation("AutomationExecutionActor")
+  notifications             Notification[]
 
   @@unique([organizationId, id])
   @@unique([organizationId, email])
@@ -1550,4 +1618,160 @@ model AuditLog {
   @@index([userId])
   @@index([tableName, recordId])
   @@index([createdAt])
+}
+
+model MessageTemplate {
+  id              String                 @id @default(uuid()) @db.Uuid
+  organizationId  String                 @db.Uuid
+  createdByUserId String?                @db.Uuid
+  name            String
+  slug            String
+  channel         MessageTemplateChannel @default(INTERNAL)
+  status          MessageTemplateStatus  @default(ACTIVE)
+  subject         String?
+  body            String
+  variables       Json?
+  version         Int                    @default(1)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  deletedAt       DateTime?
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  createdBy    User?             @relation("MessageTemplateCreator", fields: [organizationId, createdByUserId], references: [organizationId, id], onDelete: Restrict)
+  rules        AutomationRule[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, slug])
+  @@index([organizationId, status, channel])
+  @@index([organizationId, createdAt])
+}
+
+model AutomationRule {
+  id              String             @id @default(uuid()) @db.Uuid
+  organizationId  String             @db.Uuid
+  createdByUserId String             @db.Uuid
+  templateId      String?            @db.Uuid
+  name            String
+  description     String?
+  trigger         AutomationTrigger
+  conditions      Json?
+  active          Boolean            @default(false)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  deletedAt       DateTime?
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  createdBy    User                 @relation("AutomationRuleCreator", fields: [organizationId, createdByUserId], references: [organizationId, id], onDelete: Restrict)
+  template     MessageTemplate?     @relation(fields: [organizationId, templateId], references: [organizationId, id], onDelete: Restrict)
+  actions      AutomationAction[]
+  executions   AutomationExecution[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, name])
+  @@index([organizationId, trigger, active])
+  @@index([organizationId, createdAt])
+}
+
+model AutomationAction {
+  id                String               @id @default(uuid()) @db.Uuid
+  organizationId    String               @db.Uuid
+  automationRuleId  String               @db.Uuid
+  actionOrder       Int
+  type              AutomationActionType
+  config            Json
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  organization Organization                 @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  rule         AutomationRule               @relation(fields: [organizationId, automationRuleId], references: [organizationId, id], onDelete: Restrict)
+  executions   AutomationExecutionAction[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, automationRuleId, actionOrder])
+  @@index([organizationId, automationRuleId])
+}
+
+model AutomationExecution {
+  id              String                    @id @default(uuid()) @db.Uuid
+  organizationId  String                    @db.Uuid
+  automationRuleId String                   @db.Uuid
+  actorId         String?                   @db.Uuid
+  trigger         AutomationTrigger
+  sourceEventId   String                    @db.Uuid
+  aggregateType   String
+  aggregateId     String                    @db.Uuid
+  requestId       String
+  status          AutomationExecutionStatus @default(QUEUED)
+  attempts        Int                       @default(0)
+  availableAt     DateTime                  @default(now())
+  processingAt    DateTime?
+  completedAt     DateTime?
+  lastError       String?
+  inputPayload    Json
+  resultPayload   Json?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+
+  organization Organization                 @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  rule         AutomationRule               @relation(fields: [organizationId, automationRuleId], references: [organizationId, id], onDelete: Restrict)
+  actor        User?                         @relation("AutomationExecutionActor", fields: [organizationId, actorId], references: [organizationId, id], onDelete: Restrict)
+  actions      AutomationExecutionAction[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, automationRuleId, sourceEventId])
+  @@index([status, availableAt])
+  @@index([organizationId, status, availableAt])
+  @@index([organizationId, trigger, createdAt])
+  @@index([requestId])
+}
+
+model AutomationExecutionAction {
+  id                 String               @id @default(uuid()) @db.Uuid
+  organizationId     String               @db.Uuid
+  automationExecutionId String            @db.Uuid
+  automationActionId String               @db.Uuid
+  actionOrder        Int
+  type               AutomationActionType
+  config             Json
+  status             AutomationActionStatus @default(PENDING)
+  startedAt          DateTime?
+  completedAt        DateTime?
+  errorMessage       String?
+  resultPayload      Json?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  execution    AutomationExecution   @relation(fields: [organizationId, automationExecutionId], references: [organizationId, id], onDelete: Restrict)
+  action       AutomationAction      @relation(fields: [organizationId, automationActionId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, automationExecutionId, actionOrder])
+  @@index([organizationId, automationExecutionId])
+  @@index([status, createdAt])
+}
+
+model Notification {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @db.Uuid
+  userId         String             @db.Uuid
+  type           String
+  title          String
+  body           String
+  status         NotificationStatus @default(UNREAD)
+  actionUrl      String?
+  metadata       Json?
+  requestId      String?
+  readAt         DateTime?
+  archivedAt     DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user         User         @relation(fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@index([organizationId, userId, status, createdAt])
+  @@index([organizationId, createdAt])
+  @@index([requestId])
 }

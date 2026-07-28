@@ -3,13 +3,18 @@ import type {
   Activation,
   AuthSessionResponse,
   AuthUser,
+  AutomationExecution,
+  AutomationRule,
   Contact,
   CredentialRecord,
   Fulfillment,
   JsonRecord,
   MyDayResponse,
   MyDaySummary,
+  MessageTemplate,
+  Notification,
   Opportunity,
+  Pagination,
   Paginated,
   PipelineResponse,
   ProductOffer,
@@ -134,6 +139,37 @@ export const api = {
     request<CredentialRecord>(`/credentials/${id}/reveal`, { method: 'POST' }),
   getTrials: (query = '') => request<Paginated<Trial>>(`/trials${query}`),
   getActivations: (query = '') => request<{ data: Activation[] }>(`/activations${query}`),
+  getAutomations: (query = '') => request<Paginated<AutomationRule>>(`/automations${query}`),
+  getAutomation: (id: string) => request<AutomationRule>(`/automations/${id}`),
+  createAutomation: (body: JsonRecord) =>
+    request<AutomationRule>('/automations', { method: 'POST', ...jsonBody(body) }),
+  updateAutomation: (id: string, body: JsonRecord) =>
+    request<AutomationRule>(`/automations/${id}`, { method: 'PATCH', ...jsonBody(body) }),
+  toggleAutomation: (id: string, active: boolean) =>
+    request<AutomationRule>(`/automations/${id}/toggle`, {
+      method: 'POST',
+      ...jsonBody({ active }),
+    }),
+  getAutomationExecutions: (query = '') =>
+    request<Paginated<AutomationExecution>>(`/automation-executions${query}`),
+  getTemplates: (query = '') => request<Paginated<MessageTemplate>>(`/templates${query}`),
+  getTemplate: (id: string) => request<MessageTemplate>(`/templates/${id}`),
+  createTemplate: (body: JsonRecord) =>
+    request<MessageTemplate>('/templates', { method: 'POST', ...jsonBody(body) }),
+  updateTemplate: (id: string, body: JsonRecord) =>
+    request<MessageTemplate>(`/templates/${id}`, { method: 'PATCH', ...jsonBody(body) }),
+  previewTemplate: (body: JsonRecord) =>
+    request<JsonRecord>('/templates/preview', { method: 'POST', ...jsonBody(body) }),
+  getNotifications: (query = '') =>
+    request<{ data: Notification[]; pagination: Pagination; unread: number }>(
+      `/notifications${query}`,
+    ),
+  readNotification: (id: string) =>
+    request<Notification>(`/notifications/${id}/read`, { method: 'POST' }),
+  archiveNotification: (id: string) =>
+    request<void>(`/notifications/${id}/archive`, { method: 'POST' }),
+  readAllNotifications: () =>
+    request<{ updated: number }>('/notifications/read-all', { method: 'POST' }),
 };
 
 export function queryString(params: Record<string, string | number | boolean | undefined>): string {

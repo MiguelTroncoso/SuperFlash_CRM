@@ -215,3 +215,78 @@ export interface MyDayResponse {
 export interface MyDaySummary {
   [key: string]: number;
 }
+
+export interface MessageTemplate {
+  id: string;
+  name: string;
+  slug: string;
+  channel: string;
+  status: string;
+  subject: string | null;
+  body: string;
+  variables: string[];
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AutomationAction {
+  id: string;
+  actionOrder: number;
+  type: string;
+  config: JsonRecord;
+}
+
+export interface AutomationRule {
+  id: string;
+  name: string;
+  description: string | null;
+  trigger: string;
+  conditions: unknown;
+  active: boolean;
+  template: { id: string; name: string; slug: string } | null;
+  actions: AutomationAction[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AutomationExecution {
+  id: string;
+  automationRuleId: string;
+  ruleName: string;
+  trigger: string;
+  sourceEventId: string;
+  aggregateType: string;
+  aggregateId: string;
+  requestId: string;
+  status: string;
+  attempts: number;
+  availableAt: string;
+  processingAt: string | null;
+  completedAt: string | null;
+  lastError: string | null;
+  resultPayload: unknown;
+  createdAt: string;
+  actions: Array<{
+    id: string;
+    actionOrder: number;
+    type: string;
+    status: string;
+    errorMessage: string | null;
+    resultPayload: unknown;
+    completedAt: string | null;
+  }>;
+}
+
+export interface Notification {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  status: string;
+  actionUrl: string | null;
+  metadata: unknown;
+  readAt: string | null;
+  archivedAt: string | null;
+  createdAt: string;
+}

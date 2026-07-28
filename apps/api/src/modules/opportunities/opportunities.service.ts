@@ -2,6 +2,7 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { ActivityType, PipelineStageCategory, Prisma } from '@prisma/client';
 
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import { OutboxService } from '../../infrastructure/outbox/outbox.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser, RequestMetadata } from '../auth/auth.types';
 import { ContactAccessPolicy } from '../contacts/access/contact-access.policy';
@@ -77,6 +78,7 @@ export class OpportunitiesService {
     private readonly prisma: PrismaService,
     private readonly repository: OpportunitiesRepository,
     private readonly audit: AuditService,
+    private readonly outbox: OutboxService,
     private readonly accessPolicy: OpportunityAccessPolicy,
     private readonly contactAccessPolicy: ContactAccessPolicy,
   ) {}
@@ -1503,6 +1505,7 @@ export class OpportunitiesService {
           toStageId: target.id,
           reason,
         }),
+        requestId: context.metadata.requestId ?? null,
       },
     });
     await transaction.contact.update({
@@ -1520,6 +1523,26 @@ export class OpportunitiesService {
       previousValue: { pipelineStageId: current.pipelineStageId },
       newValue: asInputJson({ pipelineStageId: target.id, reason }),
       ip: context.metadata.ipAddress,
+      requestId: context.metadata.requestId,
+    });
+    await this.outbox.enqueueWithClient(transaction, {
+      eventType: 'OpportunityStageChanged',
+      organizationId: context.user.organizationId,
+      aggregateType: 'Opportunity',
+      aggregateId: current.id,
+      actorId: context.user.userId,
+      requestId: context.metadata.requestId ?? current.id,
+      payload: {
+        opportunity: { id: current.id, title: current.title },
+        contact: {
+          id: current.contact.id,
+          name: displayName(current.contact.firstName, current.contact.lastName),
+        },
+        fromStage: { id: current.pipelineStage.id, name: current.pipelineStage.name },
+        toStage: { id: target.id, name: target.name },
+        reason,
+        transition: action,
+      },
     });
   }
 

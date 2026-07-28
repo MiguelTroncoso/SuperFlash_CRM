@@ -25,6 +25,22 @@ const titles: Record<string, { title: string; subtitle: string }> = {
   },
   '/trials': { title: 'Trials', subtitle: 'Demos activas, próximas a vencer y convertidas.' },
   '/activations': { title: 'Activaciones', subtitle: 'Servicios operativos y su estado actual.' },
+  '/automations': {
+    title: 'Automatizaciones',
+    subtitle: 'Reglas internas disparadas por eventos del negocio.',
+  },
+  '/templates': {
+    title: 'Plantillas',
+    subtitle: 'Mensajes reutilizables con variables dinámicas.',
+  },
+  '/notifications': {
+    title: 'Notificaciones',
+    subtitle: 'Centro interno de avisos de tu organización.',
+  },
+  '/automation-executions': {
+    title: 'Ejecuciones',
+    subtitle: 'Historial y diagnóstico del motor de automatización.',
+  },
 };
 
 export function Header(): React.ReactElement {

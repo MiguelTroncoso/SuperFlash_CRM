@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { EventEmitter } from 'node:events';
 
 export type CommercialEventName =
+  | 'ContactCreated'
+  | 'OpportunityStageChanged'
   | 'SaleCreated'
   | 'SaleConfirmed'
   | 'SaleCancelled'
@@ -35,6 +37,8 @@ export type CommercialEventName =
   | 'TrialActivated'
   | 'TrialExpired'
   | 'TrialConverted'
+  | 'TrialExpiring'
+  | 'SubscriptionRenewalDue'
   | 'ActivationCreated'
   | 'ActivationActivated'
   | 'ActivationSuspended'
@@ -60,5 +64,11 @@ export class ApplicationEventBus extends EventEmitter {
 
   publish(name: CommercialEventName, event: CommercialEvent): void {
     this.emit(name, event);
+  }
+
+  async publishAsync(name: CommercialEventName, event: CommercialEvent): Promise<void> {
+    for (const listener of this.listeners(name)) {
+      await Promise.resolve((listener as (value: CommercialEvent) => void | Promise<void>)(event));
+    }
   }
 }

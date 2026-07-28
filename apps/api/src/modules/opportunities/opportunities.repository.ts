@@ -71,7 +71,16 @@ const mutationSelect = Prisma.validator<Prisma.OpportunitySelect>()({
   createdAt: true,
   updatedAt: true,
   deletedAt: true,
-  contact: { select: { id: true, archivedAt: true, deletedAt: true, userId: true } },
+  contact: {
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      archivedAt: true,
+      deletedAt: true,
+      userId: true,
+    },
+  },
   pipelineStage: {
     select: {
       id: true,

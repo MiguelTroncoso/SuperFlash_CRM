@@ -97,6 +97,17 @@ const permissions = [
   { key: 'activations.create', name: 'Crear activaciones' },
   { key: 'activations.update', name: 'Actualizar activaciones' },
   { key: 'activations.delete', name: 'Revocar activaciones' },
+  { key: 'automations.read', name: 'Leer automatizaciones' },
+  { key: 'automations.create', name: 'Crear automatizaciones' },
+  { key: 'automations.update', name: 'Actualizar automatizaciones' },
+  { key: 'automations.delete', name: 'Archivar automatizaciones' },
+  { key: 'automation_executions.read', name: 'Leer ejecuciones de automatizaciones' },
+  { key: 'templates.read', name: 'Leer plantillas' },
+  { key: 'templates.create', name: 'Crear plantillas' },
+  { key: 'templates.update', name: 'Actualizar plantillas' },
+  { key: 'templates.delete', name: 'Archivar plantillas' },
+  { key: 'notifications.read', name: 'Leer notificaciones' },
+  { key: 'notifications.update', name: 'Gestionar notificaciones' },
 ] as const;
 
 const pipelineStages = [
