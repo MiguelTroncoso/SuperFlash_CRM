@@ -372,11 +372,11 @@ Además de los casos incluidos en M-05, la revisión identificó ausencia de pru
 4. Actualizar ADR y documentación para reflejar garantías verificadas, no intenciones.
 5. Planificar actualización de actions por la advertencia de runtime de GitHub.
 
-## 12. Veredicto final
+## 12. Veredicto original de la auditoría
 
 **REQUIRES REMEDIATION**
 
-La arquitectura general es una base razonable y la ejecución de CI es reproducible y verde, pero existen riesgos `HIGH` que pueden producir acuerdos mutables, pagos prematuros, cobros inválidos, duplicados y pérdida de eventos. El Commercial Core no debe considerarse aprobado para Architecture v1.1 hasta que esos riesgos sean corregidos y cubiertos con pruebas.
+La arquitectura general era una base razonable y la ejecución de CI era reproducible y verde, pero existían riesgos `HIGH` que podían producir acuerdos mutables, pagos prematuros, cobros inválidos, duplicados y pérdida de eventos. Los hallazgos originales se conservan sin reescritura.
 
 ## 13. Evidencia revisada
 
@@ -427,4 +427,35 @@ También se verificó que no hay pruebas omitidas o deshabilitadas mediante `ski
 
 **CI:** [ejecución 30331905722](https://github.com/MiguelTroncoso/SuperFlash_CRM/actions/runs/30331905722) — `success`.
 
-**Estado esperado para esta fase:** este commit agrega únicamente el informe; no modifica código funcional, migraciones ni pruebas.
+**Estado en el commit auditado:** aquel commit agregaba únicamente el informe; la remediación se documenta en la tabla siguiente sin borrar este historial.
+
+## 14. Tabla de remediación Architecture v1.0
+
+La tabla siguiente se agrega al informe original. El commit se identifica como `HEAD (commit único de remediación)` dentro del documento para no modificar el contenido después de calcular su SHA.
+
+| Hallazgo | Estado    | Commit | Pruebas/evidencia                                                                  | Resultado                                            |
+| -------- | --------- | ------ | ---------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| H-01     | Remediado | HEAD   | lock Sale, versionado, carrera update/confirm y trigger SaleItem                   | Venta y snapshots inmutables después de confirmación |
+| H-02     | Remediado | HEAD   | pagos sobre DRAFT/PENDING rechazados; confirmación exige estado elegible           | Integridad de lifecycle financiero                   |
+| H-03     | Remediado | HEAD   | huella canónica, conflicto de payload y carrera P2002                              | Idempotencia por organización                        |
+| H-04     | Remediado | HEAD   | venta confirmada/fulfilled, snapshot elegible, CUSTOM validado y unicidad SaleItem | Suscripciones válidas e idempotentes                 |
+| H-05     | Remediado | HEAD   | periodStart/periodEnd/cycleKey y unicidad PostgreSQL                               | Identidad persistente de ciclo                       |
+| H-06     | Remediado | HEAD   | locks Renewal/Subscription y estado ACTIVE requerido                               | No se cobra suscripción cancelada/expirada           |
+| H-07     | Remediado | HEAD   | contrato snapshot v2, costos persistidos y respuesta protegida                     | Reconstrucción histórica versionada                  |
+| H-08     | Remediado | HEAD   | Outbox commit/rollback, retry, deduplicación por eventId y listener aislado        | Entrega durable at-least-once                        |
+| H-09     | Remediado | HEAD   | cancelación con neto confirmado, refund total y auditoría                          | Política económica explícita                         |
+| M-01     | Remediado | HEAD   | requestId HTTP → AuditLog/Activity/Outbox y matriz documentada                     | Trazabilidad end-to-end                              |
+| M-02     | Remediado | HEAD   | resolvedor único de catálogo, estados/vigencia/mínimo/override                     | Solo catálogo comercializable                        |
+| M-03     | Remediado | HEAD   | constraints de importes, fórmulas, reembolsos y CUSTOM                             | Integridad en PostgreSQL                             |
+| M-04     | Remediado | HEAD   | verify-legacy-commercial-data y reporte de degradación                             | No se inventan datos históricos                      |
+| M-05     | Remediado | HEAD   | nuevas negativas/concurrencia en commercial.e2e-spec.ts                            | Riesgos críticos cubiertos                           |
+| M-06     | Remediado | HEAD   | triggers append-only y cleanup de test transaccional                               | AuditLog/Activity no mutables                        |
+| M-07     | Remediado | HEAD   | `RENEWAL_TOO_EARLY` y prueba de fecha futura                                       | No hay vencimiento anticipado                        |
+| L-01     | Remediado | HEAD   | catálogo versionado de monedas ISO 4217 controladas                                | Monedas normalizadas y extensibles                   |
+| L-02     | Remediado | HEAD   | README, docs y ADR-006..014 actualizados                                           | Contratos y límites documentados                     |
+
+### Veredicto post-remediación
+
+**APPROVED WITH FOLLOW-UP**
+
+El seguimiento pendiente es operativo: monitorizar el dispatcher Outbox y actualizar las actions de GitHub cuando el runtime de Node lo requiera. No se inicia Architecture v1.1 ni se implementan integraciones externas.

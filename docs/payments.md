@@ -1,6 +1,6 @@
 # Payments
 
-`Payment` es independiente de `Sale` y permite pagos parciales, completos y reembolsos parciales o completos.
+`Payment` es independiente de `Sale` y permite pagos parciales, completos y reembolsos parciales o completos. Solo se crea o confirma cuando la venta está `CONFIRMED` o `FULFILLED`.
 
 ## Endpoints
 
@@ -20,6 +20,6 @@ El saldo nunca se persiste. Se calcula en servidor con los pagos confirmados/ree
 
 `balance = sale.total - confirmed.netAmount + refundedAmount`
 
-La confirmación bloquea la venta y luego agrega los pagos confirmados, evitando que dos confirmaciones simultáneas excedan el total. `idempotencyKey` es única por organización para reintentos seguros.
+La confirmación bloquea la venta y luego agrega los pagos confirmados, evitando que dos confirmaciones simultáneas excedan el total. `idempotencyKey` es única por organización y guarda una huella canónica; la misma clave con el mismo payload devuelve el registro existente y una clave reutilizada con payload distinto devuelve `PAYMENT_IDEMPOTENCY_CONFLICT`, incluso bajo carreras `P2002`.
 
-Eventos: `PaymentCreated`, `PaymentConfirmed`, `PaymentFailed` y `PaymentRefunded`. Auditoría registra importes mínimos y nunca tokens, secretos ni credenciales.
+La cancelación de una venta exige saldo confirmado neto cero, calculado desde pagos y reembolsos. Eventos `PaymentCreated`, `PaymentConfirmed`, `PaymentFailed` y `PaymentRefunded` usan Outbox. Auditoría y Activity llevan `requestId` y nunca almacenan tokens, secretos ni credenciales.

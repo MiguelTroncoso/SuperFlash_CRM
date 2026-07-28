@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
 import { appConfiguration, validateEnvironment } from './config/configuration';
@@ -23,6 +23,8 @@ import { UsersModule } from './modules/users/users.module';
 import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { RenewalsModule } from './modules/renewals/renewals.module';
+import { RequestCorrelationInterceptor } from './infrastructure/http/request-correlation.interceptor';
+import { OutboxModule } from './infrastructure/outbox/outbox.module';
 
 @Module({
   imports: [
@@ -58,6 +60,7 @@ import { RenewalsModule } from './modules/renewals/renewals.module';
     PaymentsModule,
     SubscriptionsModule,
     RenewalsModule,
+    OutboxModule,
     ProductsModule,
     CatalogModule,
     CampaignsModule,
@@ -65,6 +68,9 @@ import { RenewalsModule } from './modules/renewals/renewals.module';
     AuditModule,
     WhatsAppModule,
   ],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+  providers: [
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_INTERCEPTOR, useClass: RequestCorrelationInterceptor },
+  ],
 })
 export class AppModule {}

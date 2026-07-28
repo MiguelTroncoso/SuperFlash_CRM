@@ -3,12 +3,11 @@ import { ActivityType, Prisma, SaleStatus } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
-import {
-  ApplicationEventBus,
-  CommercialEventName,
-} from '../../infrastructure/events/application-event-bus';
+import { CommercialEventName } from '../../infrastructure/events/application-event-bus';
+import { OutboxService } from '../../infrastructure/outbox/outbox.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/auth.types';
+import { SaleCatalogResolution, PricingService } from '../catalog/pricing/pricing.service';
 import {
   CommercialClient,
   CommercialRequestContext,
@@ -42,29 +41,17 @@ const saleInclude = {
 
 type SaleWithDetails = Prisma.SaleGetPayload<{ include: typeof saleInclude }>;
 
-interface SaleSnapshotSource {
-  product: {
-    id: string;
-    name: string;
-    slug: string;
-    sku: string | null;
-    type: SaleWithDetails['items'][number]['productTypeSnapshot'];
-    fulfillmentMode: SaleWithDetails['items'][number]['fulfillmentModeSnapshot'];
-    requiresSubscription: boolean;
-    metadata: Prisma.JsonValue | null;
-    active: boolean;
-    status: string;
-    price: Prisma.Decimal | null;
-  };
-  plan: {
-    id: string;
-    name: string;
-    billingPeriodUnit: SaleWithDetails['items'][number]['billingPeriodUnitSnapshot'];
-    billingPeriodCount: number;
-    metadata: Prisma.JsonValue | null;
-  } | null;
-  variant: { id: string; name: string; code: string | null; attributes: Prisma.JsonValue } | null;
-  priceBookEntry: { id: string; salePrice: Prisma.Decimal; taxIncluded: boolean } | null;
+function sanitizeSnapshot(value: Prisma.JsonValue, includeCosts: boolean): Prisma.JsonValue {
+  if (Array.isArray(value)) return value.map((item) => sanitizeSnapshot(item, includeCosts));
+  if (value !== null && typeof value === 'object') {
+    const output: Record<string, Prisma.JsonValue> = {};
+    for (const [key, nested] of Object.entries(value) as Array<[string, Prisma.JsonValue]>) {
+      if (!includeCosts && (key === 'costPrice' || key === 'minimumPrice')) continue;
+      output[key] = sanitizeSnapshot(nested, includeCosts);
+    }
+    return output;
+  }
+  return value;
 }
 
 @Injectable()
@@ -72,7 +59,8 @@ export class SalesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly events: ApplicationEventBus,
+    private readonly outbox: OutboxService,
+    private readonly pricing: PricingService,
     private readonly access: SalesAccessPolicy,
   ) {}
 
@@ -81,10 +69,13 @@ export class SalesService {
     context: CommercialRequestContext,
   ): Promise<Record<string, unknown>> {
     this.access.assertCreate(context.user);
-    const saleId = await this.prisma.$transaction((transaction) =>
-      this.createInternal(transaction, dto, context.user, context.metadata.ipAddress),
-    );
-    this.publish('SaleCreated', saleId, context.user, { status: SaleStatus.DRAFT });
+    const saleId = await this.prisma.$transaction(async (transaction) => {
+      const id = await this.createInternal(transaction, dto, context);
+      await this.enqueueEvent(transaction, 'SaleCreated', id, context, {
+        status: SaleStatus.DRAFT,
+      });
+      return id;
+    });
     return this.findOne(saleId, context.user);
   }
 
@@ -164,7 +155,11 @@ export class SalesService {
             },
           ],
         };
-        return this.createInternal(transaction, dto, context.user, context.metadata.ipAddress);
+        const id = await this.createInternal(transaction, dto, context);
+        await this.enqueueEvent(transaction, 'SaleCreated', id, context, {
+          conversion: 'OPPORTUNITY',
+        });
+        return id;
       });
     } catch (error) {
       if (this.isUniqueViolation(error)) {
@@ -176,7 +171,6 @@ export class SalesService {
       }
       throw error;
     }
-    this.publish('SaleCreated', saleId, context.user, { conversion: 'OPPORTUNITY' });
     return this.findOne(saleId, context.user);
   }
 
@@ -213,7 +207,7 @@ export class SalesService {
       this.prisma.sale.count({ where }),
     ]);
     return {
-      data: records.map((record) => this.mapSale(record)),
+      data: records.map((record) => this.mapSale(record, user)),
       pagination: {
         page: query.page,
         limit: query.limit,
@@ -231,7 +225,7 @@ export class SalesService {
     });
     if (!sale) this.notFound(COMMERCIAL_ERROR_CODES.SALE_NOT_FOUND, 'La venta no existe.');
     const balance = await this.calculateBalance(id, user.organizationId);
-    return { ...this.mapSale(sale), balance };
+    return { ...this.mapSale(sale, user), balance };
   }
 
   async update(
@@ -239,42 +233,55 @@ export class SalesService {
     dto: UpdateSaleDto,
     context: CommercialRequestContext,
   ): Promise<Record<string, unknown>> {
-    const current = await this.prisma.sale.findFirst({
-      where: { id, organizationId: context.user.organizationId, deletedAt: null },
-      select: {
-        id: true,
-        status: true,
-        userId: true,
-        discountAmount: true,
-        taxAmount: true,
-        note: true,
-      },
-    });
-    if (!current) this.notFound(COMMERCIAL_ERROR_CODES.SALE_NOT_FOUND, 'La venta no existe.');
-    this.access.assertMutate(context.user, current.userId);
-    if (current.status !== SaleStatus.DRAFT && current.status !== SaleStatus.PENDING) {
-      throw commercialException(
-        HttpStatus.CONFLICT,
-        COMMERCIAL_ERROR_CODES.INVALID_STATE,
-        'Solo se pueden modificar ventas en borrador o pendientes.',
-      );
-    }
-    const discount =
-      dto.discountAmount === undefined ? current.discountAmount : parseMoney(dto.discountAmount);
-    const tax = dto.taxAmount === undefined ? current.taxAmount : parseMoney(dto.taxAmount);
-    const subtotal = await this.prisma.saleItem.aggregate({
-      where: { organizationId: context.user.organizationId, saleId: id, deletedAt: null },
-      _sum: { total: true },
-    });
-    const total = (subtotal._sum.total ?? new Prisma.Decimal(0)).sub(discount).add(tax);
-    if (total.isNegative()) {
-      throw commercialException(
-        HttpStatus.BAD_REQUEST,
-        COMMERCIAL_ERROR_CODES.INVALID_MONEY,
-        'El total de la venta no puede ser negativo.',
-      );
-    }
     await this.prisma.$transaction(async (transaction) => {
+      const locked = await transaction.$queryRaw<Array<{ id: string }>>(
+        Prisma.sql`SELECT "id" FROM "Sale" WHERE "id" = ${id}::uuid AND "organizationId" = ${context.user.organizationId}::uuid FOR UPDATE`,
+      );
+      if (locked.length === 0)
+        this.notFound(COMMERCIAL_ERROR_CODES.SALE_NOT_FOUND, 'La venta no existe.');
+      const current = await transaction.sale.findFirst({
+        where: { id, organizationId: context.user.organizationId, deletedAt: null },
+        select: {
+          id: true,
+          status: true,
+          userId: true,
+          version: true,
+          discountAmount: true,
+          taxAmount: true,
+          note: true,
+        },
+      });
+      if (!current) this.notFound(COMMERCIAL_ERROR_CODES.SALE_NOT_FOUND, 'La venta no existe.');
+      this.access.assertMutate(context.user, current.userId);
+      if (current.status !== SaleStatus.DRAFT && current.status !== SaleStatus.PENDING) {
+        throw commercialException(
+          HttpStatus.CONFLICT,
+          COMMERCIAL_ERROR_CODES.INVALID_STATE,
+          'Solo se pueden modificar ventas en borrador o pendientes.',
+        );
+      }
+      const discount =
+        dto.discountAmount === undefined ? current.discountAmount : parseMoney(dto.discountAmount);
+      const tax = dto.taxAmount === undefined ? current.taxAmount : parseMoney(dto.taxAmount);
+      if (discount.isNegative() || tax.isNegative()) {
+        throw commercialException(
+          HttpStatus.BAD_REQUEST,
+          COMMERCIAL_ERROR_CODES.INVALID_MONEY,
+          'Los descuentos e impuestos no pueden ser negativos.',
+        );
+      }
+      const subtotal = await transaction.saleItem.aggregate({
+        where: { organizationId: context.user.organizationId, saleId: id, deletedAt: null },
+        _sum: { total: true },
+      });
+      const total = (subtotal._sum.total ?? new Prisma.Decimal(0)).sub(discount).add(tax);
+      if (total.isNegative()) {
+        throw commercialException(
+          HttpStatus.BAD_REQUEST,
+          COMMERCIAL_ERROR_CODES.INVALID_MONEY,
+          'El total de la venta no puede ser negativo.',
+        );
+      }
       await transaction.sale.update({
         where: { organizationId_id: { organizationId: context.user.organizationId, id } },
         data: {
@@ -283,6 +290,17 @@ export class SalesService {
           total,
           note: dto.note === undefined ? current.note : dto.note?.trim() || null,
           version: { increment: 1 },
+        },
+      });
+      await transaction.activity.create({
+        data: {
+          organizationId: context.user.organizationId,
+          userId: context.user.userId,
+          saleId: id,
+          type: ActivityType.SYSTEM,
+          title: 'Venta actualizada',
+          metadata: jsonObject({ status: current.status }),
+          requestId: context.metadata.requestId ?? null,
         },
       });
       await this.audit.recordWithClient(transaction, {
@@ -302,6 +320,7 @@ export class SalesService {
           note: dto.note ?? current.note,
         }),
         ip: context.metadata.ipAddress,
+        requestId: context.metadata.requestId,
       });
     });
     return this.findOne(id, context.user);
@@ -354,9 +373,9 @@ export class SalesService {
   private async createInternal(
     transaction: CommercialClient,
     dto: CreateSaleDto,
-    user: AuthenticatedUser,
-    ipAddress: string | undefined,
+    context: CommercialRequestContext,
   ): Promise<string> {
+    const user = context.user;
     const currency = normalizeCurrency(dto.currency);
     const contact = await transaction.contact.findFirst({
       where: { id: dto.contactId, organizationId: user.organizationId, deletedAt: null },
@@ -381,7 +400,7 @@ export class SalesService {
     let subtotal = new Prisma.Decimal(0);
     let itemTotals = new Prisma.Decimal(0);
     for (const item of dto.items) {
-      const built = await this.buildItem(transaction, item, currency, user.organizationId);
+      const built = await this.buildItem(transaction, item, currency, context);
       itemData.push({
         id: randomUUID(),
         organizationId: user.organizationId,
@@ -449,6 +468,7 @@ export class SalesService {
         type: ActivityType.SALE,
         title: 'Venta creada',
         metadata: jsonObject({ status: SaleStatus.DRAFT }),
+        requestId: context.metadata.requestId ?? null,
       },
     });
     await this.audit.recordWithClient(transaction, {
@@ -458,7 +478,8 @@ export class SalesService {
       tableName: 'Sale',
       recordId: sale.id,
       newValue: jsonObject({ status: SaleStatus.DRAFT, total: total.toFixed(2), currency }),
-      ip: ipAddress,
+      ip: context.metadata.ipAddress,
+      requestId: context.metadata.requestId,
     });
     return sale.id;
   }
@@ -467,12 +488,12 @@ export class SalesService {
     transaction: CommercialClient,
     dto: CreateSaleItemDto,
     currency: string,
-    organizationId: string,
+    context: CommercialRequestContext,
   ): Promise<{
-    product: SaleSnapshotSource['product'];
-    plan: SaleSnapshotSource['plan'];
-    variant: SaleSnapshotSource['variant'];
-    priceBookEntry: SaleSnapshotSource['priceBookEntry'];
+    product: SaleCatalogResolution['product'];
+    plan: SaleCatalogResolution['plan'];
+    variant: SaleCatalogResolution['variant'];
+    priceBookEntry: SaleCatalogResolution['priceBookEntry'];
     quantity: Prisma.Decimal;
     unitPrice: Prisma.Decimal;
     discount: Prisma.Decimal;
@@ -480,71 +501,22 @@ export class SalesService {
     lineTotal: Prisma.Decimal;
     snapshot: Prisma.InputJsonObject;
   }> {
-    const product = await transaction.product.findFirst({
-      where: { organizationId, id: dto.productId, deletedAt: null },
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        sku: true,
-        type: true,
-        fulfillmentMode: true,
-        requiresSubscription: true,
-        metadata: true,
-        active: true,
-        status: true,
-        price: true,
-      },
-    });
-    if (!product) this.notFound(COMMERCIAL_ERROR_CODES.CATALOG_NOT_FOUND, 'El producto no existe.');
-    const plan = dto.planId
-      ? await transaction.productPlan.findFirst({
-          where: { organizationId, id: dto.planId, productId: dto.productId, deletedAt: null },
-          select: {
-            id: true,
-            name: true,
-            billingPeriodUnit: true,
-            billingPeriodCount: true,
-            metadata: true,
-          },
-        })
-      : null;
-    if (dto.planId && !plan)
-      this.notFound(COMMERCIAL_ERROR_CODES.CATALOG_NOT_FOUND, 'El plan no pertenece al producto.');
-    const variant = dto.variantId
-      ? await transaction.productVariant.findFirst({
-          where: { organizationId, id: dto.variantId, productId: dto.productId, deletedAt: null },
-          select: { id: true, name: true, code: true, attributes: true },
-        })
-      : null;
-    if (dto.variantId && !variant)
-      this.notFound(
-        COMMERCIAL_ERROR_CODES.CATALOG_NOT_FOUND,
-        'La variante no pertenece al producto.',
-      );
-    const priceBookEntry = dto.priceBookEntryId
-      ? await transaction.priceBookEntry.findFirst({
-          where: {
-            organizationId,
-            id: dto.priceBookEntryId,
-            productId: dto.productId,
-            planId: dto.planId ?? null,
-            variantId: dto.variantId ?? null,
-            deletedAt: null,
-          },
-          select: { id: true, salePrice: true, taxIncluded: true },
-        })
-      : null;
-    if (dto.priceBookEntryId && !priceBookEntry)
-      this.notFound(
-        COMMERCIAL_ERROR_CODES.CATALOG_NOT_FOUND,
-        'El precio no pertenece a la combinación del catálogo.',
-      );
     const quantity = parseQuantity(dto.quantity);
     positive(quantity, 'quantity');
-    const unitPrice = parseMoney(
-      dto.unitPrice ?? priceBookEntry?.salePrice.toFixed(2) ?? product.price?.toFixed(2) ?? '0',
-    );
+    const requestedUnitPrice = dto.unitPrice === undefined ? null : parseMoney(dto.unitPrice);
+    const resolution = await this.pricing.resolveForSale({
+      client: transaction,
+      organizationId: context.user.organizationId,
+      productId: dto.productId,
+      planId: dto.planId ?? null,
+      variantId: dto.variantId ?? null,
+      priceBookEntryId: dto.priceBookEntryId ?? null,
+      currency,
+      requestedUnitPrice,
+      canOverridePrice: context.user.permissions.includes('catalog.prices.override'),
+      overrideReason: dto.priceOverrideReason?.trim() || null,
+    });
+    const unitPrice = resolution.unitPrice;
     const discount = parseMoney(dto.discountAmount);
     const tax = parseMoney(dto.taxAmount);
     if (unitPrice.isNegative() || discount.isNegative() || tax.isNegative()) {
@@ -562,13 +534,40 @@ export class SalesService {
         'El total del ítem no puede ser negativo.',
       );
     const snapshot = JSON.parse(
-      JSON.stringify({ product, plan, variant, priceBookEntry, currency }),
+      JSON.stringify({
+        snapshotVersion: 2,
+        productId: resolution.product.id,
+        productName: resolution.product.name,
+        productSlug: resolution.product.slug,
+        sku: resolution.product.sku,
+        productType: resolution.product.type,
+        planId: resolution.plan?.id ?? null,
+        planName: resolution.plan?.name ?? null,
+        variantId: resolution.variant?.id ?? null,
+        variantName: resolution.variant?.name ?? null,
+        quantity: quantity.toFixed(3),
+        salePrice: (resolution.priceBookEntry?.salePrice ?? unitPrice).toFixed(2),
+        minimumPrice: resolution.priceBookEntry?.minimumPrice?.toFixed(2) ?? null,
+        costPrice: resolution.priceBookEntry?.costPrice?.toFixed(2) ?? null,
+        currency,
+        taxIncluded: resolution.priceBookEntry?.taxIncluded ?? false,
+        taxAmount: tax.toFixed(2),
+        billingPeriodCount: resolution.plan?.billingPeriodCount ?? null,
+        billingPeriodUnit: resolution.plan?.billingPeriodUnit ?? null,
+        fulfillmentMode: resolution.product.fulfillmentMode,
+        requiresSubscription: resolution.product.requiresSubscription,
+        priceBookId: resolution.priceBook?.id ?? resolution.priceBookEntry?.priceBookId ?? null,
+        priceBookEntryId: resolution.priceBookEntry?.id ?? null,
+        pricingSource: resolution.pricingSource,
+        pricingOverrideReason: dto.priceOverrideReason?.trim() || null,
+        metadata: resolution.product.metadata,
+      }),
     ) as Prisma.InputJsonObject;
     return {
-      product,
-      plan,
-      variant,
-      priceBookEntry,
+      product: resolution.product,
+      plan: resolution.plan,
+      variant: resolution.variant,
+      priceBookEntry: resolution.priceBookEntry,
       quantity,
       unitPrice,
       discount,
@@ -586,7 +585,6 @@ export class SalesService {
     context: CommercialRequestContext,
     reason?: string,
   ): Promise<Record<string, unknown>> {
-    let changed = false;
     await this.prisma.$transaction(async (transaction) => {
       const locked = await transaction.$queryRaw<Array<{ id: string }>>(
         Prisma.sql`SELECT "id" FROM "Sale" WHERE "id" = ${id}::uuid AND "organizationId" = ${context.user.organizationId}::uuid FOR UPDATE`,
@@ -606,6 +604,26 @@ export class SalesService {
           COMMERCIAL_ERROR_CODES.INVALID_STATE,
           'La venta no puede cambiar a ese estado.',
         );
+      }
+      if (target === SaleStatus.CANCELLED) {
+        const paymentTotals = await transaction.payment.aggregate({
+          where: {
+            organizationId: context.user.organizationId,
+            saleId: id,
+            status: { in: ['CONFIRMED', 'REFUNDED'] },
+            deletedAt: null,
+          },
+          _sum: { netAmount: true, refundedAmount: true },
+        });
+        const confirmedNet = (paymentTotals._sum.netAmount ?? new Prisma.Decimal(0)).sub(
+          paymentTotals._sum.refundedAmount ?? new Prisma.Decimal(0),
+        );
+        if (confirmedNet.greaterThan(0))
+          throw commercialException(
+            HttpStatus.CONFLICT,
+            COMMERCIAL_ERROR_CODES.SALE_CANCELLED_WITH_BALANCE,
+            'La venta debe tener pagos netos en cero antes de cancelarse.',
+          );
       }
       await transaction.sale.update({
         where: { organizationId_id: { organizationId: context.user.organizationId, id } },
@@ -628,6 +646,7 @@ export class SalesService {
           type: ActivityType.STATUS_CHANGE,
           title: `Venta ${target.toLowerCase()}`,
           metadata: jsonObject({ status: target }),
+          requestId: context.metadata.requestId ?? null,
         },
       });
       await this.audit.recordWithClient(transaction, {
@@ -639,10 +658,10 @@ export class SalesService {
         previousValue: jsonObject({ status: sale.status }),
         newValue: jsonObject({ status: target }),
         ip: context.metadata.ipAddress,
+        requestId: context.metadata.requestId,
       });
-      changed = true;
+      await this.enqueueEvent(transaction, eventName, id, context, { status: target });
     });
-    if (changed) this.publish(eventName, id, context.user, { status: target });
     return this.findOne(id, context.user);
   }
 
@@ -655,7 +674,8 @@ export class SalesService {
     return false;
   }
 
-  private mapSale(sale: SaleWithDetails): Record<string, unknown> {
+  private mapSale(sale: SaleWithDetails, user: AuthenticatedUser): Record<string, unknown> {
+    const includeCosts = user.permissions.includes('catalog.costs.read');
     return {
       id: sale.id,
       status: sale.status,
@@ -684,25 +704,28 @@ export class SalesService {
         taxAmount: item.taxAmount.toFixed(2),
         total: item.total.toFixed(2),
         currency: item.currency,
-        catalogSnapshot: item.catalogSnapshot,
+        snapshotVersion: item.snapshotVersion,
+        catalogSnapshot: sanitizeSnapshot(item.catalogSnapshot, includeCosts),
       })),
       createdAt: sale.createdAt,
       updatedAt: sale.updatedAt,
     };
   }
 
-  private publish(
+  private async enqueueEvent(
+    transaction: CommercialClient,
     name: CommercialEventName,
     aggregateId: string,
-    user: AuthenticatedUser,
-    payload: Record<string, unknown>,
-  ): void {
-    this.events.publish(name, {
-      eventId: randomUUID(),
-      occurredAt: new Date(),
-      organizationId: user.organizationId,
+    context: CommercialRequestContext,
+    payload: Prisma.InputJsonObject,
+  ): Promise<void> {
+    await this.outbox.enqueueWithClient(transaction, {
+      eventType: name,
+      organizationId: context.user.organizationId,
+      aggregateType: 'Commercial',
       aggregateId,
-      actorUserId: user.userId,
+      actorId: context.user.userId,
+      requestId: context.metadata.requestId ?? randomUUID(),
       payload,
     });
   }

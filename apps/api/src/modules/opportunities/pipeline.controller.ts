@@ -13,6 +13,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
 
+import { requestIdOf } from '../../infrastructure/http/request-correlation';
 import { AuthenticatedUser, RequestMetadata } from '../auth/auth.types';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Permissions } from '../auth/decorators/permissions.decorator';
@@ -30,7 +31,11 @@ function requestMetadata(request: Request): RequestMetadata {
     typeof forwardedFor === 'string' ? forwardedFor.split(',')[0]?.trim() : undefined;
   const ipAddress = forwardedIp || request.ip;
   const userAgent = request.get('user-agent')?.slice(0, 512);
-  return { ...(ipAddress ? { ipAddress } : {}), ...(userAgent ? { userAgent } : {}) };
+  return {
+    ...(ipAddress ? { ipAddress } : {}),
+    ...(userAgent ? { userAgent } : {}),
+    requestId: requestIdOf(request),
+  };
 }
 
 @ApiTags('pipeline')

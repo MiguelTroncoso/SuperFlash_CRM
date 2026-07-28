@@ -24,8 +24,10 @@ export interface CommercialEvent {
   eventId: string;
   occurredAt: Date;
   organizationId: string;
+  aggregateType: string;
   aggregateId: string;
   actorUserId: string;
+  requestId: string;
   payload: Readonly<Record<string, unknown>>;
 }
 

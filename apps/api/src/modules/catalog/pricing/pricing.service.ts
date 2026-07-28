@@ -1,8 +1,17 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { CustomerSegment, PriceBookStatus, Prisma, ProductStatus } from '@prisma/client';
+import {
+  BillingPeriodUnit,
+  CustomerSegment,
+  FulfillmentMode,
+  PriceBookStatus,
+  Prisma,
+  ProductStatus,
+  ProductType,
+} from '@prisma/client';
 
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 import { AuthenticatedUser } from '../../auth/auth.types';
+import { isSupportedCurrency } from '../../commercial/currency';
 import { CatalogAccessPolicy } from '../access/catalog-access.policy';
 import { CATALOG_ERROR_CODES, catalogException } from '../catalog.errors';
 import {
@@ -12,6 +21,51 @@ import {
   parseOptionalDate,
 } from '../catalog.types';
 import { PricingResolveQueryDto } from '../dto/catalog.dto';
+
+export interface SaleCatalogInput {
+  client: Prisma.TransactionClient;
+  organizationId: string;
+  productId: string;
+  planId: string | null;
+  variantId: string | null;
+  priceBookEntryId: string | null;
+  currency: string;
+  requestedUnitPrice: Prisma.Decimal | null;
+  canOverridePrice: boolean;
+  overrideReason: string | null;
+}
+
+export interface SaleCatalogResolution {
+  product: {
+    id: string;
+    name: string;
+    slug: string;
+    sku: string | null;
+    type: ProductType;
+    fulfillmentMode: FulfillmentMode;
+    requiresSubscription: boolean;
+    metadata: Prisma.JsonValue | null;
+  };
+  plan: {
+    id: string;
+    name: string;
+    billingPeriodUnit: BillingPeriodUnit;
+    billingPeriodCount: number;
+    metadata: Prisma.JsonValue | null;
+  } | null;
+  variant: { id: string; name: string; code: string | null; attributes: Prisma.JsonValue } | null;
+  priceBook: { id: string; name: string; currency: string } | null;
+  priceBookEntry: {
+    id: string;
+    priceBookId: string;
+    salePrice: Prisma.Decimal;
+    costPrice: Prisma.Decimal | null;
+    minimumPrice: Prisma.Decimal | null;
+    taxIncluded: boolean;
+  } | null;
+  unitPrice: Prisma.Decimal;
+  pricingSource: 'PRICE_BOOK' | 'PRODUCT_LEGACY' | 'MANUAL_OVERRIDE';
+}
 
 export interface PricingResolution {
   productId: string;
@@ -243,6 +297,197 @@ export class PricingService {
         priority: selected.priceBook.priority,
         resolvedAt: at,
       },
+    };
+  }
+
+  async resolveForSale(input: SaleCatalogInput): Promise<SaleCatalogResolution> {
+    if (!isSupportedCurrency(input.currency))
+      throw catalogException(
+        HttpStatus.BAD_REQUEST,
+        CATALOG_ERROR_CODES.PRICE_INVALID,
+        'La moneda no está admitida por el catálogo comercial.',
+      );
+
+    const product = await input.client.product.findFirst({
+      where: {
+        organizationId: input.organizationId,
+        id: input.productId,
+        active: true,
+        status: ProductStatus.ACTIVE,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        sku: true,
+        type: true,
+        fulfillmentMode: true,
+        requiresSubscription: true,
+        metadata: true,
+      },
+    });
+    if (!product)
+      throw catalogException(
+        HttpStatus.NOT_FOUND,
+        CATALOG_ERROR_CODES.PRODUCT_NOT_FOUND,
+        'El producto no está comercialmente activo.',
+      );
+
+    const plan = input.planId
+      ? await input.client.productPlan.findFirst({
+          where: {
+            organizationId: input.organizationId,
+            id: input.planId,
+            productId: input.productId,
+            active: true,
+            deletedAt: null,
+          },
+          select: {
+            id: true,
+            name: true,
+            billingPeriodUnit: true,
+            billingPeriodCount: true,
+            metadata: true,
+          },
+        })
+      : null;
+    if (input.planId && !plan)
+      throw catalogException(
+        HttpStatus.NOT_FOUND,
+        CATALOG_ERROR_CODES.PLAN_NOT_FOUND,
+        'El plan no está activo o no pertenece al producto.',
+      );
+
+    const variant = input.variantId
+      ? await input.client.productVariant.findFirst({
+          where: {
+            organizationId: input.organizationId,
+            id: input.variantId,
+            productId: input.productId,
+            active: true,
+            deletedAt: null,
+          },
+          select: { id: true, name: true, code: true, attributes: true, planId: true },
+        })
+      : null;
+    if (input.variantId && !variant)
+      throw catalogException(
+        HttpStatus.NOT_FOUND,
+        CATALOG_ERROR_CODES.VARIANT_NOT_FOUND,
+        'La variante no está activa o no pertenece al producto.',
+      );
+    if (variant?.planId && variant.planId !== input.planId)
+      throw catalogException(
+        HttpStatus.BAD_REQUEST,
+        CATALOG_ERROR_CODES.PRICE_RELATION_NOT_FOUND,
+        'La variante y el plan no coinciden.',
+      );
+
+    const now = new Date();
+    const priceBookEntry = input.priceBookEntryId
+      ? await input.client.priceBookEntry.findFirst({
+          where: {
+            organizationId: input.organizationId,
+            id: input.priceBookEntryId,
+            productId: input.productId,
+            planId: input.planId,
+            variantId: input.variantId,
+            active: true,
+            deletedAt: null,
+            AND: [
+              { OR: [{ validFrom: null }, { validFrom: { lte: now } }] },
+              { OR: [{ validUntil: null }, { validUntil: { gt: now } }] },
+            ],
+            priceBook: {
+              is: {
+                organizationId: input.organizationId,
+                status: PriceBookStatus.ACTIVE,
+                archivedAt: null,
+                deletedAt: null,
+                currency: input.currency,
+                AND: [
+                  { OR: [{ validFrom: null }, { validFrom: { lte: now } }] },
+                  { OR: [{ validUntil: null }, { validUntil: { gt: now } }] },
+                ],
+              },
+            },
+          },
+          select: {
+            id: true,
+            priceBookId: true,
+            salePrice: true,
+            costPrice: true,
+            minimumPrice: true,
+            taxIncluded: true,
+            priceBook: { select: { id: true, name: true, currency: true } },
+          },
+        })
+      : null;
+    if (input.priceBookEntryId && !priceBookEntry)
+      throw catalogException(
+        HttpStatus.NOT_FOUND,
+        CATALOG_ERROR_CODES.PRICING_NOT_FOUND,
+        'La entrada de precio no está activa, vigente o no coincide con la moneda.',
+      );
+
+    const catalogPrice = priceBookEntry?.salePrice ?? null;
+    const fallbackPrice = await input.client.product.findFirst({
+      where: { organizationId: input.organizationId, id: input.productId },
+      select: { price: true, currency: true },
+    });
+    const unitPrice =
+      input.requestedUnitPrice ?? catalogPrice ?? fallbackPrice?.price ?? new Prisma.Decimal(0);
+    const source: SaleCatalogResolution['pricingSource'] =
+      priceBookEntry && input.requestedUnitPrice
+        ? 'MANUAL_OVERRIDE'
+        : priceBookEntry
+          ? 'PRICE_BOOK'
+          : input.requestedUnitPrice
+            ? 'MANUAL_OVERRIDE'
+            : 'PRODUCT_LEGACY';
+    if (
+      priceBookEntry &&
+      input.requestedUnitPrice &&
+      !input.requestedUnitPrice.equals(catalogPrice ?? new Prisma.Decimal(0))
+    ) {
+      if (!input.canOverridePrice || !input.overrideReason)
+        throw catalogException(
+          HttpStatus.FORBIDDEN,
+          CATALOG_ERROR_CODES.FORBIDDEN,
+          'El precio manual requiere permiso y motivo.',
+        );
+    }
+    if (
+      priceBookEntry?.minimumPrice &&
+      unitPrice.lessThan(priceBookEntry.minimumPrice) &&
+      (!input.canOverridePrice || !input.overrideReason)
+    )
+      throw catalogException(
+        HttpStatus.FORBIDDEN,
+        CATALOG_ERROR_CODES.FORBIDDEN,
+        'El precio está por debajo del mínimo autorizado.',
+      );
+
+    return {
+      product,
+      plan,
+      variant: variant
+        ? { id: variant.id, name: variant.name, code: variant.code, attributes: variant.attributes }
+        : null,
+      priceBook: priceBookEntry?.priceBook ?? null,
+      priceBookEntry: priceBookEntry
+        ? {
+            id: priceBookEntry.id,
+            priceBookId: priceBookEntry.priceBookId,
+            salePrice: priceBookEntry.salePrice,
+            costPrice: priceBookEntry.costPrice,
+            minimumPrice: priceBookEntry.minimumPrice,
+            taxIncluded: priceBookEntry.taxIncluded,
+          }
+        : null,
+      unitPrice,
+      pricingSource: source,
     };
   }
 

@@ -1,9 +1,9 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { ActivityType, PaymentStatus, Prisma } from '@prisma/client';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
-import { ApplicationEventBus } from '../../infrastructure/events/application-event-bus';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import { OutboxService } from '../../infrastructure/outbox/outbox.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/auth.types';
 import {
@@ -14,15 +14,42 @@ import {
   positive,
 } from '../commercial/commercial.types';
 import { COMMERCIAL_ERROR_CODES, commercialException } from '../commercial/commercial.errors';
+import { isSupportedCurrency } from '../commercial/currency';
 import { ListPaymentsQueryDto, CreatePaymentDto, RefundPaymentDto } from './dto/payments.dto';
 import { PaymentsAccessPolicy } from './payments.policy';
+
+function paymentFingerprint(input: {
+  saleId: string;
+  grossAmount: Prisma.Decimal;
+  feeAmount: Prisma.Decimal;
+  currency: string;
+  method: string;
+  reference: string | null;
+  paymentDate: Date | null;
+  note: string | null;
+}): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify({
+        saleId: input.saleId,
+        grossAmount: input.grossAmount.toFixed(2),
+        feeAmount: input.feeAmount.toFixed(2),
+        currency: input.currency,
+        method: input.method,
+        reference: input.reference,
+        paymentDate: input.paymentDate?.toISOString() ?? null,
+        note: input.note,
+      }),
+    )
+    .digest('hex');
+}
 
 @Injectable()
 export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly events: ApplicationEventBus,
+    private readonly outbox: OutboxService,
     private readonly access: PaymentsAccessPolicy,
   ) {}
 
@@ -38,73 +65,118 @@ export class PaymentsService {
     if (fee.isNegative() || fee.gt(gross)) this.invalidMoney();
     const net = gross.sub(fee);
     const currency = normalizeCurrency(dto.currency);
-    const paymentId = await this.prisma.$transaction(async (transaction) => {
-      const sale = await transaction.sale.findFirst({
-        where: { id: saleId, organizationId: context.user.organizationId, deletedAt: null },
-        select: { id: true, currency: true, status: true, userId: true },
-      });
-      if (!sale) this.notFound(COMMERCIAL_ERROR_CODES.SALE_NOT_FOUND, 'La venta no existe.');
-      if (sale.status === 'CANCELLED')
-        throw commercialException(
-          HttpStatus.CONFLICT,
-          COMMERCIAL_ERROR_CODES.INVALID_STATE,
-          'No se puede pagar una venta cancelada.',
-        );
-      if (sale.currency !== currency)
-        this.invalidMoney('La moneda del pago debe coincidir con la venta.');
-      if (dto.idempotencyKey) {
-        const existing = await transaction.payment.findFirst({
-          where: {
+    if (!isSupportedCurrency(currency))
+      throw commercialException(
+        HttpStatus.BAD_REQUEST,
+        COMMERCIAL_ERROR_CODES.UNSUPPORTED_CURRENCY,
+        'La moneda no está admitida.',
+      );
+    const reference = dto.reference?.trim() || null;
+    const paymentDate = dto.paymentDate ? new Date(dto.paymentDate) : new Date();
+    const note = dto.note?.trim() || null;
+    const idempotencyKey = dto.idempotencyKey?.trim() || null;
+    const fingerprint = paymentFingerprint({
+      saleId,
+      grossAmount: gross,
+      feeAmount: fee,
+      currency,
+      method: dto.method,
+      reference,
+      paymentDate: dto.paymentDate ? paymentDate : null,
+      note,
+    });
+    let result: { id: string; created: boolean };
+    try {
+      result = await this.prisma.$transaction(async (transaction) => {
+        const sale = await transaction.sale.findFirst({
+          where: { id: saleId, organizationId: context.user.organizationId, deletedAt: null },
+          select: { id: true, currency: true, status: true, userId: true },
+        });
+        if (!sale) this.notFound(COMMERCIAL_ERROR_CODES.SALE_NOT_FOUND, 'La venta no existe.');
+        if (sale.status !== 'CONFIRMED' && sale.status !== 'FULFILLED')
+          throw commercialException(
+            HttpStatus.CONFLICT,
+            COMMERCIAL_ERROR_CODES.PAYMENT_SALE_STATE,
+            'Solo se permiten pagos sobre ventas confirmadas o cumplidas.',
+          );
+        if (sale.currency !== currency)
+          this.invalidMoney('La moneda del pago debe coincidir con la venta.');
+        if (idempotencyKey) {
+          const existing = await transaction.payment.findFirst({
+            where: { organizationId: context.user.organizationId, idempotencyKey },
+            select: { id: true, requestFingerprint: true },
+          });
+          if (existing) {
+            if (existing.requestFingerprint !== fingerprint) this.idempotencyConflict();
+            return { id: existing.id, created: false };
+          }
+        }
+        const payment = await transaction.payment.create({
+          data: {
             organizationId: context.user.organizationId,
-            idempotencyKey: dto.idempotencyKey,
+            saleId,
+            grossAmount: gross,
+            feeAmount: fee,
+            netAmount: net,
+            currency,
+            method: dto.method,
+            reference,
+            idempotencyKey,
+            requestFingerprint: fingerprint,
+            status: PaymentStatus.PENDING,
+            paymentDate,
+            note,
           },
           select: { id: true },
         });
-        if (existing) return existing.id;
-      }
-      const payment = await transaction.payment.create({
-        data: {
-          organizationId: context.user.organizationId,
-          saleId,
-          grossAmount: gross,
-          feeAmount: fee,
-          netAmount: net,
-          currency,
-          method: dto.method,
-          reference: dto.reference?.trim() || null,
-          idempotencyKey: dto.idempotencyKey?.trim() || null,
-          status: PaymentStatus.PENDING,
-          paymentDate: dto.paymentDate ? new Date(dto.paymentDate) : new Date(),
-          note: dto.note?.trim() || null,
-        },
-        select: { id: true },
-      });
-      await transaction.activity.create({
-        data: {
+        await transaction.activity.create({
+          data: {
+            organizationId: context.user.organizationId,
+            userId: context.user.userId,
+            saleId,
+            type: ActivityType.PAYMENT,
+            title: 'Pago creado',
+            metadata: jsonObject({ status: PaymentStatus.PENDING, method: dto.method }),
+            requestId: context.metadata.requestId ?? null,
+          },
+        });
+        await this.audit.recordWithClient(transaction, {
           organizationId: context.user.organizationId,
           userId: context.user.userId,
-          saleId,
-          type: ActivityType.PAYMENT,
-          title: 'Pago creado',
-          metadata: jsonObject({ status: PaymentStatus.PENDING, method: dto.method }),
-        },
+          action: 'PAYMENT_CREATED',
+          tableName: 'Payment',
+          recordId: payment.id,
+          newValue: jsonObject({ saleId, netAmount: net.toFixed(2), currency, method: dto.method }),
+          ip: context.metadata.ipAddress,
+          requestId: context.metadata.requestId,
+        });
+        await this.outbox.enqueueWithClient(transaction, {
+          eventType: 'PaymentCreated',
+          organizationId: context.user.organizationId,
+          aggregateType: 'Payment',
+          aggregateId: payment.id,
+          actorId: context.user.userId,
+          requestId: context.metadata.requestId ?? 'system',
+          payload: jsonObject({ status: PaymentStatus.PENDING }),
+        });
+        return { id: payment.id, created: true };
       });
-      await this.audit.recordWithClient(transaction, {
-        organizationId: context.user.organizationId,
-        userId: context.user.userId,
-        action: 'PAYMENT_CREATED',
-        tableName: 'Payment',
-        recordId: payment.id,
-        newValue: jsonObject({ saleId, netAmount: net.toFixed(2), currency, method: dto.method }),
-        ip: context.metadata.ipAddress,
+    } catch (error: unknown) {
+      if (
+        !idempotencyKey ||
+        !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+        error.code !== 'P2002'
+      )
+        throw error;
+      const existing = await this.prisma.payment.findFirst({
+        where: { organizationId: context.user.organizationId, idempotencyKey },
+        select: { id: true, requestFingerprint: true },
       });
-      return payment.id;
-    });
-    this.events.publish(
-      'PaymentCreated',
-      this.event(paymentId, context.user, { status: PaymentStatus.PENDING }),
-    );
-    return this.findOne(paymentId, context.user);
+      if (!existing) throw error;
+      if (existing.requestFingerprint !== fingerprint) this.idempotencyConflict();
+      result = { id: existing.id, created: false };
+    }
+    return this.findOne(result.id, context.user);
   }
 
   async list(
@@ -150,11 +222,16 @@ export class PaymentsService {
   }
 
   async confirm(id: string, context: CommercialRequestContext): Promise<Record<string, unknown>> {
-    let changed = false;
     await this.prisma.$transaction(async (transaction) => {
       const payment = await this.lockPayment(transaction, id, context.user.organizationId);
       const sale = await this.lockSale(transaction, payment.saleId, context.user.organizationId);
       this.access.assertMutate(context.user, sale.userId);
+      if (sale.status !== 'CONFIRMED' && sale.status !== 'FULFILLED')
+        throw commercialException(
+          HttpStatus.CONFLICT,
+          COMMERCIAL_ERROR_CODES.PAYMENT_SALE_STATE,
+          'Solo se pueden confirmar pagos de ventas confirmadas o cumplidas.',
+        );
       if (payment.status === PaymentStatus.CONFIRMED || payment.status === PaymentStatus.REFUNDED)
         return;
       if (payment.status !== PaymentStatus.PENDING)
@@ -198,6 +275,7 @@ export class PaymentsService {
           type: ActivityType.PAYMENT,
           title: 'Pago confirmado',
           metadata: jsonObject({ status: PaymentStatus.CONFIRMED }),
+          requestId: context.metadata.requestId ?? null,
         },
       });
       await this.audit.recordWithClient(transaction, {
@@ -209,14 +287,18 @@ export class PaymentsService {
         previousValue: jsonObject({ status: PaymentStatus.PENDING }),
         newValue: jsonObject({ status: PaymentStatus.CONFIRMED }),
         ip: context.metadata.ipAddress,
+        requestId: context.metadata.requestId,
       });
-      changed = true;
+      await this.outbox.enqueueWithClient(transaction, {
+        eventType: 'PaymentConfirmed',
+        organizationId: context.user.organizationId,
+        aggregateType: 'Payment',
+        aggregateId: id,
+        actorId: context.user.userId,
+        requestId: context.metadata.requestId ?? randomUUID(),
+        payload: jsonObject({ status: PaymentStatus.CONFIRMED }),
+      });
     });
-    if (changed)
-      this.events.publish(
-        'PaymentConfirmed',
-        this.event(id, context.user, { status: PaymentStatus.CONFIRMED }),
-      );
     return this.findOne(id, context.user);
   }
 
@@ -231,7 +313,6 @@ export class PaymentsService {
   ): Promise<Record<string, unknown>> {
     const refund = parseMoney(dto.amount);
     positive(refund, 'refund amount');
-    let changed = false;
     await this.prisma.$transaction(async (transaction) => {
       const payment = await this.lockPayment(transaction, id, context.user.organizationId);
       const sale = await transaction.sale.findFirst({
@@ -264,6 +345,17 @@ export class PaymentsService {
           version: { increment: 1 },
         },
       });
+      await transaction.activity.create({
+        data: {
+          organizationId: context.user.organizationId,
+          userId: context.user.userId,
+          saleId: payment.saleId,
+          type: ActivityType.PAYMENT,
+          title: 'Pago reembolsado',
+          metadata: jsonObject({ status: PaymentStatus.REFUNDED, amount: refund.toFixed(2) }),
+          requestId: context.metadata.requestId ?? null,
+        },
+      });
       await this.audit.recordWithClient(transaction, {
         organizationId: context.user.organizationId,
         userId: context.user.userId,
@@ -272,14 +364,18 @@ export class PaymentsService {
         recordId: id,
         newValue: jsonObject({ refundedAmount: next.toFixed(2) }),
         ip: context.metadata.ipAddress,
+        requestId: context.metadata.requestId,
       });
-      changed = true;
+      await this.outbox.enqueueWithClient(transaction, {
+        eventType: 'PaymentRefunded',
+        organizationId: context.user.organizationId,
+        aggregateType: 'Payment',
+        aggregateId: id,
+        actorId: context.user.userId,
+        requestId: context.metadata.requestId ?? randomUUID(),
+        payload: jsonObject({ status: PaymentStatus.REFUNDED, amount: refund.toFixed(2) }),
+      });
     });
-    if (changed)
-      this.events.publish(
-        'PaymentRefunded',
-        this.event(id, context.user, { status: PaymentStatus.REFUNDED, amount: refund.toFixed(2) }),
-      );
     return this.findOne(id, context.user);
   }
 
@@ -287,7 +383,6 @@ export class PaymentsService {
     id: string,
     context: CommercialRequestContext,
   ): Promise<Record<string, unknown>> {
-    let changed = false;
     await this.prisma.$transaction(async (transaction) => {
       const payment = await this.lockPayment(transaction, id, context.user.organizationId);
       const sale = await transaction.sale.findFirst({
@@ -307,6 +402,17 @@ export class PaymentsService {
         where: { organizationId_id: { organizationId: context.user.organizationId, id } },
         data: { status: PaymentStatus.FAILED, failedAt: new Date(), version: { increment: 1 } },
       });
+      await transaction.activity.create({
+        data: {
+          organizationId: context.user.organizationId,
+          userId: context.user.userId,
+          saleId: payment.saleId,
+          type: ActivityType.PAYMENT,
+          title: 'Pago fallido',
+          metadata: jsonObject({ status: PaymentStatus.FAILED }),
+          requestId: context.metadata.requestId ?? null,
+        },
+      });
       await this.audit.recordWithClient(transaction, {
         organizationId: context.user.organizationId,
         userId: context.user.userId,
@@ -315,14 +421,18 @@ export class PaymentsService {
         recordId: id,
         newValue: jsonObject({ status: PaymentStatus.FAILED }),
         ip: context.metadata.ipAddress,
+        requestId: context.metadata.requestId,
       });
-      changed = true;
+      await this.outbox.enqueueWithClient(transaction, {
+        eventType: 'PaymentFailed',
+        organizationId: context.user.organizationId,
+        aggregateType: 'Payment',
+        aggregateId: id,
+        actorId: context.user.userId,
+        requestId: context.metadata.requestId ?? randomUUID(),
+        payload: jsonObject({ status: PaymentStatus.FAILED }),
+      });
     });
-    if (changed)
-      this.events.publish(
-        'PaymentFailed',
-        this.event(id, context.user, { status: PaymentStatus.FAILED }),
-      );
     return this.findOne(id, context.user);
   }
 
@@ -381,17 +491,6 @@ export class PaymentsService {
     };
   }
 
-  private event(aggregateId: string, user: AuthenticatedUser, payload: Record<string, unknown>) {
-    return {
-      eventId: randomUUID(),
-      occurredAt: new Date(),
-      organizationId: user.organizationId,
-      aggregateId,
-      actorUserId: user.userId,
-      payload,
-    };
-  }
-
   private invalidMoney(message = 'Los importes del pago no son válidos.'): never {
     throw commercialException(
       HttpStatus.BAD_REQUEST,
@@ -399,6 +498,15 @@ export class PaymentsService {
       message,
     );
   }
+
+  private idempotencyConflict(): never {
+    throw commercialException(
+      HttpStatus.CONFLICT,
+      COMMERCIAL_ERROR_CODES.PAYMENT_IDEMPOTENCY_CONFLICT,
+      'La idempotencyKey ya fue utilizada con datos diferentes.',
+    );
+  }
+
   private notFound(code: string, message: string): never {
     throw commercialException(HttpStatus.NOT_FOUND, code, message);
   }

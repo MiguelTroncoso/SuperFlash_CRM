@@ -77,6 +77,7 @@ Con PostgreSQL disponible y `DATABASE_URL` configurado en `.env`:
 npm run db:migrate
 npm run db:seed
 npm run db:verify-integrity
+npm run prisma:verify-legacy --workspace=@superflash/api
 ```
 
 `db:migrate` aplica la migración inicial en desarrollo. Para despliegues con migraciones ya generadas, usar:
@@ -88,6 +89,8 @@ npm run db:migrate:deploy
 El seed es idempotente y crea la Organización Demo, los roles `Owner`, `Admin`, `Sales`, `Viewer`, permisos base y las etapas iniciales del pipeline. Si se definen `SEED_OWNER_EMAIL`, `SEED_OWNER_PASSWORD`, `SEED_OWNER_FIRST_NAME` y `SEED_OWNER_LAST_NAME`, también crea el Owner de desarrollo con password Argon2id. Sin esas variables, omite el usuario con un mensaje claro. No crea contactos.
 
 `db:verify-integrity` crea fixtures temporales aislados, comprueba unicidad, claves foráneas multiempresa, ventas, snapshots y checks monetarios, y elimina los fixtures al terminar.
+
+`prisma:verify-legacy` genera un diagnóstico de métodos que quedaron en `OTHER` y snapshots históricos incompletos. No inventa costos, precios ni atributos que no existían en los datos legacy.
 
 El modelo aplica `deletedAt` para soft delete en las entidades del dominio. Las eliminaciones físicas de información crítica deben evitarse en las capas futuras de aplicación.
 
@@ -261,16 +264,24 @@ IPTV, WhatsApp, automatizaciones, IA ni integraciones externas:
 - Suscripciones creadas desde `SaleItem`, ciclos de cobro y transiciones bajo `/api/v1/subscriptions`.
 - Renovaciones con estados, vencimiento y generación idempotente de una nueva venta bajo `/api/v1/renewals`.
 
-Las ventas e ítems conservan snapshots completos del catálogo. El saldo se calcula en servidor a partir
+Las ventas e ítems conservan snapshots comerciales versionados completos del catálogo. El saldo se calcula en servidor a partir
 de pagos confirmados y reembolsos; no se persisten `remainingBalance` ni `paidAmount`. Las confirmaciones,
-conversiones y pagos concurrentes usan locks de PostgreSQL y transacciones cortas. Cada operación relevante
-genera `AuditLog` y los eventos de dominio se publican después del commit.
+conversiones y pagos concurrentes usan locks de PostgreSQL y transacciones cortas. Una venta con pagos
+confirmados netos no se cancela hasta completar los reembolsos. Cada operación relevante genera
+`AuditLog`/`Activity` con `requestId` y los eventos se escriben en Transactional Outbox dentro del commit.
+
+La remediación de Architecture v1.0 también agrega restricciones PostgreSQL de importes, fórmulas,
+reembolsos, ciclos personalizados, orden de periodos y append-only para auditoría/actividad. El catálogo
+comercializable se valida mediante el mismo resolvedor de pricing; overrides requieren permiso y motivo.
 
 La documentación está en [docs/sales.md](docs/sales.md), [docs/payments.md](docs/payments.md),
 [docs/subscriptions.md](docs/subscriptions.md), [docs/renewals.md](docs/renewals.md) y
 [docs/domain-model.md](docs/domain-model.md). Las decisiones principales están en
 [ADR-006](docs/ADR-006-sales-snapshot.md), [ADR-007](docs/ADR-007-calculated-balance.md),
 [ADR-008](docs/ADR-008-subscription-lifecycle.md) y [ADR-009](docs/ADR-009-renewal-engine.md).
+Las decisiones de endurecimiento están en [ADR-010](docs/ADR-010-transactional-outbox.md),
+[ADR-011](docs/ADR-011-commercial-snapshot-contract.md), [ADR-012](docs/ADR-012-renewal-cycle-identity.md),
+[ADR-013](docs/ADR-013-commercial-cancellation-policy.md) y [ADR-014](docs/ADR-014-request-correlation.md).
 
 Para validar el núcleo comercial en un esquema PostgreSQL aislado:
 

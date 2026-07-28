@@ -6,7 +6,9 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
-import { Response } from 'express';
+import { Request, Response } from 'express';
+
+import { requestIdOf } from './request-correlation';
 
 interface ErrorResponseBody {
   statusCode?: unknown;
@@ -29,6 +31,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const context = host.switchToHttp();
     const response = context.getResponse<Response>();
+    const request = context.getRequest<Request>();
+    const requestId = requestIdOf(request);
     const status =
       exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
     const rawResponse = exception instanceof HttpException ? exception.getResponse() : undefined;
@@ -44,6 +48,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       statusCode: status,
       code,
       message,
+      requestId,
       ...this.safeDetails(body),
     });
   }

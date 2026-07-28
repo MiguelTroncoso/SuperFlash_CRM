@@ -17,6 +17,7 @@ import { AppModule } from '../src/app.module';
 import { AppConfiguration } from '../src/config/configuration';
 import { PrismaService } from '../src/infrastructure/prisma/prisma.service';
 import { hashPassword } from '../src/modules/auth/auth.crypto';
+import { resetDatabase } from './test-database';
 
 const PASSWORD = 'CatalogOwner1!';
 
@@ -89,35 +90,7 @@ describe('Catalog and pricing HTTP flow', () => {
   });
 
   beforeEach(async () => {
-    await prisma.priceHistory.deleteMany();
-    await prisma.priceBookEntry.deleteMany();
-    await prisma.productVariant.deleteMany();
-    await prisma.productPlan.deleteMany();
-    await prisma.priceBook.deleteMany();
-    await prisma.auditLog.deleteMany();
-    await prisma.contactTag.deleteMany();
-    await prisma.activity.deleteMany();
-    await prisma.followUpHistory.deleteMany();
-    await prisma.followUp.deleteMany();
-    await prisma.renewal.deleteMany();
-    await prisma.subscription.deleteMany();
-    await prisma.saleItem.deleteMany();
-    await prisma.payment.deleteMany();
-    await prisma.sale.deleteMany();
-    await prisma.opportunityStageHistory.deleteMany();
-    await prisma.opportunity.deleteMany();
-    await prisma.contact.deleteMany();
-    await prisma.campaign.deleteMany();
-    await prisma.product.deleteMany();
-    await prisma.productCategory.deleteMany();
-    await prisma.pipelineStage.deleteMany();
-    await prisma.tag.deleteMany();
-    await prisma.passwordResetToken.deleteMany();
-    await prisma.authSession.deleteMany();
-    await prisma.user.deleteMany();
-    await prisma.role.deleteMany();
-    await prisma.permission.deleteMany();
-    await prisma.organization.deleteMany();
+    await resetDatabase(prisma);
     fixture = await createFixture(prisma);
   });
 

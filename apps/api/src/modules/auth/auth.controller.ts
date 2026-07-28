@@ -21,6 +21,7 @@ import {
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 
+import { requestIdOf } from '../../infrastructure/http/request-correlation';
 import { authException, AUTH_ERROR_CODES } from './auth.errors';
 import { AuthService, REFRESH_COOKIE_NAME } from './auth.service';
 import { AuthenticatedUser, RequestMetadata } from './auth.types';
@@ -67,6 +68,7 @@ function requestMetadata(request: Request): RequestMetadata {
   return {
     ...(ipAddress ? { ipAddress } : {}),
     ...(userAgent ? { userAgent } : {}),
+    requestId: requestIdOf(request),
   };
 }
 

@@ -1,6 +1,7 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import {
   ActivityType,
+  BillingCycle,
   PaymentMethod,
   PaymentStatus,
   Prisma,
@@ -8,26 +9,37 @@ import {
   SaleStatus,
   SubscriptionStatus,
 } from '@prisma/client';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
-import {
-  ApplicationEventBus,
-  CommercialEventName,
-} from '../../infrastructure/events/application-event-bus';
+import { CommercialEventName } from '../../infrastructure/events/application-event-bus';
+import { OutboxService } from '../../infrastructure/outbox/outbox.service';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/auth.types';
-import { CommercialRequestContext, jsonObject } from '../commercial/commercial.types';
 import { COMMERCIAL_ERROR_CODES, commercialException } from '../commercial/commercial.errors';
+import { CommercialRequestContext, jsonObject } from '../commercial/commercial.types';
 import { CancelRenewalDto, CreateRenewalDto, ListRenewalsQueryDto } from './dto/renewals.dto';
 import { RenewalsAccessPolicy } from './renewals.policy';
+
+function sanitizeSnapshot(value: Prisma.JsonValue, includeCosts: boolean): Prisma.JsonValue {
+  if (Array.isArray(value)) return value.map((item) => sanitizeSnapshot(item, includeCosts));
+  if (value !== null && typeof value === 'object') {
+    const output: Record<string, Prisma.JsonValue> = {};
+    for (const [key, nested] of Object.entries(value) as Array<[string, Prisma.JsonValue]>) {
+      if (!includeCosts && (key === 'costPrice' || key === 'minimumPrice')) continue;
+      output[key] = sanitizeSnapshot(nested, includeCosts);
+    }
+    return output;
+  }
+  return value;
+}
 
 @Injectable()
 export class RenewalsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly events: ApplicationEventBus,
+    private readonly outbox: OutboxService,
     private readonly access: RenewalsAccessPolicy,
   ) {}
 
@@ -37,30 +49,13 @@ export class RenewalsService {
     context: CommercialRequestContext,
   ): Promise<Record<string, unknown>> {
     this.access.assertCreate(context.user);
+    const requestId = context.metadata.requestId ?? randomUUID();
     const result = await this.prisma.$transaction(async (transaction) => {
-      const locked = await transaction.$queryRaw<Array<{ id: string }>>(
-        Prisma.sql`SELECT "id" FROM "Subscription" WHERE "id" = ${subscriptionId}::uuid AND "organizationId" = ${context.user.organizationId}::uuid FOR UPDATE`,
+      const subscription = await this.lockSubscription(
+        transaction,
+        subscriptionId,
+        context.user.organizationId,
       );
-      if (locked.length === 0)
-        this.notFound(COMMERCIAL_ERROR_CODES.SUBSCRIPTION_NOT_FOUND, 'La suscripción no existe.');
-      const subscription = await transaction.subscription.findFirst({
-        where: { id: subscriptionId, organizationId: context.user.organizationId, deletedAt: null },
-        select: {
-          id: true,
-          saleId: true,
-          userId: true,
-          status: true,
-          billingCycle: true,
-          amount: true,
-          currency: true,
-          productNameSnapshot: true,
-          skuSnapshot: true,
-          catalogSnapshot: true,
-          nextBillingAt: true,
-        },
-      });
-      if (!subscription)
-        this.notFound(COMMERCIAL_ERROR_CODES.SUBSCRIPTION_NOT_FOUND, 'La suscripción no existe.');
       if (
         subscription.status === SubscriptionStatus.CANCELLED ||
         subscription.status === SubscriptionStatus.EXPIRED
@@ -70,33 +65,71 @@ export class RenewalsService {
           COMMERCIAL_ERROR_CODES.INVALID_STATE,
           'No se puede renovar una suscripción finalizada.',
         );
-      const existing = await transaction.renewal.findFirst({
+
+      const periodStart =
+        subscription.currentPeriodEnd ?? subscription.nextBillingAt ?? subscription.startsAt;
+      const periodEnd = this.addCycle(
+        periodStart,
+        subscription.billingCycle,
+        subscription.customIntervalDays,
+      );
+      if (!periodEnd)
+        throw commercialException(
+          HttpStatus.CONFLICT,
+          COMMERCIAL_ERROR_CODES.SUBSCRIPTION_NOT_ELIGIBLE,
+          'La suscripción no tiene un intervalo de renovación válido.',
+        );
+      const cycleKey = this.cycleKey(subscription.id, periodStart);
+      const existing = await transaction.renewal.findUnique({
         where: {
-          organizationId: context.user.organizationId,
-          subscriptionId,
-          deletedAt: null,
-          status: { in: [RenewalStatus.PENDING, RenewalStatus.DUE, RenewalStatus.OVERDUE] },
+          organizationId_subscriptionId_cycleKey: {
+            organizationId: context.user.organizationId,
+            subscriptionId: subscription.id,
+            cycleKey,
+          },
         },
         select: { id: true },
       });
       if (existing) return { id: existing.id, created: false };
-      const dueAt = dto.dueAt ? new Date(dto.dueAt) : (subscription.nextBillingAt ?? new Date());
+
+      const dueAt = dto.dueAt ? new Date(dto.dueAt) : periodStart;
       const renewal = await transaction.renewal.create({
         data: {
           organizationId: context.user.organizationId,
-          subscriptionId,
+          subscriptionId: subscription.id,
           sourceSaleId: subscription.saleId,
           userId: subscription.userId ?? context.user.userId,
           status: RenewalStatus.PENDING,
           billingCycle: subscription.billingCycle,
+          customIntervalDays: subscription.customIntervalDays,
           amount: subscription.amount,
           currency: subscription.currency,
           dueAt,
+          periodStart,
+          periodEnd,
+          cycleKey,
+          snapshotVersion: subscription.snapshotVersion,
           productNameSnapshot: subscription.productNameSnapshot,
           skuSnapshot: subscription.skuSnapshot,
           catalogSnapshot: subscription.catalogSnapshot as Prisma.InputJsonValue,
         },
         select: { id: true },
+      });
+      await transaction.activity.create({
+        data: {
+          organizationId: context.user.organizationId,
+          userId: context.user.userId,
+          contactId: subscription.contactId,
+          saleId: subscription.saleId,
+          type: ActivityType.SYSTEM,
+          title: 'Renovación creada',
+          metadata: jsonObject({
+            renewalId: renewal.id,
+            cycleKey,
+            status: RenewalStatus.PENDING,
+          }),
+          requestId,
+        },
       });
       await this.audit.recordWithClient(transaction, {
         organizationId: context.user.organizationId,
@@ -104,13 +137,22 @@ export class RenewalsService {
         action: 'RENEWAL_CREATED',
         tableName: 'Renewal',
         recordId: renewal.id,
-        newValue: jsonObject({ subscriptionId, dueAt: dueAt.toISOString() }),
+        newValue: jsonObject({
+          subscriptionId,
+          cycleKey,
+          periodStart: periodStart.toISOString(),
+          periodEnd: periodEnd.toISOString(),
+          dueAt: dueAt.toISOString(),
+        }),
         ip: context.metadata.ipAddress,
+        requestId,
+      });
+      await this.enqueueEvent(transaction, 'RenewalCreated', renewal.id, context, requestId, {
+        status: RenewalStatus.PENDING,
+        cycleKey,
       });
       return { id: renewal.id, created: true };
     });
-    if (result.created)
-      this.publish('RenewalCreated', result.id, context.user, { status: RenewalStatus.PENDING });
     return this.findOne(result.id, context.user);
   }
 
@@ -144,7 +186,7 @@ export class RenewalsService {
       this.prisma.renewal.count({ where }),
     ]);
     return {
-      data: records.map((record) => this.map(record)),
+      data: records.map((record) => this.map(record, user)),
       pagination: {
         page: query.page,
         limit: query.limit,
@@ -161,7 +203,7 @@ export class RenewalsService {
     });
     if (!renewal)
       this.notFound(COMMERCIAL_ERROR_CODES.RENEWAL_NOT_FOUND, 'La renovación no existe.');
-    return this.map(renewal);
+    return this.map(renewal, user);
   }
 
   async markDue(id: string, context: CommercialRequestContext): Promise<Record<string, unknown>> {
@@ -169,236 +211,219 @@ export class RenewalsService {
   }
 
   async pay(id: string, context: CommercialRequestContext): Promise<Record<string, unknown>> {
-    const result = await this.prisma.$transaction(
-      async (
-        transaction,
-      ): Promise<{ generatedSaleId: string; generatedPaymentId: string; created: boolean }> => {
-        const renewal = await this.lockRenewal(transaction, id, context.user.organizationId);
-        this.access.assertMutate(context.user, renewal.userId);
-        if (renewal.status === RenewalStatus.PAID && renewal.generatedSaleId) {
-          const existingPayment = await transaction.payment.findFirst({
-            where: {
-              organizationId: context.user.organizationId,
-              idempotencyKey: `renewal:${renewal.id}`,
-            },
-            select: { id: true },
-          });
-          return {
-            generatedSaleId: renewal.generatedSaleId,
-            generatedPaymentId: existingPayment?.id ?? renewal.generatedSaleId,
-            created: false,
-          };
-        }
-        if (renewal.status === RenewalStatus.CANCELLED)
-          throw commercialException(
-            HttpStatus.CONFLICT,
-            COMMERCIAL_ERROR_CODES.INVALID_STATE,
-            'La renovación está cancelada.',
-          );
-        const subscription = await transaction.subscription.findFirst({
-          where: {
-            id: renewal.subscriptionId,
-            organizationId: context.user.organizationId,
-            deletedAt: null,
-          },
-          select: {
-            contactId: true,
-            userId: true,
-            saleItemId: true,
-            status: true,
-            nextBillingAt: true,
-            billingCycle: true,
-            customIntervalDays: true,
-          },
-        });
-        if (!subscription)
-          this.notFound(COMMERCIAL_ERROR_CODES.SUBSCRIPTION_NOT_FOUND, 'La suscripción no existe.');
-        const item = await transaction.saleItem.findFirst({
-          where: {
-            organizationId: context.user.organizationId,
-            id: subscription.saleItemId,
-            deletedAt: null,
-          },
-          select: {
-            productId: true,
-            planId: true,
-            variantId: true,
-            priceBookEntryId: true,
-            productNameSnapshot: true,
-            productSlugSnapshot: true,
-            productTypeSnapshot: true,
-            fulfillmentModeSnapshot: true,
-            requiresSubscriptionSnapshot: true,
-            skuSnapshot: true,
-            planNameSnapshot: true,
-            variantNameSnapshot: true,
-            billingPeriodUnitSnapshot: true,
-            billingPeriodCountSnapshot: true,
-            catalogSnapshot: true,
-            quantity: true,
-          },
-        });
-        if (!item)
-          this.notFound(
-            COMMERCIAL_ERROR_CODES.SALE_ITEM_NOT_FOUND,
-            'El ítem original de la suscripción no existe.',
-          );
-        const sale = await transaction.sale.create({
-          data: {
-            organizationId: context.user.organizationId,
-            contactId: subscription.contactId,
-            userId: subscription.userId ?? context.user.userId,
-            status: SaleStatus.CONFIRMED,
-            subtotal: renewal.amount,
-            discountAmount: 0,
-            taxAmount: 0,
-            total: renewal.amount,
-            currency: renewal.currency,
-            soldAt: new Date(),
-            note: `Renovación ${renewal.id}`,
-          },
-          select: { id: true },
-        });
-        await transaction.saleItem.create({
-          data: {
-            organizationId: context.user.organizationId,
-            saleId: sale.id,
-            productId: item.productId,
-            planId: item.planId,
-            variantId: item.variantId,
-            priceBookEntryId: item.priceBookEntryId,
-            productNameSnapshot: item.productNameSnapshot,
-            productSlugSnapshot: item.productSlugSnapshot,
-            productTypeSnapshot: item.productTypeSnapshot,
-            fulfillmentModeSnapshot: item.fulfillmentModeSnapshot,
-            requiresSubscriptionSnapshot: item.requiresSubscriptionSnapshot,
-            skuSnapshot: item.skuSnapshot,
-            planNameSnapshot: item.planNameSnapshot,
-            variantNameSnapshot: item.variantNameSnapshot,
-            billingPeriodUnitSnapshot: item.billingPeriodUnitSnapshot,
-            billingPeriodCountSnapshot: item.billingPeriodCountSnapshot,
-            catalogSnapshot: item.catalogSnapshot as Prisma.InputJsonValue,
-            quantity: item.quantity,
-            unitPrice: renewal.amount.div(item.quantity),
-            discountAmount: 0,
-            taxAmount: 0,
-            total: renewal.amount,
-            currency: renewal.currency,
-          },
-        });
-        const payment = await transaction.payment.create({
-          data: {
-            organizationId: context.user.organizationId,
-            saleId: sale.id,
-            grossAmount: renewal.amount,
-            feeAmount: 0,
-            netAmount: renewal.amount,
-            currency: renewal.currency,
-            method: PaymentMethod.MANUAL,
-            reference: `renewal:${renewal.id}`,
-            idempotencyKey: `renewal:${renewal.id}`,
-            status: PaymentStatus.CONFIRMED,
-            paymentDate: new Date(),
-            confirmedAt: new Date(),
-          },
-          select: { id: true },
-        });
-        await transaction.renewal.update({
-          where: { organizationId_id: { organizationId: context.user.organizationId, id } },
-          data: {
-            status: RenewalStatus.PAID,
-            paidAt: new Date(),
-            generatedSaleId: sale.id,
-            version: { increment: 1 },
-          },
-        });
-        const nextStart = renewal.dueAt;
-        const nextEnd = this.addCycle(
-          nextStart,
-          subscription.billingCycle,
-          subscription.customIntervalDays,
+    const requestId = context.metadata.requestId ?? randomUUID();
+    await this.prisma.$transaction(async (transaction) => {
+      const renewal = await this.lockRenewal(transaction, id, context.user.organizationId);
+      this.access.assertMutate(context.user, renewal.userId);
+      if (renewal.status === RenewalStatus.PAID) return;
+      if (renewal.status === RenewalStatus.CANCELLED)
+        throw commercialException(
+          HttpStatus.CONFLICT,
+          COMMERCIAL_ERROR_CODES.INVALID_STATE,
+          'La renovación está cancelada.',
         );
-        await transaction.subscription.update({
-          where: {
-            organizationId_id: {
-              organizationId: context.user.organizationId,
-              id: renewal.subscriptionId,
-            },
-          },
-          data: {
-            currentPeriodStart: nextStart,
-            currentPeriodEnd: nextEnd,
-            nextBillingAt: nextEnd,
-            version: { increment: 1 },
-          },
-        });
-        await transaction.activity.create({
-          data: {
-            organizationId: context.user.organizationId,
-            userId: context.user.userId,
-            contactId: subscription.contactId,
-            saleId: sale.id,
-            type: ActivityType.SALE,
-            title: 'Renovación pagada',
-            metadata: jsonObject({ renewalId: id, status: RenewalStatus.PAID }),
-          },
-        });
-        await this.audit.recordWithClient(transaction, {
+
+      const subscription = await this.lockSubscription(
+        transaction,
+        renewal.subscriptionId,
+        context.user.organizationId,
+      );
+      if (subscription.status !== SubscriptionStatus.ACTIVE)
+        throw commercialException(
+          HttpStatus.CONFLICT,
+          COMMERCIAL_ERROR_CODES.INVALID_STATE,
+          'La suscripción debe estar activa para pagar la renovación.',
+        );
+
+      const item = await transaction.saleItem.findFirst({
+        where: {
           organizationId: context.user.organizationId,
-          userId: context.user.userId,
-          action: 'SALE_CREATED',
-          tableName: 'Sale',
-          recordId: sale.id,
-          newValue: jsonObject({
-            status: SaleStatus.CONFIRMED,
-            total: renewal.amount.toFixed(2),
-            source: 'RENEWAL',
-          }),
-          ip: context.metadata.ipAddress,
-        });
-        await this.audit.recordWithClient(transaction, {
-          organizationId: context.user.organizationId,
-          userId: context.user.userId,
-          action: 'PAYMENT_CREATED',
-          tableName: 'Payment',
-          recordId: payment.id,
-          newValue: jsonObject({
-            status: PaymentStatus.CONFIRMED,
-            amount: renewal.amount.toFixed(2),
-            source: 'RENEWAL',
-          }),
-          ip: context.metadata.ipAddress,
-        });
-        await this.audit.recordWithClient(transaction, {
-          organizationId: context.user.organizationId,
-          userId: context.user.userId,
-          action: 'RENEWAL_PAID',
-          tableName: 'Renewal',
-          recordId: id,
-          newValue: jsonObject({ generatedSaleId: sale.id, paymentId: payment.id }),
-          ip: context.metadata.ipAddress,
-        });
-        return { generatedSaleId: sale.id, generatedPaymentId: payment.id, created: true };
-      },
-    );
-    if (result.created) {
-      this.publish('RenewalPaid', id, context.user, {
-        status: RenewalStatus.PAID,
-        generatedSaleId: result.generatedSaleId,
+          id: subscription.saleItemId,
+          deletedAt: null,
+        },
+        select: {
+          productId: true,
+          planId: true,
+          variantId: true,
+          priceBookEntryId: true,
+          snapshotVersion: true,
+          productNameSnapshot: true,
+          productSlugSnapshot: true,
+          productTypeSnapshot: true,
+          fulfillmentModeSnapshot: true,
+          requiresSubscriptionSnapshot: true,
+          skuSnapshot: true,
+          planNameSnapshot: true,
+          variantNameSnapshot: true,
+          billingPeriodUnitSnapshot: true,
+          billingPeriodCountSnapshot: true,
+          catalogSnapshot: true,
+          quantity: true,
+        },
       });
-      this.publish('SaleCreated', result.generatedSaleId, context.user, {
+      if (!item)
+        this.notFound(
+          COMMERCIAL_ERROR_CODES.SALE_ITEM_NOT_FOUND,
+          'El ítem original de la suscripción no existe.',
+        );
+
+      const sale = await transaction.sale.create({
+        data: {
+          organizationId: context.user.organizationId,
+          contactId: subscription.contactId,
+          userId: subscription.userId ?? context.user.userId,
+          status: SaleStatus.CONFIRMED,
+          subtotal: renewal.amount,
+          discountAmount: 0,
+          taxAmount: 0,
+          total: renewal.amount,
+          currency: renewal.currency,
+          soldAt: new Date(),
+          note: `Renovación ${renewal.id}`,
+        },
+        select: { id: true },
+      });
+      await transaction.saleItem.create({
+        data: {
+          organizationId: context.user.organizationId,
+          saleId: sale.id,
+          productId: item.productId,
+          planId: item.planId,
+          variantId: item.variantId,
+          priceBookEntryId: item.priceBookEntryId,
+          snapshotVersion: item.snapshotVersion,
+          productNameSnapshot: item.productNameSnapshot,
+          productSlugSnapshot: item.productSlugSnapshot,
+          productTypeSnapshot: item.productTypeSnapshot,
+          fulfillmentModeSnapshot: item.fulfillmentModeSnapshot,
+          requiresSubscriptionSnapshot: item.requiresSubscriptionSnapshot,
+          skuSnapshot: item.skuSnapshot,
+          planNameSnapshot: item.planNameSnapshot,
+          variantNameSnapshot: item.variantNameSnapshot,
+          billingPeriodUnitSnapshot: item.billingPeriodUnitSnapshot,
+          billingPeriodCountSnapshot: item.billingPeriodCountSnapshot,
+          catalogSnapshot: item.catalogSnapshot as Prisma.InputJsonValue,
+          quantity: item.quantity,
+          unitPrice: renewal.amount.div(item.quantity),
+          discountAmount: 0,
+          taxAmount: 0,
+          total: renewal.amount,
+          currency: renewal.currency,
+        },
+      });
+      const payment = await transaction.payment.create({
+        data: {
+          organizationId: context.user.organizationId,
+          saleId: sale.id,
+          grossAmount: renewal.amount,
+          feeAmount: 0,
+          netAmount: renewal.amount,
+          currency: renewal.currency,
+          method: PaymentMethod.MANUAL,
+          reference: `renewal:${renewal.id}`,
+          idempotencyKey: `renewal:${renewal.id}`,
+          requestFingerprint: createHash('sha256')
+            .update(`${sale.id}|${renewal.amount.toFixed(2)}|${renewal.currency}|renewal`)
+            .digest('hex'),
+          status: PaymentStatus.CONFIRMED,
+          paymentDate: new Date(),
+          confirmedAt: new Date(),
+        },
+        select: { id: true },
+      });
+      await transaction.renewal.update({
+        where: { organizationId_id: { organizationId: context.user.organizationId, id } },
+        data: {
+          status: RenewalStatus.PAID,
+          paidAt: new Date(),
+          generatedSaleId: sale.id,
+          version: { increment: 1 },
+        },
+      });
+      await transaction.subscription.update({
+        where: {
+          organizationId_id: {
+            organizationId: context.user.organizationId,
+            id: renewal.subscriptionId,
+          },
+        },
+        data: {
+          currentPeriodStart: renewal.periodStart,
+          currentPeriodEnd: renewal.periodEnd,
+          nextBillingAt: renewal.periodEnd,
+          version: { increment: 1 },
+        },
+      });
+
+      await transaction.activity.create({
+        data: {
+          organizationId: context.user.organizationId,
+          userId: context.user.userId,
+          contactId: subscription.contactId,
+          saleId: sale.id,
+          type: ActivityType.SYSTEM,
+          title: 'Renovación pagada',
+          metadata: jsonObject({ renewalId: id, status: RenewalStatus.PAID }),
+          requestId,
+        },
+      });
+      await this.audit.recordWithClient(transaction, {
+        organizationId: context.user.organizationId,
+        userId: context.user.userId,
+        action: 'SALE_CREATED',
+        tableName: 'Sale',
+        recordId: sale.id,
+        newValue: jsonObject({
+          status: SaleStatus.CONFIRMED,
+          total: renewal.amount.toFixed(2),
+          source: 'RENEWAL',
+        }),
+        ip: context.metadata.ipAddress,
+        requestId,
+      });
+      await this.audit.recordWithClient(transaction, {
+        organizationId: context.user.organizationId,
+        userId: context.user.userId,
+        action: 'PAYMENT_CREATED',
+        tableName: 'Payment',
+        recordId: payment.id,
+        newValue: jsonObject({
+          status: PaymentStatus.CONFIRMED,
+          amount: renewal.amount.toFixed(2),
+          source: 'RENEWAL',
+        }),
+        ip: context.metadata.ipAddress,
+        requestId,
+      });
+      await this.audit.recordWithClient(transaction, {
+        organizationId: context.user.organizationId,
+        userId: context.user.userId,
+        action: 'RENEWAL_PAID',
+        tableName: 'Renewal',
+        recordId: id,
+        newValue: jsonObject({ generatedSaleId: sale.id, paymentId: payment.id }),
+        ip: context.metadata.ipAddress,
+        requestId,
+      });
+      await this.enqueueEvent(transaction, 'RenewalPaid', id, context, requestId, {
+        status: RenewalStatus.PAID,
+        generatedSaleId: sale.id,
+      });
+      await this.enqueueEvent(transaction, 'SaleCreated', sale.id, context, requestId, {
         source: 'RENEWAL',
         status: SaleStatus.CONFIRMED,
       });
-      this.publish('SaleConfirmed', result.generatedSaleId, context.user, { source: 'RENEWAL' });
-      this.publish('PaymentCreated', result.generatedPaymentId, context.user, {
+      await this.enqueueEvent(transaction, 'SaleConfirmed', sale.id, context, requestId, {
+        source: 'RENEWAL',
+      });
+      await this.enqueueEvent(transaction, 'PaymentCreated', payment.id, context, requestId, {
         source: 'RENEWAL',
         status: PaymentStatus.CONFIRMED,
       });
-      this.publish('PaymentConfirmed', result.generatedPaymentId, context.user, {
+      await this.enqueueEvent(transaction, 'PaymentConfirmed', payment.id, context, requestId, {
         source: 'RENEWAL',
       });
-    }
+    });
     return this.findOne(id, context.user);
   }
 
@@ -407,7 +432,7 @@ export class RenewalsService {
     dto: CancelRenewalDto,
     context: CommercialRequestContext,
   ): Promise<Record<string, unknown>> {
-    let changed = false;
+    const requestId = context.metadata.requestId ?? randomUUID();
     await this.prisma.$transaction(async (transaction) => {
       const renewal = await this.lockRenewal(transaction, id, context.user.organizationId);
       this.access.assertMutate(context.user, renewal.userId);
@@ -426,6 +451,16 @@ export class RenewalsService {
           version: { increment: 1 },
         },
       });
+      await transaction.activity.create({
+        data: {
+          organizationId: context.user.organizationId,
+          userId: context.user.userId,
+          type: ActivityType.SYSTEM,
+          title: 'Renovación cancelada',
+          metadata: jsonObject({ renewalId: id, status: RenewalStatus.CANCELLED }),
+          requestId,
+        },
+      });
       await this.audit.recordWithClient(transaction, {
         organizationId: context.user.organizationId,
         userId: context.user.userId,
@@ -434,11 +469,12 @@ export class RenewalsService {
         recordId: id,
         newValue: jsonObject({ status: RenewalStatus.CANCELLED }),
         ip: context.metadata.ipAddress,
+        requestId,
       });
-      changed = true;
+      await this.enqueueEvent(transaction, 'RenewalCancelled', id, context, requestId, {
+        status: RenewalStatus.CANCELLED,
+      });
     });
-    if (changed)
-      this.publish('RenewalCancelled', id, context.user, { status: RenewalStatus.CANCELLED });
     return this.findOne(id, context.user);
   }
 
@@ -446,7 +482,7 @@ export class RenewalsService {
     id: string,
     context: CommercialRequestContext,
   ): Promise<Record<string, unknown>> {
-    let changed = false;
+    const requestId = context.metadata.requestId ?? randomUUID();
     await this.prisma.$transaction(async (transaction) => {
       const renewal = await this.lockRenewal(transaction, id, context.user.organizationId);
       this.access.assertMutate(context.user, renewal.userId);
@@ -457,9 +493,25 @@ export class RenewalsService {
           COMMERCIAL_ERROR_CODES.INVALID_STATE,
           'La renovación no está pendiente.',
         );
+      if (renewal.dueAt > new Date())
+        throw commercialException(
+          HttpStatus.CONFLICT,
+          COMMERCIAL_ERROR_CODES.RENEWAL_TOO_EARLY,
+          'La renovación todavía no está vencida.',
+        );
       await transaction.renewal.update({
         where: { organizationId_id: { organizationId: context.user.organizationId, id } },
         data: { status: RenewalStatus.DUE, version: { increment: 1 } },
+      });
+      await transaction.activity.create({
+        data: {
+          organizationId: context.user.organizationId,
+          userId: context.user.userId,
+          type: ActivityType.SYSTEM,
+          title: 'Renovación vencida',
+          metadata: jsonObject({ renewalId: id, status: RenewalStatus.DUE }),
+          requestId,
+        },
       });
       await this.audit.recordWithClient(transaction, {
         organizationId: context.user.organizationId,
@@ -469,10 +521,12 @@ export class RenewalsService {
         recordId: id,
         newValue: jsonObject({ status: RenewalStatus.DUE }),
         ip: context.metadata.ipAddress,
+        requestId,
       });
-      changed = true;
+      await this.enqueueEvent(transaction, 'RenewalDue', id, context, requestId, {
+        status: RenewalStatus.DUE,
+      });
     });
-    if (changed) this.publish('RenewalDue', id, context.user, { status: RenewalStatus.DUE });
     return this.findOne(id, context.user);
   }
 
@@ -494,19 +548,68 @@ export class RenewalsService {
     return renewal;
   }
 
-  private addCycle(start: Date, cycle: string, customDays: number | null): Date {
+  private async lockSubscription(
+    transaction: Prisma.TransactionClient,
+    id: string,
+    organizationId: string,
+  ) {
+    const locked = await transaction.$queryRaw<Array<{ id: string }>>(
+      Prisma.sql`SELECT "id" FROM "Subscription" WHERE "id" = ${id}::uuid AND "organizationId" = ${organizationId}::uuid FOR UPDATE`,
+    );
+    if (locked.length === 0)
+      this.notFound(COMMERCIAL_ERROR_CODES.SUBSCRIPTION_NOT_FOUND, 'La suscripción no existe.');
+    const subscription = await transaction.subscription.findFirst({
+      where: { id, organizationId, deletedAt: null },
+    });
+    if (!subscription)
+      this.notFound(COMMERCIAL_ERROR_CODES.SUBSCRIPTION_NOT_FOUND, 'La suscripción no existe.');
+    return subscription;
+  }
+
+  private addCycle(
+    start: Date,
+    cycle: BillingCycle,
+    customDays: number | null | undefined,
+  ): Date | null {
     const next = new Date(start);
-    if (cycle === 'TRIAL') next.setUTCDate(next.getUTCDate() + 14);
-    else if (cycle === 'WEEKLY') next.setUTCDate(next.getUTCDate() + 7);
-    else if (cycle === 'MONTHLY') next.setUTCMonth(next.getUTCMonth() + 1);
-    else if (cycle === 'QUARTERLY') next.setUTCMonth(next.getUTCMonth() + 3);
-    else if (cycle === 'SEMI_ANNUAL') next.setUTCMonth(next.getUTCMonth() + 6);
-    else if (cycle === 'ANNUAL') next.setUTCFullYear(next.getUTCFullYear() + 1);
-    else next.setUTCDate(next.getUTCDate() + (customDays ?? 30));
+    if (cycle === BillingCycle.TRIAL) next.setUTCDate(next.getUTCDate() + 14);
+    else if (cycle === BillingCycle.WEEKLY) next.setUTCDate(next.getUTCDate() + 7);
+    else if (cycle === BillingCycle.MONTHLY) next.setUTCMonth(next.getUTCMonth() + 1);
+    else if (cycle === BillingCycle.QUARTERLY) next.setUTCMonth(next.getUTCMonth() + 3);
+    else if (cycle === BillingCycle.SEMI_ANNUAL) next.setUTCMonth(next.getUTCMonth() + 6);
+    else if (cycle === BillingCycle.ANNUAL) next.setUTCFullYear(next.getUTCFullYear() + 1);
+    else if (customDays && customDays > 0) next.setUTCDate(next.getUTCDate() + customDays);
+    else return null;
     return next;
   }
 
-  private map(renewal: Prisma.RenewalGetPayload<object>): Record<string, unknown> {
+  private cycleKey(subscriptionId: string, periodStart: Date): string {
+    return `${subscriptionId}:${periodStart.toISOString()}`;
+  }
+
+  private async enqueueEvent(
+    transaction: Prisma.TransactionClient,
+    eventType: CommercialEventName,
+    aggregateId: string,
+    context: CommercialRequestContext,
+    requestId: string,
+    payload: Record<string, string | number | boolean | null>,
+  ): Promise<void> {
+    await this.outbox.enqueueWithClient(transaction, {
+      eventType,
+      organizationId: context.user.organizationId,
+      aggregateType: 'Renewal',
+      aggregateId,
+      actorId: context.user.userId,
+      requestId,
+      payload: jsonObject(payload),
+    });
+  }
+
+  private map(
+    renewal: Prisma.RenewalGetPayload<object>,
+    user: AuthenticatedUser,
+  ): Record<string, unknown> {
     return {
       id: renewal.id,
       subscriptionId: renewal.subscriptionId,
@@ -514,33 +617,27 @@ export class RenewalsService {
       generatedSaleId: renewal.generatedSaleId,
       status: renewal.status,
       billingCycle: renewal.billingCycle,
+      customIntervalDays: renewal.customIntervalDays,
       amount: renewal.amount.toFixed(2),
       currency: renewal.currency,
       dueAt: renewal.dueAt,
+      periodStart: renewal.periodStart,
+      periodEnd: renewal.periodEnd,
+      cycleKey: renewal.cycleKey,
       paidAt: renewal.paidAt,
+      snapshotVersion: renewal.snapshotVersion,
       productName: renewal.productNameSnapshot,
       sku: renewal.skuSnapshot,
-      catalogSnapshot: renewal.catalogSnapshot,
+      catalogSnapshot: sanitizeSnapshot(
+        renewal.catalogSnapshot,
+        user.permissions.includes('catalog.costs.read'),
+      ),
       notes: renewal.notes,
       createdAt: renewal.createdAt,
       updatedAt: renewal.updatedAt,
     };
   }
-  private publish(
-    name: CommercialEventName,
-    aggregateId: string,
-    user: AuthenticatedUser,
-    payload: Record<string, unknown>,
-  ): void {
-    this.events.publish(name, {
-      eventId: randomUUID(),
-      occurredAt: new Date(),
-      organizationId: user.organizationId,
-      aggregateId,
-      actorUserId: user.userId,
-      payload,
-    });
-  }
+
   private notFound(code: string, message: string): never {
     throw commercialException(HttpStatus.NOT_FOUND, code, message);
   }

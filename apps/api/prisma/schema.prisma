@@ -107,6 +107,13 @@ enum RenewalStatus {
   CANCELLED
 }
 
+enum OutboxEventStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
 enum ProductType {
   SUBSCRIPTION
   CREDIT_PACKAGE
@@ -192,6 +199,7 @@ model Organization {
   expenses                  Expense[]
   auditLogs                 AuditLog[]
   followUpHistories         FollowUpHistory[]
+  outboxEvents              OutboxEvent[]
 
   @@index([createdAt])
 }
@@ -253,6 +261,7 @@ model User {
   renewals                  Renewal[]                 @relation("RenewalOwner")
   campaigns                 Campaign[]                @relation("CampaignOwner")
   auditLogs                 AuditLog[]                @relation("AuditActor")
+  outboxEvents              OutboxEvent[]             @relation("OutboxActor")
   opportunityStageHistories OpportunityStageHistory[] @relation("OpportunityStageHistoryActor")
   authSessions              AuthSession[]
   passwordResetTokens       PasswordResetToken[]
@@ -518,6 +527,7 @@ model Activity {
   description    String?
   occurredAt     DateTime     @default(now())
   metadata       Json?
+  requestId      String?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   deletedAt      DateTime?
@@ -905,6 +915,7 @@ model SaleItem {
   planId                       String?            @db.Uuid
   variantId                    String?            @db.Uuid
   priceBookEntryId             String?            @db.Uuid
+  snapshotVersion              Int                @default(2)
   productNameSnapshot          String
   productSlugSnapshot          String?
   productTypeSnapshot          ProductType?
@@ -944,29 +955,30 @@ model SaleItem {
 }
 
 model Payment {
-  id             String        @id @default(uuid()) @db.Uuid
-  organizationId String        @db.Uuid
-  saleId         String        @db.Uuid
-  grossAmount    Decimal       @db.Decimal(18, 2)
-  feeAmount      Decimal       @default(0) @db.Decimal(18, 2)
-  netAmount      Decimal       @db.Decimal(18, 2)
-  refundedAmount Decimal       @default(0) @db.Decimal(18, 2)
-  currency       String
-  method         PaymentMethod
-  reference      String?
-  idempotencyKey String?
-  status         PaymentStatus
-  paymentDate    DateTime      @default(now())
-  confirmedAt    DateTime?
-  failedAt       DateTime?
-  refundedAt     DateTime?
-  refundReason   String?
-  note           String?
-  metadata       Json?
-  version        Int           @default(0)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  deletedAt      DateTime?
+  id                 String        @id @default(uuid()) @db.Uuid
+  organizationId     String        @db.Uuid
+  saleId             String        @db.Uuid
+  grossAmount        Decimal       @db.Decimal(18, 2)
+  feeAmount          Decimal       @default(0) @db.Decimal(18, 2)
+  netAmount          Decimal       @db.Decimal(18, 2)
+  refundedAmount     Decimal       @default(0) @db.Decimal(18, 2)
+  currency           String
+  method             PaymentMethod
+  reference          String?
+  idempotencyKey     String?
+  requestFingerprint String?
+  status             PaymentStatus
+  paymentDate        DateTime      @default(now())
+  confirmedAt        DateTime?
+  failedAt           DateTime?
+  refundedAt         DateTime?
+  refundReason       String?
+  note               String?
+  metadata           Json?
+  version            Int           @default(0)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  deletedAt          DateTime?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   sale         Sale         @relation(fields: [organizationId, saleId], references: [organizationId, id], onDelete: Restrict)
@@ -990,6 +1002,7 @@ model Subscription {
   productId           String?            @db.Uuid
   planId              String?            @db.Uuid
   variantId           String?            @db.Uuid
+  snapshotVersion     Int                @default(2)
   status              SubscriptionStatus @default(PENDING)
   billingCycle        BillingCycle
   customIntervalDays  Int?
@@ -1046,10 +1059,15 @@ model Renewal {
   userId              String?       @db.Uuid
   status              RenewalStatus @default(PENDING)
   billingCycle        BillingCycle
+  customIntervalDays  Int?
   amount              Decimal       @db.Decimal(18, 2)
   currency            String
   dueAt               DateTime
+  periodStart         DateTime
+  periodEnd           DateTime
+  cycleKey            String
   paidAt              DateTime?
+  snapshotVersion     Int           @default(2)
   productNameSnapshot String
   skuSnapshot         String?
   catalogSnapshot     Json
@@ -1067,12 +1085,41 @@ model Renewal {
 
   @@unique([organizationId, id])
   @@unique([organizationId, generatedSaleId])
+  @@unique([organizationId, subscriptionId, cycleKey])
   @@index([organizationId])
   @@index([organizationId, subscriptionId])
   @@index([organizationId, sourceSaleId])
   @@index([organizationId, userId])
   @@index([organizationId, status])
   @@index([organizationId, dueAt])
+  @@index([createdAt])
+}
+
+model OutboxEvent {
+  id             String            @id @default(uuid()) @db.Uuid
+  eventType      String
+  organizationId String            @db.Uuid
+  aggregateType  String
+  aggregateId    String            @db.Uuid
+  actorId        String?           @db.Uuid
+  requestId      String
+  occurredAt     DateTime
+  payload        Json
+  status         OutboxEventStatus @default(PENDING)
+  attempts       Int               @default(0)
+  availableAt    DateTime          @default(now())
+  processingAt   DateTime?
+  processedAt    DateTime?
+  lastError      String?
+  createdAt      DateTime          @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  actor        User?        @relation("OutboxActor", fields: [organizationId, actorId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@index([status, availableAt])
+  @@index([organizationId, aggregateType, aggregateId])
+  @@index([requestId])
   @@index([createdAt])
 }
 
@@ -1135,6 +1182,7 @@ model AuditLog {
   previousValue  Json?
   newValue       Json?
   ip             String?
+  requestId      String?
   occurredAt     DateTime @default(now())
   createdAt      DateTime @default(now())
 

@@ -1,6 +1,6 @@
 # Renewals
 
-`Renewal` representa el siguiente cobro de una suscripción. Conserva la venta fuente y un snapshot independiente.
+`Renewal` representa el siguiente cobro de una suscripción. Conserva la venta fuente, un snapshot independiente versionado, `periodStart`, `periodEnd` y un `cycleKey` determinista. PostgreSQL aplica unicidad por organización, suscripción y ciclo.
 
 ## Endpoints
 
@@ -13,4 +13,4 @@
 
 Estados: `PENDING`, `DUE`, `OVERDUE`, `PAID`, `CANCELLED`. Una renovación pagada nunca muta la venta histórica: relaciona la nueva venta en `generatedSaleId` y actualiza únicamente el periodo de la suscripción.
 
-La creación y el pago bloquean la suscripción/renovación dentro de transacciones cortas. Así, solicitudes simultáneas crean una sola renovación activa y generan una sola venta nueva. Eventos: `RenewalCreated`, `RenewalDue`, `RenewalPaid` y `RenewalCancelled`.
+La creación y el pago bloquean Renewal y Subscription dentro de transacciones cortas. El pago solo es válido con Subscription `ACTIVE`, genera una venta nueva y avanza al periodo persistido sin modificar la venta histórica. Solicitudes simultáneas son idempotentes. `due` rechaza transiciones anticipadas. Eventos, Activity y auditoría conservan `requestId` y se publican mediante Outbox.

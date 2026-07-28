@@ -57,6 +57,9 @@ jobs:
       - name: Verify database integrity
         run: npm run db:verify-integrity
 
+      - name: Verify legacy commercial data
+        run: npm run prisma:verify-legacy --workspace=@superflash/api
+
       - name: Prettier
         run: npm run format:check
 

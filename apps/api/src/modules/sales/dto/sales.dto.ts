@@ -55,6 +55,12 @@ export class CreateSaleItemDto {
   @ApiPropertyOptional({ example: '0.00' })
   @IsDecimal({ decimal_digits: '0,2' })
   taxAmount?: string;
+
+  @IsOptional()
+  @ApiPropertyOptional({ maxLength: 500 })
+  @IsString()
+  @MaxLength(500)
+  priceOverrideReason?: string;
 }
 
 export class CreateSaleDto {

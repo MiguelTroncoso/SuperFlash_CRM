@@ -127,8 +127,10 @@ describe('Commercial event contracts', () => {
       eventId: `event-${name}`,
       occurredAt: new Date(),
       organizationId: 'org-a',
+      aggregateType: 'Commercial',
       aggregateId: 'aggregate-a',
       actorUserId: 'user-a',
+      requestId: 'request-a',
       payload: { status: 'TEST' },
     });
     expect(received).toEqual(['org-a:aggregate-a']);

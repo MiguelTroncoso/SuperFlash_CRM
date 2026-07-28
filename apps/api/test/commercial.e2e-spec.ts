@@ -19,6 +19,7 @@ import { AppModule } from '../src/app.module';
 import { AppConfiguration } from '../src/config/configuration';
 import { PrismaService } from '../src/infrastructure/prisma/prisma.service';
 import { hashPassword } from '../src/modules/auth/auth.crypto';
+import { resetDatabase } from './test-database';
 
 const PASSWORD = 'CommercialPassword1!';
 
@@ -62,32 +63,7 @@ describe('Commercial core HTTP flow', () => {
   });
 
   beforeEach(async () => {
-    await prisma.renewal.deleteMany();
-    await prisma.subscription.deleteMany();
-    await prisma.activity.deleteMany();
-    await prisma.payment.deleteMany();
-    await prisma.saleItem.deleteMany();
-    await prisma.sale.deleteMany();
-    await prisma.auditLog.deleteMany();
-    await prisma.opportunityStageHistory.deleteMany();
-    await prisma.followUpHistory.deleteMany();
-    await prisma.followUp.deleteMany();
-    await prisma.opportunity.deleteMany();
-    await prisma.contactTag.deleteMany();
-    await prisma.contact.deleteMany();
-    await prisma.campaign.deleteMany();
-    await prisma.productVariant.deleteMany();
-    await prisma.productPlan.deleteMany();
-    await prisma.priceBookEntry.deleteMany();
-    await prisma.priceBook.deleteMany();
-    await prisma.product.deleteMany();
-    await prisma.pipelineStage.deleteMany();
-    await prisma.passwordResetToken.deleteMany();
-    await prisma.authSession.deleteMany();
-    await prisma.user.deleteMany();
-    await prisma.role.deleteMany();
-    await prisma.permission.deleteMany();
-    await prisma.organization.deleteMany();
+    await resetDatabase(prisma);
     fixture = await createFixture(prisma);
   });
 
@@ -205,6 +181,50 @@ describe('Commercial core HTTP flow', () => {
     expect(balance.balance).toBe('0.00');
   });
 
+  it('rejects payment creation while the Sale is still DRAFT', async () => {
+    const token = await login(fixture.ownerA);
+    const created = await authorized('post', '/api/v1/sales', token).send({
+      contactId: fixture.contactA,
+      currency: 'USD',
+      items: [{ productId: fixture.productA, unitPrice: '10.00' }],
+    });
+    const response = await authorized(
+      'post',
+      `/api/v1/sales/${String(body(created).id)}/payments`,
+      token,
+    ).send({ amount: '10.00', currency: 'USD', method: 'MANUAL' });
+    expect(response.status).toBe(409);
+    expect(body(response).code).toBe('PAYMENT_SALE_STATE');
+  });
+
+  it('returns the same payment for an idempotent retry and conflicts on a changed payload', async () => {
+    const token = await login(fixture.ownerA);
+    const sale = await createSale(token, '100.00');
+    const first = await authorized('post', `/api/v1/sales/${sale.id}/payments`, token).send({
+      amount: '25.00',
+      currency: 'USD',
+      method: 'MANUAL',
+      idempotencyKey: 'payment-retry-1',
+    });
+    const retry = await authorized('post', `/api/v1/sales/${sale.id}/payments`, token).send({
+      amount: '25.00',
+      currency: 'USD',
+      method: 'MANUAL',
+      idempotencyKey: 'payment-retry-1',
+    });
+    const conflict = await authorized('post', `/api/v1/sales/${sale.id}/payments`, token).send({
+      amount: '30.00',
+      currency: 'USD',
+      method: 'MANUAL',
+      idempotencyKey: 'payment-retry-1',
+    });
+    expect(first.status).toBe(201);
+    expect(retry.status).toBe(201);
+    expect(body(retry).id).toBe(body(first).id);
+    expect(conflict.status).toBe(409);
+    expect(body(conflict).code).toBe('PAYMENT_IDEMPOTENCY_CONFLICT');
+  });
+
   it('prevents a confirmed payment from exceeding the Sale balance', async () => {
     const token = await login(fixture.ownerA);
     const sale = await createSale(token, '100.00');
@@ -249,6 +269,48 @@ describe('Commercial core HTTP flow', () => {
     expect('paidAmount' in raw).toBe(false);
   });
 
+  it('blocks cancellation with confirmed money and allows it after a full refund', async () => {
+    const token = await login(fixture.ownerA);
+    const sale = await createSale(token, '100.00');
+    const payment = await authorized('post', `/api/v1/sales/${sale.id}/payments`, token).send({
+      amount: '100.00',
+      currency: 'USD',
+      method: 'MANUAL',
+    });
+    const paymentId = String(body(payment).id);
+    await authorized('post', `/api/v1/payments/${paymentId}/confirm`, token);
+    const rejected = await authorized('post', `/api/v1/sales/${sale.id}/cancel`, token).send({});
+    expect(rejected.status).toBe(409);
+    expect(body(rejected).code).toBe('SALE_CANCELLED_WITH_BALANCE');
+    await authorized('post', `/api/v1/payments/${paymentId}/refund`, token).send({
+      amount: '100.00',
+    });
+    const cancelled = await authorized('post', `/api/v1/sales/${sale.id}/cancel`, token).send({});
+    expect(cancelled.status).toBe(201);
+    expect(body(cancelled).status).toBe('CANCELLED');
+  });
+
+  it('rejects unsupported payment currencies', async () => {
+    const token = await login(fixture.ownerA);
+    const sale = await createSale(token, '10.00');
+    const response = await authorized('post', `/api/v1/sales/${sale.id}/payments`, token).send({
+      amount: '10.00',
+      currency: 'ZZZ',
+      method: 'MANUAL',
+    });
+    expect(response.status).toBe(400);
+    expect(body(response).code).toBe('COMMERCIAL_UNSUPPORTED_CURRENCY');
+  });
+
+  it('protects SaleItem snapshots after confirmation', async () => {
+    const token = await login(fixture.ownerA);
+    const sale = await createSale(token, '10.00');
+    const item = await prisma.saleItem.findFirstOrThrow({ where: { saleId: sale.id } });
+    await expect(
+      prisma.saleItem.update({ where: { id: item.id }, data: { productNameSnapshot: 'Tampered' } }),
+    ).rejects.toThrow(/immutable/i);
+  });
+
   it('creates and activates a Subscription from SaleItem snapshot', async () => {
     const token = await login(fixture.ownerA);
     const sale = await createSale(token, '50.00');
@@ -289,7 +351,7 @@ describe('Commercial core HTTP flow', () => {
       'post',
       `/api/v1/renewals/from-subscription/${subscription.id}`,
       token,
-    ).send({});
+    ).send({ dueAt: new Date(Date.now() - 1_000).toISOString() });
     const renewalId = String(body(renewal).id);
     const due = await authorized('post', `/api/v1/renewals/${renewalId}/due`, token);
     expect(due.status).toBe(201);
@@ -306,6 +368,64 @@ describe('Commercial core HTTP flow', () => {
         where: { id: stored.generatedSaleId ?? undefined, organizationId: fixture.organizationA },
       }),
     ).toBe(1);
+  });
+
+  it('rejects marking a future Renewal as due', async () => {
+    const token = await login(fixture.ownerA);
+    const subscription = await createSubscription(token);
+    const renewal = await authorized(
+      'post',
+      `/api/v1/renewals/from-subscription/${subscription.id}`,
+      token,
+    ).send({});
+    const response = await authorized(
+      'post',
+      `/api/v1/renewals/${String(body(renewal).id)}/due`,
+      token,
+    );
+    expect(response.status).toBe(409);
+    expect(body(response).code).toBe('RENEWAL_TOO_EARLY');
+  });
+
+  it('does not pay a Renewal after its Subscription is cancelled', async () => {
+    const token = await login(fixture.ownerA);
+    const subscription = await createSubscription(token);
+    const renewal = await authorized(
+      'post',
+      `/api/v1/renewals/from-subscription/${subscription.id}`,
+      token,
+    ).send({ dueAt: new Date(Date.now() - 1_000).toISOString() });
+    await authorized('post', `/api/v1/subscriptions/${subscription.id}/cancel`, token).send({
+      reason: 'Test cancellation',
+    });
+    const response = await authorized(
+      'post',
+      `/api/v1/renewals/${String(body(renewal).id)}/pay`,
+      token,
+    );
+    expect(response.status).toBe(409);
+  });
+
+  it('persists request correlation across audit, activity and outbox', async () => {
+    const token = await login(fixture.ownerA);
+    const requestId = 'commercial-request-123';
+    const response = await authorized('post', '/api/v1/sales', token)
+      .set('X-Request-Id', requestId)
+      .send({
+        contactId: fixture.contactA,
+        currency: 'USD',
+        items: [{ productId: fixture.productA, unitPrice: '10.00' }],
+      });
+    expect(response.headers['x-request-id']).toBe(requestId);
+    expect(body(response).requestId).toBe(requestId);
+    const saleId = String(body(response).id);
+    expect(
+      await prisma.auditLog.findFirst({ where: { recordId: saleId, requestId } }),
+    ).not.toBeNull();
+    expect(await prisma.activity.findFirst({ where: { saleId, requestId } })).not.toBeNull();
+    expect(
+      await prisma.outboxEvent.findFirst({ where: { aggregateId: saleId, requestId } }),
+    ).not.toBeNull();
   });
 
   it('rejects cross-tenant contact and product references at Sale creation', async () => {
@@ -358,7 +478,13 @@ describe('Commercial core HTTP flow', () => {
       currency: 'USD',
       items: [{ productId: fixture.productA, unitPrice: amount }],
     });
-    return { id: String(body(response).id) };
+    const id = String(body(response).id);
+    const confirmed = await authorized('post', `/api/v1/sales/${id}/confirm`, token);
+    if (confirmed.status !== 201)
+      throw new Error(
+        `Commercial fixture sale confirmation failed: ${JSON.stringify(confirmed.body)}`,
+      );
+    return { id };
   }
 
   async function createSubscription(token: string): Promise<{ id: string }> {
@@ -369,7 +495,13 @@ describe('Commercial core HTTP flow', () => {
       `/api/v1/subscriptions/from-sale-item/${item.id}`,
       token,
     ).send({ billingCycle: 'MONTHLY' });
-    return { id: String(body(response).id) };
+    const id = String(body(response).id);
+    const activated = await authorized('post', `/api/v1/subscriptions/${id}/activate`, token);
+    if (activated.status !== 201)
+      throw new Error(
+        `Commercial fixture subscription activation failed: ${JSON.stringify(activated.body)}`,
+      );
+    return { id };
   }
 
   function authorized(method: 'get' | 'post' | 'patch', path: string, token: string): request.Test {

@@ -5,9 +5,11 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 import { AppConfiguration } from './config/configuration';
 import { HttpExceptionFilter } from './infrastructure/http/http-exception.filter';
+import { requestCorrelationMiddleware } from './infrastructure/http/request-correlation';
 
 export function configureApplication(app: INestApplication, configuration: AppConfiguration): void {
   app.setGlobalPrefix('api/v1');
+  app.use(requestCorrelationMiddleware);
   app.use(helmet());
   app.use(cookieParser());
   app.enableCors({

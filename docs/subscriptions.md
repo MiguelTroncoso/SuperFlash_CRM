@@ -1,6 +1,6 @@
 # Subscriptions
 
-Una suscripción se crea desde un `SaleItem` y copia sus datos comerciales; no consulta el catálogo vivo para reconstruir el histórico.
+Una suscripción se crea desde un `SaleItem` de una venta `CONFIRMED` o `FULFILLED`, únicamente si `requiresSubscriptionSnapshot=true` y el ciclo es coherente. Copia el snapshot comercial versionado completo; no consulta el catálogo vivo para reconstruir el histórico.
 
 ## Endpoints
 
@@ -14,4 +14,4 @@ Una suscripción se crea desde un `SaleItem` y copia sus datos comerciales; no c
 
 Estados: `PENDING`, `ACTIVE`, `SUSPENDED`, `EXPIRED`, `CANCELLED`. Ciclos: `TRIAL`, `WEEKLY`, `MONTHLY`, `QUARTERLY`, `SEMI_ANNUAL`, `ANNUAL` y `CUSTOM` con `customIntervalDays`.
 
-Las transiciones son protegidas por permisos, ownership y bloqueo de la suscripción. La unicidad `(organizationId, saleItemId)` impide crear dos suscripciones para el mismo ítem. Eventos: `SubscriptionCreated`, `SubscriptionActivated`, `SubscriptionSuspended`, `SubscriptionExpired` y `SubscriptionCancelled`.
+Las transiciones son protegidas por permisos, ownership y bloqueo de la suscripción. `CUSTOM` exige `customIntervalDays > 0`; los demás ciclos no aceptan intervalo personalizado. La unicidad `(organizationId, saleItemId)` impide crear dos suscripciones para el mismo ítem, incluso concurrentemente. Events y auditoría se escriben con `requestId` en Outbox/Activity/AuditLog.

@@ -12,6 +12,7 @@ export interface AuditRecordInput {
   previousValue?: Prisma.InputJsonValue | undefined;
   newValue?: Prisma.InputJsonValue | undefined;
   ip?: string | undefined;
+  requestId?: string | undefined;
 }
 
 type AuditClient = PrismaService | Prisma.TransactionClient;
@@ -35,6 +36,7 @@ export class AuditService {
         ...(input.previousValue !== undefined ? { previousValue: input.previousValue } : {}),
         ...(input.newValue !== undefined ? { newValue: input.newValue } : {}),
         ...(input.ip ? { ip: input.ip } : {}),
+        ...(input.requestId ? { requestId: input.requestId } : {}),
       },
     });
   }
@@ -45,6 +47,7 @@ export class AuditService {
     action: string;
     recordId: string;
     ip?: string | undefined;
+    requestId?: string | undefined;
     metadata?: Prisma.InputJsonValue | undefined;
   }): Promise<void> {
     await this.record({
@@ -55,6 +58,7 @@ export class AuditService {
       recordId: input.recordId,
       newValue: input.metadata,
       ip: input.ip,
+      requestId: input.requestId,
     });
   }
 }

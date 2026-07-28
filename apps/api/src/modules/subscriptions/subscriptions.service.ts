@@ -2,11 +2,9 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { ActivityType, BillingCycle, Prisma, SubscriptionStatus } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
-import {
-  ApplicationEventBus,
-  CommercialEventName,
-} from '../../infrastructure/events/application-event-bus';
+import { CommercialEventName } from '../../infrastructure/events/application-event-bus';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import { OutboxService } from '../../infrastructure/outbox/outbox.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/auth.types';
 import { CommercialRequestContext, jsonObject } from '../commercial/commercial.types';
@@ -18,12 +16,25 @@ import {
 } from './dto/subscriptions.dto';
 import { SubscriptionsAccessPolicy } from './subscriptions.policy';
 
+function sanitizeSnapshot(value: Prisma.JsonValue, includeCosts: boolean): Prisma.JsonValue {
+  if (Array.isArray(value)) return value.map((item) => sanitizeSnapshot(item, includeCosts));
+  if (value !== null && typeof value === 'object') {
+    const output: Record<string, Prisma.JsonValue> = {};
+    for (const [key, nested] of Object.entries(value) as Array<[string, Prisma.JsonValue]>) {
+      if (!includeCosts && (key === 'costPrice' || key === 'minimumPrice')) continue;
+      output[key] = sanitizeSnapshot(nested, includeCosts);
+    }
+    return output;
+  }
+  return value;
+}
+
 @Injectable()
 export class SubscriptionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly events: ApplicationEventBus,
+    private readonly outbox: OutboxService,
     private readonly access: SubscriptionsAccessPolicy,
   ) {}
 
@@ -57,6 +68,8 @@ export class SubscriptionsService {
           planNameSnapshot: true,
           variantNameSnapshot: true,
           catalogSnapshot: true,
+          snapshotVersion: true,
+          requiresSubscriptionSnapshot: true,
           total: true,
           quantity: true,
           currency: true,
@@ -67,11 +80,27 @@ export class SubscriptionsService {
       });
       if (!item)
         this.notFound(COMMERCIAL_ERROR_CODES.SALE_ITEM_NOT_FOUND, 'El ítem de venta no existe.');
-      if (item.sale.status === 'CANCELLED')
+      if (item.sale.status !== 'CONFIRMED' && item.sale.status !== 'FULFILLED')
         throw commercialException(
           HttpStatus.CONFLICT,
-          COMMERCIAL_ERROR_CODES.INVALID_STATE,
-          'No se puede crear una suscripción desde una venta cancelada.',
+          COMMERCIAL_ERROR_CODES.SUBSCRIPTION_NOT_ELIGIBLE,
+          'La venta debe estar confirmada o cumplida para crear una suscripción.',
+        );
+      if (!item.requiresSubscriptionSnapshot)
+        throw commercialException(
+          HttpStatus.CONFLICT,
+          COMMERCIAL_ERROR_CODES.SUBSCRIPTION_NOT_ELIGIBLE,
+          'El ítem de venta no requiere una suscripción.',
+        );
+      if (
+        (dto.billingCycle === BillingCycle.CUSTOM &&
+          (!dto.customIntervalDays || dto.customIntervalDays <= 0)) ||
+        (dto.billingCycle !== BillingCycle.CUSTOM && dto.customIntervalDays !== undefined)
+      )
+        throw commercialException(
+          HttpStatus.BAD_REQUEST,
+          COMMERCIAL_ERROR_CODES.SUBSCRIPTION_NOT_ELIGIBLE,
+          'El ciclo de cobro y el intervalo personalizado no son coherentes.',
         );
       const startsAt = dto.startsAt ? new Date(dto.startsAt) : new Date();
       const nextBillingAt = this.nextBillingAt(startsAt, dto.billingCycle, dto.customIntervalDays);
@@ -85,6 +114,7 @@ export class SubscriptionsService {
           productId: item.productId,
           planId: item.planId,
           variantId: item.variantId,
+          snapshotVersion: item.snapshotVersion,
           status: SubscriptionStatus.PENDING,
           billingCycle: dto.billingCycle,
           customIntervalDays: dto.customIntervalDays ?? null,
@@ -115,6 +145,7 @@ export class SubscriptionsService {
             status: SubscriptionStatus.PENDING,
             billingCycle: dto.billingCycle,
           }),
+          requestId: context.metadata.requestId ?? null,
         },
       });
       await this.audit.recordWithClient(transaction, {
@@ -125,13 +156,19 @@ export class SubscriptionsService {
         recordId: subscription.id,
         newValue: jsonObject({ saleItemId, billingCycle: dto.billingCycle }),
         ip: context.metadata.ipAddress,
+        requestId: context.metadata.requestId,
+      });
+      await this.outbox.enqueueWithClient(transaction, {
+        eventType: 'SubscriptionCreated',
+        organizationId: context.user.organizationId,
+        aggregateType: 'Subscription',
+        aggregateId: subscription.id,
+        actorId: context.user.userId,
+        requestId: context.metadata.requestId ?? randomUUID(),
+        payload: jsonObject({ status: SubscriptionStatus.PENDING }),
       });
       return { id: subscription.id, created: true };
     });
-    if (result.created)
-      this.publish('SubscriptionCreated', result.id, context.user, {
-        status: SubscriptionStatus.PENDING,
-      });
     return this.findOne(result.id, context.user);
   }
 
@@ -160,7 +197,7 @@ export class SubscriptionsService {
       this.prisma.subscription.count({ where }),
     ]);
     return {
-      data: records.map((record) => this.map(record)),
+      data: records.map((record) => this.map(record, user)),
       pagination: {
         page: query.page,
         limit: query.limit,
@@ -177,7 +214,7 @@ export class SubscriptionsService {
     });
     if (!subscription)
       this.notFound(COMMERCIAL_ERROR_CODES.SUBSCRIPTION_NOT_FOUND, 'La suscripción no existe.');
-    return this.map(subscription);
+    return this.map(subscription, user);
   }
 
   async activate(id: string, context: CommercialRequestContext): Promise<Record<string, unknown>> {
@@ -230,7 +267,6 @@ export class SubscriptionsService {
     context: CommercialRequestContext,
     reason?: string,
   ): Promise<Record<string, unknown>> {
-    let changed = false;
     await this.prisma.$transaction(async (transaction) => {
       const locked = await transaction.$queryRaw<Array<{ id: string }>>(
         Prisma.sql`SELECT "id" FROM "Subscription" WHERE "id" = ${id}::uuid AND "organizationId" = ${context.user.organizationId}::uuid FOR UPDATE`,
@@ -292,6 +328,7 @@ export class SubscriptionsService {
           type: ActivityType.STATUS_CHANGE,
           title: `Suscripción ${target.toLowerCase()}`,
           metadata: jsonObject({ status: target }),
+          requestId: context.metadata.requestId ?? null,
         },
       });
       await this.audit.recordWithClient(transaction, {
@@ -303,10 +340,18 @@ export class SubscriptionsService {
         previousValue: jsonObject({ status: subscription.status }),
         newValue: jsonObject({ status: target }),
         ip: context.metadata.ipAddress,
+        requestId: context.metadata.requestId,
       });
-      changed = true;
+      await this.outbox.enqueueWithClient(transaction, {
+        eventType: eventName,
+        organizationId: context.user.organizationId,
+        aggregateType: 'Subscription',
+        aggregateId: id,
+        actorId: context.user.userId,
+        requestId: context.metadata.requestId ?? randomUUID(),
+        payload: jsonObject({ status: target }),
+      });
     });
-    if (changed) this.publish(eventName, id, context.user, { status: target });
     return this.findOne(id, context.user);
   }
 
@@ -338,7 +383,10 @@ export class SubscriptionsService {
     return next;
   }
 
-  private map(subscription: Prisma.SubscriptionGetPayload<object>): Record<string, unknown> {
+  private map(
+    subscription: Prisma.SubscriptionGetPayload<object>,
+    user: AuthenticatedUser,
+  ): Record<string, unknown> {
     return {
       id: subscription.id,
       saleId: subscription.saleId,
@@ -354,7 +402,11 @@ export class SubscriptionsService {
       sku: subscription.skuSnapshot,
       planName: subscription.planNameSnapshot,
       variantName: subscription.variantNameSnapshot,
-      catalogSnapshot: subscription.catalogSnapshot,
+      snapshotVersion: subscription.snapshotVersion,
+      catalogSnapshot: sanitizeSnapshot(
+        subscription.catalogSnapshot,
+        user.permissions.includes('catalog.costs.read'),
+      ),
       startsAt: subscription.startsAt,
       currentPeriodStart: subscription.currentPeriodStart,
       currentPeriodEnd: subscription.currentPeriodEnd,
@@ -369,21 +421,6 @@ export class SubscriptionsService {
     };
   }
 
-  private publish(
-    name: CommercialEventName,
-    aggregateId: string,
-    user: AuthenticatedUser,
-    payload: Record<string, unknown>,
-  ): void {
-    this.events.publish(name, {
-      eventId: randomUUID(),
-      occurredAt: new Date(),
-      organizationId: user.organizationId,
-      aggregateId,
-      actorUserId: user.userId,
-      payload,
-    });
-  }
   private notFound(code: string, message: string): never {
     throw commercialException(HttpStatus.NOT_FOUND, code, message);
   }

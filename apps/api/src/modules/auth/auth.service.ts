@@ -100,6 +100,7 @@ export class AuthService {
       action: 'AUTH_LOGIN_SUCCESS',
       recordId: session.id,
       ip: metadata.ipAddress,
+      requestId: metadata.requestId,
       metadata: { event: 'login' },
     });
 
@@ -198,6 +199,7 @@ export class AuthService {
       action: 'AUTH_REFRESH',
       recordId: nextSessionId,
       ip: metadata.ipAddress,
+      requestId: metadata.requestId,
       metadata: { event: 'refresh_rotated', familyId: session.familyId },
     });
 
@@ -231,6 +233,7 @@ export class AuthService {
       action: 'AUTH_LOGOUT',
       recordId: session.id,
       ip: metadata.ipAddress,
+      requestId: metadata.requestId,
       metadata: { event: 'logout' },
     });
   }
@@ -250,6 +253,7 @@ export class AuthService {
       action: 'AUTH_LOGOUT_ALL',
       recordId: authenticatedUser.userId,
       ip: metadata.ipAddress,
+      requestId: metadata.requestId,
       metadata: { event: 'logout_all' },
     });
   }
@@ -291,6 +295,7 @@ export class AuthService {
         action: 'PASSWORD_RESET_REQUESTED',
         recordId: user.id,
         ip: metadata.ipAddress,
+        requestId: metadata.requestId,
         metadata: { event: 'password_reset_requested' },
       });
 
@@ -379,6 +384,7 @@ export class AuthService {
       action: 'PASSWORD_RESET_COMPLETED',
       recordId: resetToken.id,
       ip: metadata.ipAddress,
+      requestId: metadata.requestId,
       metadata: { event: 'password_reset_completed' },
     });
   }
@@ -444,6 +450,7 @@ export class AuthService {
       action: 'AUTH_LOGIN_FAILED',
       recordId: user?.id ?? 'anonymous',
       ip: metadata.ipAddress,
+      requestId: metadata.requestId,
       metadata: { event: 'invalid_credentials' },
     });
   }
@@ -466,6 +473,7 @@ export class AuthService {
       action: 'AUTH_REFRESH_REUSE_DETECTED',
       recordId: session.familyId,
       ip: metadata.ipAddress,
+      requestId: metadata.requestId,
       metadata: { event: 'refresh_token_reuse_detected' },
     });
     throw authException(

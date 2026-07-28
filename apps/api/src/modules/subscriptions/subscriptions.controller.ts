@@ -12,6 +12,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
 
+import { requestIdOf } from '../../infrastructure/http/request-correlation';
 import { AuthenticatedUser } from '../auth/auth.types';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Permissions } from '../auth/decorators/permissions.decorator';
@@ -30,7 +31,11 @@ function requestContext(user: AuthenticatedUser, request: Request): CommercialRe
   const userAgent = request.get('user-agent')?.slice(0, 512);
   return {
     user,
-    metadata: { ...(ipAddress ? { ipAddress } : {}), ...(userAgent ? { userAgent } : {}) },
+    metadata: {
+      ...(ipAddress ? { ipAddress } : {}),
+      ...(userAgent ? { userAgent } : {}),
+      requestId: requestIdOf(request),
+    },
   };
 }
 

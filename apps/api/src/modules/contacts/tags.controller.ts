@@ -12,6 +12,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
 
+import { requestIdOf } from '../../infrastructure/http/request-correlation';
 import { AuthenticatedUser, RequestMetadata } from '../auth/auth.types';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Permissions } from '../auth/decorators/permissions.decorator';
@@ -29,6 +30,7 @@ function metadata(request: Request): RequestMetadata {
   return {
     ...(ipAddress ? { ipAddress } : {}),
     ...(userAgent ? { userAgent } : {}),
+    requestId: requestIdOf(request),
   };
 }
 

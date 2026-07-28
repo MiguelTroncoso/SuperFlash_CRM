@@ -40,6 +40,8 @@ async function cleanup(organizationIds: string[]): Promise<void> {
   const where = { organizationId: { in: organizationIds } };
 
   await prisma.$transaction([
+    prisma.$executeRaw`SELECT set_config('superflash.allow_integrity_cleanup', 'on', true)`,
+    prisma.outboxEvent.deleteMany({ where }),
     prisma.auditLog.deleteMany({ where }),
     prisma.renewal.deleteMany({ where }),
     prisma.subscription.deleteMany({ where }),

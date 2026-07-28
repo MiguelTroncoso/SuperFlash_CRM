@@ -1,5 +1,13 @@
 # Modelo de dominio CRM
 
+## Comercial endurecido
+
+`Sale` es el acuerdo comercial, `Payment` el movimiento financiero, `Subscription` el ciclo recurrente y `Renewal` la identidad histórica de cada periodo. `SaleItem`, `Subscription` y `Renewal` persisten snapshots versionados; no se consulta el catálogo vivo para reconstruir acuerdos históricos.
+
+`OutboxEvent` se persiste dentro de la misma transacción que cambia el agregado. Un procesador asíncrono entrega eventos con reintentos y `eventId`; los consumidores deben ser idempotentes. `requestId` se propaga por HTTP, AuditLog, Activity, Outbox y logs.
+
+PostgreSQL protege fórmulas de importes, no negatividad, límites de reembolso, ciclos `CUSTOM`, orden de periodos y append-only de AuditLog/Activity. Las invariantes que requieren varias filas, como el balance y la política de cancelación, permanecen en servicios transaccionales bajo lock.
+
 ## Relaciones principales
 
 ```mermaid
@@ -131,4 +139,4 @@ erDiagram
 
 `Subscription` nace de un `SaleItem` y conserva su snapshot. `Renewal` pertenece a una suscripción y a la venta fuente; al pagarse crea una venta nueva con sus propios ítems y pago, sin modificar la venta anterior.
 
-Las confirmaciones de ventas, confirmaciones de pagos, creación/pago de renovaciones y conversiones de oportunidades bloquean la fila agregada con `FOR UPDATE`. Las operaciones se mantienen dentro de transacciones cortas y publican eventos de aplicación después del commit.
+Las confirmaciones de ventas, confirmaciones de pagos, creación/pago de renovaciones y conversiones de oportunidades bloquean la fila agregada con `FOR UPDATE`. Las operaciones se mantienen dentro de transacciones cortas y escriben eventos durables en Outbox dentro del commit.

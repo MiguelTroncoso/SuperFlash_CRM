@@ -1,0 +1,38 @@
+import { Prisma, PrismaClient } from '@prisma/client';
+
+export async function resetDatabase(prisma: PrismaClient): Promise<void> {
+  await prisma.$transaction(async (transaction: Prisma.TransactionClient) => {
+    await transaction.$executeRaw`SELECT set_config('superflash.allow_integrity_cleanup', 'on', true)`;
+    await transaction.outboxEvent.deleteMany();
+    await transaction.auditLog.deleteMany();
+    await transaction.renewal.deleteMany();
+    await transaction.subscription.deleteMany();
+    await transaction.priceHistory.deleteMany();
+    await transaction.priceBookEntry.deleteMany();
+    await transaction.productVariant.deleteMany();
+    await transaction.productPlan.deleteMany();
+    await transaction.priceBook.deleteMany();
+    await transaction.payment.deleteMany();
+    await transaction.saleItem.deleteMany();
+    await transaction.activity.deleteMany();
+    await transaction.followUpHistory.deleteMany();
+    await transaction.followUp.deleteMany();
+    await transaction.sale.deleteMany();
+    await transaction.opportunityStageHistory.deleteMany();
+    await transaction.opportunity.deleteMany();
+    await transaction.expense.deleteMany();
+    await transaction.contactTag.deleteMany();
+    await transaction.campaign.deleteMany();
+    await transaction.tag.deleteMany();
+    await transaction.contact.deleteMany();
+    await transaction.pipelineStage.deleteMany();
+    await transaction.product.deleteMany();
+    await transaction.productCategory.deleteMany();
+    await transaction.passwordResetToken.deleteMany();
+    await transaction.authSession.deleteMany();
+    await transaction.user.deleteMany();
+    await transaction.role.deleteMany();
+    await transaction.permission.deleteMany();
+    await transaction.organization.deleteMany();
+  });
+}

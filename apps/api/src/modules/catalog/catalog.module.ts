@@ -43,5 +43,6 @@ import { VariantsService } from './variants/variants.service';
     PricingService,
     OffersService,
   ],
+  exports: [PricingService],
 })
 export class CatalogModule {}

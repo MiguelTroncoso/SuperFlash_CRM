@@ -1,8 +1,12 @@
 # ADR-006: Snapshot de catálogo en Sales
 
+## Estado
+
+Aceptado y endurecido en la remediación Architecture v1.0.
+
 ## Decisión
 
-Cada `SaleItem` conserva campos tipados y un `catalogSnapshot` inmutable con la información utilizada al cerrar el acuerdo.
+Cada `SaleItem` conserva `snapshotVersion=2`, campos tipados y un `catalogSnapshot` inmutable con producto, plan, variante, SKU, cantidad, precio, mínimo, costo, moneda, impuestos, ciclo, fulfillment, fuente de pricing y metadata.
 
 ## Motivo
 
@@ -10,4 +14,4 @@ Productos, planes, variantes y precios son configurables. Una venta histórica d
 
 ## Consecuencia
 
-Las lecturas históricas usan el snapshot. Las relaciones al catálogo se mantienen como referencia opcional para navegación, pero no son la fuente de verdad económica.
+Las lecturas históricas usan el snapshot. Las relaciones al catálogo se mantienen como referencia opcional para navegación, pero no son la fuente de verdad económica. PostgreSQL impide mutar snapshots después de confirmar; costo y mínimo requieren `catalog.costs.read` para ser expuestos.

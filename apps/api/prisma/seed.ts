@@ -68,6 +68,7 @@ const permissions = [
   { key: 'catalog.prices.read', name: 'Leer precios del catálogo' },
   { key: 'catalog.prices.manage', name: 'Administrar precios del catálogo' },
   { key: 'catalog.costs.read', name: 'Leer costos del catálogo' },
+  { key: 'catalog.prices.override', name: 'Autorizar sobreescritura de precios' },
 ] as const;
 
 const pipelineStages = [
