@@ -12,6 +12,25 @@ Revenue Intelligence pertenece a Architecture v2.0 y permanece como
 de tráfico; la inteligencia del negocio no se trasladará fuera de SuperFlash
 Platform.
 
+## Operations and Fulfillment (Architecture v1.1)
+
+La operación posterior a la venta se modela con `Provider`,
+`ProviderProductMapping`, `Fulfillment`, `ProvisioningAttempt`,
+`CredentialRecord`, `Trial` y `Activation`. Cada entidad incluye
+`organizationId` y relaciones compuestas por tenant. `Fulfillment` nace de un
+`SaleItem` confirmado, conserva el snapshot recibido y usa una `identityKey`
+para impedir duplicados por ciclo. `ProvisioningAttempt` es historial
+append-only y los adaptadores Manual/Mock están detrás de un contrato estable.
+
+`CredentialRecord` almacena únicamente ciphertext AES-256-GCM. Las respuestas
+son enmascaradas por defecto; el revelado requiere permiso explícito, está
+limitado por rate limit y genera auditoría sin el secreto.
+
+`Trial` conserva un snapshot comercial y puede convertirse en una nueva `Sale`
+sin modificar su historial. `Activation` es el resultado operativo de un
+fulfillment completado y su índice parcial evita activaciones activas
+duplicadas.
+
 ## Comercial endurecido
 
 `Sale` es el acuerdo comercial, `Payment` el movimiento financiero, `Subscription` el ciclo recurrente y `Renewal` la identidad histórica de cada periodo. `SaleItem`, `Subscription` y `Renewal` persisten snapshots versionados; no se consulta el catálogo vivo para reconstruir acuerdos históricos.
@@ -79,11 +98,21 @@ erDiagram
     Campaign ||--o{ Expense : funds
     User ||--o{ Activity : authors
     User ||--o{ AuditLog : acts
+
+    Organization ||--o{ Provider : operates
+    Provider ||--o{ ProviderProductMapping : maps
+    Product ||--o{ ProviderProductMapping : commercializes
+    SaleItem ||--o{ Fulfillment : fulfills
+    Fulfillment ||--o{ ProvisioningAttempt : attempts
+    Fulfillment ||--o{ Activation : activates
+    Fulfillment ||--o{ CredentialRecord : delivers
+    Contact ||--o{ Trial : demos
+    Trial }o--o| Sale : converts
 ```
 
 ## Modelos
 
-El esquema contiene `Organization`, `Role`, `Permission`, `User`, `Contact`, `Tag`, `ContactTag`, `Opportunity`, `OpportunityStageHistory`, `PipelineStage`, `Activity`, `FollowUp`, `FollowUpHistory`, `ProductCategory`, `Product`, `ProductPlan`, `ProductVariant`, `PriceBook`, `PriceBookEntry`, `PriceHistory`, `Sale`, `SaleItem`, `Payment`, `Campaign`, `Expense` y `AuditLog`.
+El esquema contiene `Organization`, `Role`, `Permission`, `User`, `Contact`, `Tag`, `ContactTag`, `Opportunity`, `OpportunityStageHistory`, `PipelineStage`, `Activity`, `FollowUp`, `FollowUpHistory`, `ProductCategory`, `Product`, `ProductPlan`, `ProductVariant`, `PriceBook`, `PriceBookEntry`, `PriceHistory`, `Sale`, `SaleItem`, `Payment`, `Campaign`, `Expense`, `AuditLog`, `OutboxEvent`, `Provider`, `ProviderProductMapping`, `Fulfillment`, `ProvisioningAttempt`, `CredentialRecord`, `Trial` y `Activation`.
 
 Todas las entidades tenant-aware usan UUID, timestamps y `organizationId`. El soft delete se representa mediante `deletedAt`, excepto `AuditLog`, que es append-only e inmutable.
 

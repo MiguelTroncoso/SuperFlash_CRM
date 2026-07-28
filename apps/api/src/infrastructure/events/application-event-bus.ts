@@ -18,7 +18,27 @@ export type CommercialEventName =
   | 'RenewalCreated'
   | 'RenewalDue'
   | 'RenewalPaid'
-  | 'RenewalCancelled';
+  | 'RenewalCancelled'
+  | 'ProviderCreated'
+  | 'ProviderStatusChanged'
+  | 'FulfillmentCreated'
+  | 'FulfillmentAssigned'
+  | 'FulfillmentStarted'
+  | 'FulfillmentCompleted'
+  | 'FulfillmentFailed'
+  | 'ProvisioningAttemptCreated'
+  | 'ProvisioningSucceeded'
+  | 'ProvisioningFailed'
+  | 'CredentialCreated'
+  | 'CredentialRevealed'
+  | 'TrialCreated'
+  | 'TrialActivated'
+  | 'TrialExpired'
+  | 'TrialConverted'
+  | 'ActivationCreated'
+  | 'ActivationActivated'
+  | 'ActivationSuspended'
+  | 'ActivationRevoked';
 
 export interface CommercialEvent {
   eventId: string;

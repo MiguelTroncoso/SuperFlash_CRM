@@ -12,6 +12,7 @@ interface ClaimedOutboxEvent {
   aggregateId: string;
   actorId: string | null;
   requestId: string;
+  deduplicationKey: string | null;
   occurredAt: Date;
   payload: Prisma.JsonValue;
   attempts: number;
@@ -61,7 +62,7 @@ export class OutboxProcessor implements OnModuleInit, OnModuleDestroy {
     return this.prisma.$transaction(async (transaction) => {
       const rows = await transaction.$queryRaw<ClaimedOutboxEvent[]>(Prisma.sql`
         SELECT "id", "eventType", "organizationId", "aggregateType", "aggregateId", "actorId",
-               "requestId", "occurredAt", "payload", "attempts"
+               "requestId", "deduplicationKey", "occurredAt", "payload", "attempts"
         FROM "OutboxEvent"
         WHERE ("status" IN ('PENDING', 'FAILED') AND "availableAt" <= ${now})
            OR ("status" = 'PROCESSING' AND "processingAt" < ${staleAt})
@@ -92,7 +93,7 @@ export class OutboxProcessor implements OnModuleInit, OnModuleDestroy {
         requestId: event.requestId,
         payload: event.payload,
       });
-      await this.prisma.outboxEvent.update({
+      await this.prisma.outboxEvent.updateMany({
         where: { id: event.id },
         data: { status: 'PROCESSED', processedAt: new Date(), processingAt: null, lastError: null },
       });
@@ -100,7 +101,7 @@ export class OutboxProcessor implements OnModuleInit, OnModuleDestroy {
       const attempts = Math.min(10, event.attempts + 1);
       const delaySeconds = Math.min(300, 2 ** Math.min(8, attempts));
       const availableAt = new Date(Date.now() + delaySeconds * 1_000);
-      await this.prisma.outboxEvent.update({
+      await this.prisma.outboxEvent.updateMany({
         where: { id: event.id },
         data: {
           status: 'FAILED',

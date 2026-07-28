@@ -13,13 +13,15 @@ FOLLOW-UP**. Sus follow-ups son no bloqueantes: actualización futura de GitHub
 Actions por Node.js 20, observabilidad operacional del Outbox y ampliación
 progresiva de pruebas legacy y de concurrencia.
 
-Architecture v1.1 (Operations and Fulfillment), v1.2 (Communications and
-Automations) y v1.3 (Analytics and Reporting) están planificadas. Architecture
+Architecture v1.1 (Operations and Fulfillment) está **IMPLEMENTED / PENDING
+REVIEW**. v1.2 (Communications and Automations) y v1.3 (Analytics and
+Reporting) están planificadas. Architecture
 v2.0 — Revenue Intelligence está en estado **ROADMAP / NOT IMPLEMENTED**; su
 alcance se documenta en [docs/roadmap/revenue-intelligence.md](docs/roadmap/revenue-intelligence.md).
 
-Este cambio es documental: no agrega funcionalidades, tablas, migraciones,
-providers, fulfillment, integraciones externas ni código analítico.
+La implementación v1.1 agrega exclusivamente la capa operativa posterior a la
+venta. No incluye integraciones externas reales, WhatsApp, automatizaciones,
+Revenue Intelligence ni frontend CRM completo.
 
 ## Requisitos
 
@@ -108,6 +110,20 @@ npm run db:migrate:deploy
 El seed es idempotente y crea la Organización Demo, los roles `Owner`, `Admin`, `Sales`, `Viewer`, permisos base y las etapas iniciales del pipeline. Si se definen `SEED_OWNER_EMAIL`, `SEED_OWNER_PASSWORD`, `SEED_OWNER_FIRST_NAME` y `SEED_OWNER_LAST_NAME`, también crea el Owner de desarrollo con password Argon2id. Sin esas variables, omite el usuario con un mensaje claro. No crea contactos.
 
 `db:verify-integrity` crea fixtures temporales aislados, comprueba unicidad, claves foráneas multiempresa, ventas, snapshots y checks monetarios, y elimina los fixtures al terminar.
+
+## Operations and Fulfillment
+
+Architecture v1.1 incorpora APIs backend Feature First para `providers`,
+`provider-mappings`, `fulfillments`, `provisioning-attempts`, `credentials`,
+`trials` y `activations`. Todas requieren JWT y permisos tenant-aware. Los
+adaptadores disponibles son Manual y Mock; no realizan llamadas externas.
+
+Los fulfillment se identifican por `saleItemId` y ciclo, se asignan bajo lock y
+sus intentos de provisioning son append-only. Las credenciales se cifran con
+AES-256-GCM, se enmascaran por defecto y solo se revelan con
+`credentials.reveal`; nunca se incluyen secretos en logs, auditoría o Outbox.
+El backend de [Mi Día](docs/fulfillment.md) agrega pendientes, fallidos,
+activaciones, trials y reintentos operativos.
 
 `prisma:verify-legacy` genera un diagnóstico de métodos que quedaron en `OTHER` y snapshots históricos incompletos. No inventa costos, precios ni atributos que no existían en los datos legacy.
 

@@ -14,6 +14,7 @@ export interface AppConfiguration {
   swaggerEnabled: boolean;
   passwordResetTtlMinutes: number;
   defaultTimezone: string;
+  credentialEncryptionKey: string;
 }
 
 type Environment = Readonly<Record<string, string | undefined>>;
@@ -48,6 +49,9 @@ export function buildConfiguration(environment: Environment): AppConfiguration {
   const nodeEnv = environment.NODE_ENV?.trim() || 'development';
   const databaseUrl = environment.DATABASE_URL?.trim();
   const jwtAccessSecret = environment.JWT_ACCESS_SECRET?.trim() || DEVELOPMENT_JWT_SECRET;
+  const credentialEncryptionKey =
+    environment.CREDENTIAL_ENCRYPTION_KEY?.trim() ||
+    'superflash-development-credential-key-please-change-before-production';
 
   if (!databaseUrl) {
     throw new Error('DATABASE_URL es obligatorio para iniciar la API.');
@@ -59,6 +63,12 @@ export function buildConfiguration(environment: Environment): AppConfiguration {
   ) {
     throw new Error(
       'JWT_ACCESS_SECRET es obligatorio en producción y debe tener al menos 32 caracteres.',
+    );
+  }
+
+  if (nodeEnv === 'production' && credentialEncryptionKey.length < 32) {
+    throw new Error(
+      'CREDENTIAL_ENCRYPTION_KEY es obligatorio en producción y debe tener al menos 32 caracteres.',
     );
   }
 
@@ -88,6 +98,7 @@ export function buildConfiguration(environment: Environment): AppConfiguration {
     swaggerEnabled: parseBoolean(environment.SWAGGER_ENABLED, nodeEnv !== 'production'),
     passwordResetTtlMinutes: 30,
     defaultTimezone,
+    credentialEncryptionKey,
   };
 }
 

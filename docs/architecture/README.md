@@ -54,11 +54,12 @@ acuerdo, el dinero y los ciclos comerciales. Audit and Activity proporcionan
 trazabilidad; Transactional Outbox entrega eventos durables a consumidores
 asíncronos.
 
-### Roadmap futuro
+### Evolución y roadmap futuro
 
-Operations and Fulfillment, Communications and Automations, Analytics and
-Reporting y Revenue Intelligence están planificados, pero no forman parte de
-la implementación actual. El detalle de Revenue Intelligence está en
+Operations and Fulfillment está implementado como Architecture v1.1 y pendiente
+de revisión formal. Communications and Automations, Analytics and Reporting y
+Revenue Intelligence permanecen fuera de la implementación actual. El detalle
+de Revenue Intelligence está en
 [docs/roadmap/revenue-intelligence.md](../roadmap/revenue-intelligence.md).
 
 ## Reglas de versionado
@@ -85,13 +86,13 @@ Una versión arquitectónica solo puede aprobarse cuando:
 
 ## Versiones de arquitectura
 
-| Versión           | Nombre                         | Estado                        | Alcance                                                           |
-| ----------------- | ------------------------------ | ----------------------------- | ----------------------------------------------------------------- |
-| Architecture v1.0 | Commercial Core                | **APPROVED / FROZEN**         | Núcleo CRM, catálogo y ciclo comercial transaccional.             |
-| Architecture v1.1 | Operations and Fulfillment     | **PLANNED**                   | Operación y fulfillment; no iniciado.                             |
-| Architecture v1.2 | Communications and Automations | **PLANNED**                   | Comunicaciones y automatizaciones; no iniciado.                   |
-| Architecture v1.3 | Analytics and Reporting        | **PLANNED**                   | Analítica y reporting; no iniciado.                               |
-| Architecture v2.0 | Revenue Intelligence           | **ROADMAP / NOT IMPLEMENTED** | Inteligencia de ingresos, atribución, predicción y recomendación. |
+| Versión           | Nombre                         | Estado                           | Alcance                                                                  |
+| ----------------- | ------------------------------ | -------------------------------- | ------------------------------------------------------------------------ |
+| Architecture v1.0 | Commercial Core                | **APPROVED / FROZEN**            | Núcleo CRM, catálogo y ciclo comercial transaccional.                    |
+| Architecture v1.1 | Operations and Fulfillment     | **IMPLEMENTED / PENDING REVIEW** | Providers, fulfillment, provisioning, credentials, trials y activations. |
+| Architecture v1.2 | Communications and Automations | **PLANNED**                      | Comunicaciones y automatizaciones; no iniciado.                          |
+| Architecture v1.3 | Analytics and Reporting        | **PLANNED**                      | Analítica y reporting; no iniciado.                                      |
+| Architecture v2.0 | Revenue Intelligence           | **ROADMAP / NOT IMPLEMENTED**    | Inteligencia de ingresos, atribución, predicción y recomendación.        |
 
 ### Architecture v1.0 — Commercial Core
 
@@ -125,7 +126,7 @@ Follow-ups no bloqueantes:
 - incorporar observabilidad operacional del dispatcher Outbox;
 - ampliar progresivamente las pruebas de migración legacy y concurrencia.
 
-No se inicia Architecture v1.1 con este documento.
+Architecture v1.1 está implementada en el código, pero permanece **PENDING REVIEW** hasta su aprobación arquitectónica formal.
 
 ## Índice de ADRs
 
@@ -142,14 +143,20 @@ No se inicia Architecture v1.1 con este documento.
 - [ADR-016 — Revenue Intelligence Boundary](../ADR-016-revenue-intelligence-boundary.md)
 - [ADR-017 — External Platforms as Traffic Sources](../ADR-017-external-platforms-as-traffic-sources.md)
 - [ADR-018 — Analytical Event Store Roadmap](../ADR-018-analytical-event-store-roadmap.md)
+- [ADR-019 — Provider Adapter Boundary](../ADR-019-provider-adapter-boundary.md)
+- [ADR-020 — Fulfillment Identity](../ADR-020-fulfillment-identity.md)
+- [ADR-021 — Credential Security](../ADR-021-credential-security.md)
+- [ADR-022 — Trial Lifecycle](../ADR-022-trial-lifecycle.md)
+- [ADR-023 — Activation Model](../ADR-023-activation-model.md)
 
 ## Historial de decisiones
 
-| Hito                          | Evidencia                                  | Resultado                                                      |
-| ----------------------------- | ------------------------------------------ | -------------------------------------------------------------- |
-| Bootstrap y dominios CRM      | Historial de commits de los Sprints 1–7.1  | Base multiempresa y Feature First.                             |
-| Commercial Core               | `9bcada0928c440b022863359e2156439883aebaf` | Sales, Payments, Subscriptions y Renewals implementados.       |
-| CI Recovery                   | `16503b9720a6033efb5ce9b64ce80395ab76168a` | CI recuperado y verificado.                                    |
-| Architecture Review v1.0      | `4bc0658942172f967a11b2e52f0bec338a7ee034` | Hallazgos HIGH/MEDIUM documentados.                            |
-| Architecture v1.0 Remediation | `d4ee72096edb6d691675a8a518a6ee3aeb610a18` | Hallazgos remediados; Commercial Core aprobado con follow-ups. |
-| Governance update             | Este cambio documental                     | v1.0 congelada y roadmap Revenue Intelligence registrado.      |
+| Hito                          | Evidencia                                         | Resultado                                                      |
+| ----------------------------- | ------------------------------------------------- | -------------------------------------------------------------- |
+| Bootstrap y dominios CRM      | Historial de commits de los Sprints 1–7.1         | Base multiempresa y Feature First.                             |
+| Commercial Core               | `9bcada0928c440b022863359e2156439883aebaf`        | Sales, Payments, Subscriptions y Renewals implementados.       |
+| CI Recovery                   | `16503b9720a6033efb5ce9b64ce80395ab76168a`        | CI recuperado y verificado.                                    |
+| Architecture Review v1.0      | `4bc0658942172f967a11b2e52f0bec338a7ee034`        | Hallazgos HIGH/MEDIUM documentados.                            |
+| Architecture v1.0 Remediation | `d4ee72096edb6d691675a8a518a6ee3aeb610a18`        | Hallazgos remediados; Commercial Core aprobado con follow-ups. |
+| Governance update             | Este cambio documental                            | v1.0 congelada y roadmap Revenue Intelligence registrado.      |
+| Architecture v1.1 Operations  | `feat: implement operations and fulfillment core` | Implementación operativa pendiente de revisión formal.         |

@@ -25,6 +25,11 @@ import { SubscriptionsModule } from './modules/subscriptions/subscriptions.modul
 import { RenewalsModule } from './modules/renewals/renewals.module';
 import { RequestCorrelationInterceptor } from './infrastructure/http/request-correlation.interceptor';
 import { OutboxModule } from './infrastructure/outbox/outbox.module';
+import { ActivationsModule } from './modules/activations/activations.module';
+import { CredentialsModule } from './modules/credentials/credentials.module';
+import { FulfillmentModule } from './modules/fulfillment/fulfillment.module';
+import { ProvidersModule } from './modules/providers/providers.module';
+import { TrialsModule } from './modules/trials/trials.module';
 
 @Module({
   imports: [
@@ -67,6 +72,11 @@ import { OutboxModule } from './infrastructure/outbox/outbox.module';
     DashboardModule,
     AuditModule,
     WhatsAppModule,
+    ProvidersModule,
+    FulfillmentModule,
+    CredentialsModule,
+    TrialsModule,
+    ActivationsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -49,6 +49,7 @@ export class MyDayService {
       awaitingMoney,
       potentialBuyers,
       recentWins,
+      operations,
     ] = await Promise.all([
       this.followUpSection(
         user,
@@ -122,6 +123,7 @@ export class MyDayService {
         [{ wonAt: 'desc' }],
         query.limitPerSection,
       ),
+      this.operationalSections(user, targetUserId, query.limitPerSection),
     ]);
     return {
       generatedAt: new Date(),
@@ -136,6 +138,7 @@ export class MyDayService {
         awaitingMoney,
         potentialBuyers,
         recentWins,
+        ...operations,
       },
     };
   }
@@ -166,6 +169,7 @@ export class MyDayService {
       potentialBuyers,
       recentWins,
       urgentPending,
+      operationalSummary,
     ] = await Promise.all([
       this.repository.count(user.organizationId, {
         ...followUpBase,
@@ -207,6 +211,7 @@ export class MyDayService {
         ...followUpBase,
         priority: FollowUpPriority.URGENT,
       }),
+      this.operationalSummary(user, targetUserId),
     ]);
     return {
       overdueFollowUps,
@@ -218,7 +223,265 @@ export class MyDayService {
       potentialBuyers,
       recentWins,
       urgentPending,
+      ...operationalSummary,
     };
+  }
+
+  private async operationalSections(
+    user: AuthenticatedUser,
+    targetUserId: string | undefined,
+    limit: number,
+  ): Promise<OperationalSections> {
+    const base = {
+      organizationId: user.organizationId,
+      deletedAt: null,
+      ...(targetUserId ? { assignedUserId: targetUserId } : {}),
+    };
+    const trialBase = {
+      organizationId: user.organizationId,
+      deletedAt: null,
+      ...(targetUserId ? { ownerId: targetUserId } : {}),
+    };
+    const now = new Date();
+    const next48Hours = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+    const [pending, failed, activations, expiringTrials, expiredTrials, credentials, retries] =
+      await Promise.all([
+        this.prisma.fulfillment.findMany({
+          where: { ...base, status: { in: ['PENDING', 'ASSIGNED'] } },
+          orderBy: { createdAt: 'asc' },
+          take: limit,
+          select: { id: true, status: true, providerId: true, saleId: true, createdAt: true },
+        }),
+        this.prisma.fulfillment.findMany({
+          where: { ...base, status: 'FAILED' },
+          orderBy: { failedAt: 'asc' },
+          take: limit,
+          select: {
+            id: true,
+            status: true,
+            providerId: true,
+            saleId: true,
+            failedAt: true,
+            failureReason: true,
+          },
+        }),
+        this.prisma.activation.findMany({
+          where: { organizationId: user.organizationId, deletedAt: null, status: 'PENDING' },
+          orderBy: { createdAt: 'asc' },
+          take: limit,
+          select: {
+            id: true,
+            status: true,
+            fulfillmentId: true,
+            providerId: true,
+            createdAt: true,
+          },
+        }),
+        this.prisma.trial.findMany({
+          where: { ...trialBase, status: 'ACTIVE', endsAt: { gte: now, lte: next48Hours } },
+          orderBy: { endsAt: 'asc' },
+          take: limit,
+          select: { id: true, status: true, contactId: true, productId: true, endsAt: true },
+        }),
+        this.prisma.trial.findMany({
+          where: {
+            ...trialBase,
+            OR: [{ status: 'EXPIRED' }, { status: 'ACTIVE', endsAt: { lt: now } }],
+          },
+          orderBy: { endsAt: 'asc' },
+          take: limit,
+          select: { id: true, status: true, contactId: true, productId: true, endsAt: true },
+        }),
+        this.prisma.credentialRecord.findMany({
+          where: {
+            organizationId: user.organizationId,
+            deletedAt: null,
+            status: 'ACTIVE',
+            fulfillment: { status: 'COMPLETED', deletedAt: null },
+          },
+          orderBy: { createdAt: 'asc' },
+          take: limit,
+          select: {
+            id: true,
+            status: true,
+            fulfillmentId: true,
+            activationId: true,
+            expiration: true,
+          },
+        }),
+        this.prisma.provisioningAttempt.findMany({
+          where: {
+            organizationId: user.organizationId,
+            status: 'RETRYABLE',
+            ...(targetUserId ? { fulfillment: { assignedUserId: targetUserId } } : {}),
+          },
+          orderBy: { createdAt: 'asc' },
+          take: limit,
+          select: {
+            id: true,
+            status: true,
+            fulfillmentId: true,
+            attemptNumber: true,
+            createdAt: true,
+          },
+        }),
+      ]);
+    return {
+      pendingFulfillments: this.operationSection(
+        pending.map((item) => ({
+          id: item.id,
+          status: item.status,
+          reference: item.saleId,
+          providerId: item.providerId,
+          dueAt: item.createdAt,
+        })),
+        pending.length,
+        limit,
+      ),
+      failedFulfillments: this.operationSection(
+        failed.map((item) => ({
+          id: item.id,
+          status: item.status,
+          reference: item.saleId,
+          providerId: item.providerId,
+          dueAt: item.failedAt,
+          detail: item.failureReason,
+        })),
+        failed.length,
+        limit,
+      ),
+      pendingActivations: this.operationSection(
+        activations.map((item) => ({
+          id: item.id,
+          status: item.status,
+          reference: item.fulfillmentId,
+          providerId: item.providerId,
+          dueAt: item.createdAt,
+        })),
+        activations.length,
+        limit,
+      ),
+      expiringTrials: this.operationSection(
+        expiringTrials.map((item) => ({
+          id: item.id,
+          status: item.status,
+          reference: item.contactId,
+          providerId: null,
+          dueAt: item.endsAt,
+        })),
+        expiringTrials.length,
+        limit,
+      ),
+      expiredTrials: this.operationSection(
+        expiredTrials.map((item) => ({
+          id: item.id,
+          status: item.status,
+          reference: item.contactId,
+          providerId: null,
+          dueAt: item.endsAt,
+        })),
+        expiredTrials.length,
+        limit,
+      ),
+      credentialsToDeliver: this.operationSection(
+        credentials.map((item) => ({
+          id: item.id,
+          status: item.status,
+          reference: item.fulfillmentId ?? item.activationId,
+          providerId: null,
+          dueAt: item.expiration,
+        })),
+        credentials.length,
+        limit,
+      ),
+      provisioningRetries: this.operationSection(
+        retries.map((item) => ({
+          id: item.id,
+          status: item.status,
+          reference: item.fulfillmentId,
+          providerId: null,
+          dueAt: item.createdAt,
+          detail: `attempt-${item.attemptNumber}`,
+        })),
+        retries.length,
+        limit,
+      ),
+    };
+  }
+
+  private async operationalSummary(
+    user: AuthenticatedUser,
+    targetUserId: string | undefined,
+  ): Promise<OperationalSummary> {
+    const fulfillmentBase = {
+      organizationId: user.organizationId,
+      deletedAt: null,
+      ...(targetUserId ? { assignedUserId: targetUserId } : {}),
+    };
+    const trialBase = {
+      organizationId: user.organizationId,
+      deletedAt: null,
+      ...(targetUserId ? { ownerId: targetUserId } : {}),
+    };
+    const now = new Date();
+    const [
+      pendingFulfillments,
+      failedFulfillments,
+      pendingActivations,
+      expiringTrials,
+      expiredTrials,
+      credentialsToDeliver,
+      provisioningRetries,
+    ] = await Promise.all([
+      this.prisma.fulfillment.count({
+        where: { ...fulfillmentBase, status: { in: ['PENDING', 'ASSIGNED'] } },
+      }),
+      this.prisma.fulfillment.count({ where: { ...fulfillmentBase, status: 'FAILED' } }),
+      this.prisma.activation.count({
+        where: { organizationId: user.organizationId, deletedAt: null, status: 'PENDING' },
+      }),
+      this.prisma.trial.count({
+        where: {
+          ...trialBase,
+          status: 'ACTIVE',
+          endsAt: { gte: now, lte: new Date(now.getTime() + 48 * 60 * 60 * 1000) },
+        },
+      }),
+      this.prisma.trial.count({
+        where: {
+          ...trialBase,
+          OR: [{ status: 'EXPIRED' }, { status: 'ACTIVE', endsAt: { lt: now } }],
+        },
+      }),
+      this.prisma.credentialRecord.count({
+        where: {
+          organizationId: user.organizationId,
+          deletedAt: null,
+          status: 'ACTIVE',
+          fulfillment: { status: 'COMPLETED', deletedAt: null },
+        },
+      }),
+      this.prisma.provisioningAttempt.count({
+        where: { organizationId: user.organizationId, status: 'RETRYABLE' },
+      }),
+    ]);
+    return {
+      pendingFulfillments,
+      failedFulfillments,
+      pendingActivations,
+      expiringTrials,
+      expiredTrials,
+      credentialsToDeliver,
+      provisioningRetries,
+    };
+  }
+
+  private operationSection(
+    data: PublicOperationalItem[],
+    total: number,
+    limit: number,
+  ): MyDaySection<PublicOperationalItem> {
+    return { data, total, hasMore: total > limit };
   }
 
   private async followUpSection(
@@ -380,6 +643,13 @@ export interface MyDayResponse {
     awaitingMoney: MyDaySection<PublicMyDayOpportunity>;
     potentialBuyers: MyDaySection<PublicMyDayOpportunity>;
     recentWins: MyDaySection<PublicMyDayOpportunity>;
+    pendingFulfillments: MyDaySection<PublicOperationalItem>;
+    failedFulfillments: MyDaySection<PublicOperationalItem>;
+    pendingActivations: MyDaySection<PublicOperationalItem>;
+    expiringTrials: MyDaySection<PublicOperationalItem>;
+    expiredTrials: MyDaySection<PublicOperationalItem>;
+    credentialsToDeliver: MyDaySection<PublicOperationalItem>;
+    provisioningRetries: MyDaySection<PublicOperationalItem>;
   };
 }
 
@@ -393,4 +663,40 @@ export interface MyDaySummary {
   potentialBuyers: number;
   recentWins: number;
   urgentPending: number;
+  pendingFulfillments: number;
+  failedFulfillments: number;
+  pendingActivations: number;
+  expiringTrials: number;
+  expiredTrials: number;
+  credentialsToDeliver: number;
+  provisioningRetries: number;
 }
+
+export interface PublicOperationalItem {
+  id: string;
+  status: string;
+  reference: string | null;
+  providerId: string | null;
+  dueAt: Date | null;
+  detail?: string | null;
+}
+
+export type OperationalSections = {
+  pendingFulfillments: MyDaySection<PublicOperationalItem>;
+  failedFulfillments: MyDaySection<PublicOperationalItem>;
+  pendingActivations: MyDaySection<PublicOperationalItem>;
+  expiringTrials: MyDaySection<PublicOperationalItem>;
+  expiredTrials: MyDaySection<PublicOperationalItem>;
+  credentialsToDeliver: MyDaySection<PublicOperationalItem>;
+  provisioningRetries: MyDaySection<PublicOperationalItem>;
+};
+
+export type OperationalSummary = {
+  pendingFulfillments: number;
+  failedFulfillments: number;
+  pendingActivations: number;
+  expiringTrials: number;
+  expiredTrials: number;
+  credentialsToDeliver: number;
+  provisioningRetries: number;
+};

@@ -163,6 +163,78 @@ enum PriceBookStatus {
   ARCHIVED
 }
 
+enum ProviderStatus {
+  ACTIVE
+  INACTIVE
+  DEGRADED
+  SUSPENDED
+}
+
+enum ProviderType {
+  MANUAL
+  API
+  PANEL
+  INVENTORY
+  DIGITAL_DELIVERY
+  OTHER
+}
+
+enum ProviderFulfillmentMode {
+  MANUAL
+  AUTOMATIC
+  HYBRID
+  DIGITAL_DELIVERY
+}
+
+enum FulfillmentStatus {
+  PENDING
+  ASSIGNED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum FulfillmentExecutionMode {
+  MANUAL
+  AUTOMATIC
+  HYBRID
+  DIGITAL_DELIVERY
+}
+
+enum ProvisioningAttemptStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  RETRYABLE
+}
+
+enum CredentialStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+enum TrialStatus {
+  REQUESTED
+  APPROVED
+  ACTIVE
+  EXPIRED
+  CONVERTED
+  CANCELLED
+  FAILED
+}
+
+enum ActivationStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+  REVOKED
+  FAILED
+}
+
 model Organization {
   id        String    @id @default(uuid()) @db.Uuid
   name      String
@@ -200,6 +272,13 @@ model Organization {
   auditLogs                 AuditLog[]
   followUpHistories         FollowUpHistory[]
   outboxEvents              OutboxEvent[]
+  providers                 Provider[]
+  providerProductMappings   ProviderProductMapping[]
+  fulfillments              Fulfillment[]
+  provisioningAttempts      ProvisioningAttempt[]
+  credentialRecords         CredentialRecord[]
+  trials                    Trial[]
+  activations               Activation[]
 
   @@index([createdAt])
 }
@@ -270,6 +349,9 @@ model User {
   cancelledFollowUps        FollowUp[]                @relation("FollowUpCancelledBy")
   followUpHistories         FollowUpHistory[]         @relation("FollowUpHistoryActor")
   priceHistories            PriceHistory[]            @relation("PriceHistoryActor")
+  assignedFulfillments      Fulfillment[]             @relation("FulfillmentAssignee")
+  ownedTrials               Trial[]                   @relation("TrialOwner")
+  credentialReveals         CredentialRecord[]        @relation("CredentialRevealedBy")
 
   @@unique([organizationId, id])
   @@unique([organizationId, email])
@@ -352,6 +434,7 @@ model Contact {
   sales         Sale[]
   subscriptions Subscription[]
   activities    Activity[]
+  trials        Trial[]
 
   @@unique([organizationId, id])
   @@index([organizationId])
@@ -443,6 +526,7 @@ model Opportunity {
   followUps     FollowUp[]
   sales         Sale[]
   stageHistory  OpportunityStageHistory[]
+  trials        Trial[]
 
   @@unique([organizationId, id])
   @@index([organizationId])
@@ -657,14 +741,16 @@ model Product {
   updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
 
-  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  productCategory ProductCategory? @relation(fields: [organizationId, categoryId], references: [organizationId, id], onDelete: Restrict)
-  opportunities   Opportunity[]
-  saleItems       SaleItem[]
-  subscriptions   Subscription[]
-  plans           ProductPlan[]
-  variants        ProductVariant[]
-  priceEntries    PriceBookEntry[]
+  organization     Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  productCategory  ProductCategory?         @relation(fields: [organizationId, categoryId], references: [organizationId, id], onDelete: Restrict)
+  opportunities    Opportunity[]
+  saleItems        SaleItem[]
+  subscriptions    Subscription[]
+  plans            ProductPlan[]
+  variants         ProductVariant[]
+  priceEntries     PriceBookEntry[]
+  providerMappings ProviderProductMapping[]
+  trials           Trial[]
 
   @@unique([organizationId, id])
   @@index([organizationId])
@@ -722,12 +808,14 @@ model ProductPlan {
   updatedAt          DateTime          @updatedAt
   deletedAt          DateTime?
 
-  organization  Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  product       Product          @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
-  variants      ProductVariant[]
-  priceEntries  PriceBookEntry[]
-  saleItems     SaleItem[]
-  subscriptions Subscription[]
+  organization     Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  product          Product                  @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
+  variants         ProductVariant[]
+  priceEntries     PriceBookEntry[]
+  saleItems        SaleItem[]
+  subscriptions    Subscription[]
+  providerMappings ProviderProductMapping[]
+  trials           Trial[]
 
   @@unique([organizationId, id])
   @@unique([organizationId, productId, id])
@@ -753,12 +841,14 @@ model ProductVariant {
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
 
-  organization  Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  product       Product          @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
-  plan          ProductPlan?     @relation(fields: [organizationId, productId, planId], references: [organizationId, productId, id], onDelete: Restrict)
-  priceEntries  PriceBookEntry[]
-  saleItems     SaleItem[]
-  subscriptions Subscription[]
+  organization     Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  product          Product                  @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
+  plan             ProductPlan?             @relation(fields: [organizationId, productId, planId], references: [organizationId, productId, id], onDelete: Restrict)
+  priceEntries     PriceBookEntry[]
+  saleItems        SaleItem[]
+  subscriptions    Subscription[]
+  providerMappings ProviderProductMapping[]
+  trials           Trial[]
 
   @@unique([organizationId, id])
   @@unique([organizationId, productId, id])
@@ -885,16 +975,18 @@ model Sale {
   updatedAt          DateTime   @updatedAt
   deletedAt          DateTime?
 
-  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  contact       Contact        @relation(fields: [organizationId, contactId], references: [organizationId, id], onDelete: Restrict)
-  opportunity   Opportunity?   @relation(fields: [organizationId, opportunityId], references: [organizationId, id], onDelete: Restrict)
-  seller        User?          @relation("SaleSeller", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
-  renewalFrom   Renewal?       @relation("RenewalGeneratedSale")
-  renewalItems  Renewal[]      @relation("RenewalSourceSale")
-  subscriptions Subscription[]
-  items         SaleItem[]
-  payments      Payment[]
-  activities    Activity[]
+  organization     Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  contact          Contact        @relation(fields: [organizationId, contactId], references: [organizationId, id], onDelete: Restrict)
+  opportunity      Opportunity?   @relation(fields: [organizationId, opportunityId], references: [organizationId, id], onDelete: Restrict)
+  seller           User?          @relation("SaleSeller", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
+  renewalFrom      Renewal?       @relation("RenewalGeneratedSale")
+  renewalItems     Renewal[]      @relation("RenewalSourceSale")
+  subscriptions    Subscription[]
+  items            SaleItem[]
+  payments         Payment[]
+  activities       Activity[]
+  trialConversions Trial[]
+  fulfillments     Fulfillment[]
 
   @@unique([organizationId, id])
   @@index([organizationId])
@@ -944,6 +1036,7 @@ model SaleItem {
   variant        ProductVariant? @relation(fields: [organizationId, variantId], references: [organizationId, id], onDelete: Restrict)
   priceBookEntry PriceBookEntry? @relation(fields: [organizationId, priceBookEntryId], references: [organizationId, id], onDelete: Restrict)
   subscription   Subscription?
+  fulfillments   Fulfillment[]
 
   @@unique([organizationId, id])
   @@index([organizationId])
@@ -1029,15 +1122,18 @@ model Subscription {
   updatedAt           DateTime           @updatedAt
   deletedAt           DateTime?
 
-  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  sale         Sale            @relation(fields: [organizationId, saleId], references: [organizationId, id], onDelete: Restrict)
-  saleItem     SaleItem        @relation(fields: [organizationId, saleItemId], references: [organizationId, id], onDelete: Restrict)
-  contact      Contact         @relation(fields: [organizationId, contactId], references: [organizationId, id], onDelete: Restrict)
-  owner        User?           @relation("SubscriptionOwner", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
-  product      Product?        @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
-  plan         ProductPlan?    @relation(fields: [organizationId, planId], references: [organizationId, id], onDelete: Restrict)
-  variant      ProductVariant? @relation(fields: [organizationId, variantId], references: [organizationId, id], onDelete: Restrict)
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  sale         Sale               @relation(fields: [organizationId, saleId], references: [organizationId, id], onDelete: Restrict)
+  saleItem     SaleItem           @relation(fields: [organizationId, saleItemId], references: [organizationId, id], onDelete: Restrict)
+  contact      Contact            @relation(fields: [organizationId, contactId], references: [organizationId, id], onDelete: Restrict)
+  owner        User?              @relation("SubscriptionOwner", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
+  product      Product?           @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
+  plan         ProductPlan?       @relation(fields: [organizationId, planId], references: [organizationId, id], onDelete: Restrict)
+  variant      ProductVariant?    @relation(fields: [organizationId, variantId], references: [organizationId, id], onDelete: Restrict)
   renewals     Renewal[]
+  fulfillments Fulfillment[]
+  activations  Activation[]
+  credentials  CredentialRecord[]
 
   @@unique([organizationId, id])
   @@unique([organizationId, saleItemId])
@@ -1096,30 +1192,290 @@ model Renewal {
 }
 
 model OutboxEvent {
-  id             String            @id @default(uuid()) @db.Uuid
-  eventType      String
-  organizationId String            @db.Uuid
-  aggregateType  String
-  aggregateId    String            @db.Uuid
-  actorId        String?           @db.Uuid
-  requestId      String
-  occurredAt     DateTime
-  payload        Json
-  status         OutboxEventStatus @default(PENDING)
-  attempts       Int               @default(0)
-  availableAt    DateTime          @default(now())
-  processingAt   DateTime?
-  processedAt    DateTime?
-  lastError      String?
-  createdAt      DateTime          @default(now())
+  id               String            @id @default(uuid()) @db.Uuid
+  eventType        String
+  organizationId   String            @db.Uuid
+  aggregateType    String
+  aggregateId      String            @db.Uuid
+  actorId          String?           @db.Uuid
+  requestId        String
+  deduplicationKey String?
+  occurredAt       DateTime
+  payload          Json
+  status           OutboxEventStatus @default(PENDING)
+  attempts         Int               @default(0)
+  availableAt      DateTime          @default(now())
+  processingAt     DateTime?
+  processedAt      DateTime?
+  lastError        String?
+  createdAt        DateTime          @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   actor        User?        @relation("OutboxActor", fields: [organizationId, actorId], references: [organizationId, id], onDelete: Restrict)
 
   @@unique([organizationId, id])
+  @@unique([organizationId, deduplicationKey])
   @@index([status, availableAt])
   @@index([organizationId, aggregateType, aggregateId])
   @@index([requestId])
+  @@index([createdAt])
+}
+
+model Provider {
+  id              String                  @id @default(uuid()) @db.Uuid
+  organizationId  String                  @db.Uuid
+  name            String
+  slug            String
+  type            ProviderType
+  status          ProviderStatus          @default(ACTIVE)
+  fulfillmentMode ProviderFulfillmentMode @default(MANUAL)
+  apiBaseUrl      String?
+  metadata        Json?
+  notes           String?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  deletedAt       DateTime?
+
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  mappings     ProviderProductMapping[]
+  fulfillments Fulfillment[]
+  attempts     ProvisioningAttempt[]
+  trials       Trial[]
+  activations  Activation[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, type])
+  @@index([createdAt])
+}
+
+model ProviderProductMapping {
+  id                String    @id @default(uuid()) @db.Uuid
+  organizationId    String    @db.Uuid
+  providerId        String    @db.Uuid
+  productId         String    @db.Uuid
+  planId            String?   @db.Uuid
+  variantId         String?   @db.Uuid
+  externalProductId String?
+  externalPlanId    String?
+  externalVariantId String?
+  mappingKey        String
+  priority          Int       @default(0)
+  active            Boolean   @default(true)
+  metadata          Json?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  provider     Provider        @relation(fields: [organizationId, providerId], references: [organizationId, id], onDelete: Restrict)
+  product      Product         @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
+  plan         ProductPlan?    @relation(fields: [organizationId, productId, planId], references: [organizationId, productId, id], onDelete: Restrict)
+  variant      ProductVariant? @relation(fields: [organizationId, productId, variantId], references: [organizationId, productId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, mappingKey])
+  @@index([organizationId, providerId, active, priority])
+  @@index([organizationId, productId, active])
+  @@index([organizationId, planId])
+  @@index([organizationId, variantId])
+  @@index([createdAt])
+}
+
+model Fulfillment {
+  id              String                   @id @default(uuid()) @db.Uuid
+  organizationId  String                   @db.Uuid
+  saleId          String                   @db.Uuid
+  saleItemId      String                   @db.Uuid
+  subscriptionId  String?                  @db.Uuid
+  providerId      String?                  @db.Uuid
+  assignedUserId  String?                  @db.Uuid
+  status          FulfillmentStatus        @default(PENDING)
+  mode            FulfillmentExecutionMode @default(MANUAL)
+  quantity        Decimal                  @db.Decimal(18, 3)
+  identityKey     String
+  idempotencyKey  String?
+  requestSnapshot Json
+  resultSnapshot  Json?
+  failureReason   String?
+  attemptCount    Int                      @default(0)
+  assignedAt      DateTime?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  failedAt        DateTime?
+  cancelledAt     DateTime?
+  requestId       String?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+  deletedAt       DateTime?
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  sale         Sale                  @relation(fields: [organizationId, saleId], references: [organizationId, id], onDelete: Restrict)
+  saleItem     SaleItem              @relation(fields: [organizationId, saleItemId], references: [organizationId, id], onDelete: Restrict)
+  subscription Subscription?         @relation(fields: [organizationId, subscriptionId], references: [organizationId, id], onDelete: Restrict)
+  provider     Provider?             @relation(fields: [organizationId, providerId], references: [organizationId, id], onDelete: Restrict)
+  assignedUser User?                 @relation("FulfillmentAssignee", fields: [organizationId, assignedUserId], references: [organizationId, id], onDelete: Restrict)
+  attempts     ProvisioningAttempt[]
+  credentials  CredentialRecord[]
+  trial        Trial?
+  activations  Activation[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, identityKey])
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, status, createdAt])
+  @@index([organizationId, saleItemId])
+  @@index([organizationId, providerId, status])
+  @@index([organizationId, assignedUserId, status])
+  @@index([organizationId, requestId])
+  @@index([createdAt])
+}
+
+model ProvisioningAttempt {
+  id              String                    @id @default(uuid()) @db.Uuid
+  organizationId  String                    @db.Uuid
+  fulfillmentId   String                    @db.Uuid
+  providerId      String?                   @db.Uuid
+  attemptNumber   Int
+  requestId       String
+  requestPayload  Json
+  responsePayload Json?
+  status          ProvisioningAttemptStatus @default(PENDING)
+  errorCode       String?
+  errorMessage    String?
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  createdAt       DateTime                  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  fulfillment  Fulfillment  @relation(fields: [organizationId, fulfillmentId], references: [organizationId, id], onDelete: Restrict)
+  provider     Provider?    @relation(fields: [organizationId, providerId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, fulfillmentId, attemptNumber])
+  @@index([organizationId, fulfillmentId, createdAt])
+  @@index([organizationId, status, createdAt])
+  @@index([organizationId, providerId])
+}
+
+model CredentialRecord {
+  id                String           @id @default(uuid()) @db.Uuid
+  organizationId    String           @db.Uuid
+  fulfillmentId     String?          @db.Uuid
+  activationId      String?          @db.Uuid
+  subscriptionId    String?          @db.Uuid
+  credentialKey     String
+  encryptedUsername String?
+  encryptedPassword String?
+  encryptedUrl      String?
+  encryptedToken    String?
+  expiration        DateTime?
+  instructions      String?
+  metadata          Json?
+  keyVersion        Int              @default(1)
+  status            CredentialStatus @default(ACTIVE)
+  lastRevealedAt    DateTime?
+  revealCount       Int              @default(0)
+  revokedAt         DateTime?
+  revealedByUserId  String?          @db.Uuid
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  deletedAt         DateTime?
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  fulfillment  Fulfillment?  @relation(fields: [organizationId, fulfillmentId], references: [organizationId, id], onDelete: Restrict)
+  activation   Activation?   @relation(fields: [organizationId, activationId], references: [organizationId, id], onDelete: Restrict)
+  subscription Subscription? @relation(fields: [organizationId, subscriptionId], references: [organizationId, id], onDelete: Restrict)
+  revealedBy   User?         @relation("CredentialRevealedBy", fields: [organizationId, revealedByUserId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, credentialKey])
+  @@index([organizationId, status])
+  @@index([organizationId, fulfillmentId])
+  @@index([organizationId, activationId])
+  @@index([organizationId, subscriptionId])
+  @@index([expiration])
+  @@index([createdAt])
+}
+
+model Trial {
+  id                 String      @id @default(uuid()) @db.Uuid
+  organizationId     String      @db.Uuid
+  contactId          String      @db.Uuid
+  opportunityId      String?     @db.Uuid
+  productId          String      @db.Uuid
+  planId             String?     @db.Uuid
+  variantId          String?     @db.Uuid
+  providerId         String?     @db.Uuid
+  fulfillmentId      String?     @db.Uuid
+  ownerId            String?     @db.Uuid
+  status             TrialStatus @default(REQUESTED)
+  startsAt           DateTime
+  endsAt             DateTime
+  durationMinutes    Int
+  identityKey        String
+  snapshotVersion    Int         @default(2)
+  commercialSnapshot Json
+  conversionSaleId   String?     @db.Uuid
+  notes              String?
+  requestId          String?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  deletedAt          DateTime?
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  contact        Contact         @relation(fields: [organizationId, contactId], references: [organizationId, id], onDelete: Restrict)
+  opportunity    Opportunity?    @relation(fields: [organizationId, opportunityId], references: [organizationId, id], onDelete: Restrict)
+  product        Product         @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
+  plan           ProductPlan?    @relation(fields: [organizationId, productId, planId], references: [organizationId, productId, id], onDelete: Restrict)
+  variant        ProductVariant? @relation(fields: [organizationId, productId, variantId], references: [organizationId, productId, id], onDelete: Restrict)
+  provider       Provider?       @relation(fields: [organizationId, providerId], references: [organizationId, id], onDelete: Restrict)
+  fulfillment    Fulfillment?    @relation(fields: [organizationId, fulfillmentId], references: [organizationId, id], onDelete: Restrict)
+  owner          User?           @relation("TrialOwner", fields: [organizationId, ownerId], references: [organizationId, id], onDelete: Restrict)
+  conversionSale Sale?           @relation(fields: [organizationId, conversionSaleId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, identityKey])
+  @@unique([organizationId, conversionSaleId])
+  @@unique([organizationId, fulfillmentId])
+  @@index([organizationId, status, endsAt])
+  @@index([organizationId, contactId, productId, status])
+  @@index([organizationId, opportunityId])
+  @@index([organizationId, providerId])
+  @@index([organizationId, ownerId])
+  @@index([endsAt])
+}
+
+model Activation {
+  id                String           @id @default(uuid()) @db.Uuid
+  organizationId    String           @db.Uuid
+  fulfillmentId     String           @db.Uuid
+  subscriptionId    String?          @db.Uuid
+  providerId        String           @db.Uuid
+  status            ActivationStatus @default(PENDING)
+  activatedAt       DateTime?
+  expiresAt         DateTime?
+  externalReference String?
+  metadata          Json?
+  requestId         String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  deletedAt         DateTime?
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  fulfillment  Fulfillment        @relation(fields: [organizationId, fulfillmentId], references: [organizationId, id], onDelete: Restrict)
+  subscription Subscription?      @relation(fields: [organizationId, subscriptionId], references: [organizationId, id], onDelete: Restrict)
+  provider     Provider           @relation(fields: [organizationId, providerId], references: [organizationId, id], onDelete: Restrict)
+  credentials  CredentialRecord[]
+
+  @@unique([organizationId, id])
+  @@index([organizationId, status, expiresAt])
+  @@index([organizationId, fulfillmentId])
+  @@index([organizationId, providerId])
+  @@index([organizationId, subscriptionId])
+  @@index([externalReference])
   @@index([createdAt])
 }
 
