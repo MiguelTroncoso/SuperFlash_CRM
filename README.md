@@ -2,6 +2,25 @@
 
 Bootstrap profesional del monorepo para SuperFlash CRM. La base queda preparada para evolucionar hacia un SaaS multiempresa, con separación por aplicaciones, paquetes compartidos e infraestructura aislada.
 
+## Gobernanza de arquitectura
+
+El [SuperFlash Platform Architecture Book](docs/architecture/README.md) es la
+fuente oficial de verdad arquitectónica.
+
+Architecture v1.0 — Commercial Core está **APPROVED / FROZEN** desde el commit
+`d4ee72096edb6d691675a8a518a6ee3aeb610a18`, con veredicto **APPROVED WITH
+FOLLOW-UP**. Sus follow-ups son no bloqueantes: actualización futura de GitHub
+Actions por Node.js 20, observabilidad operacional del Outbox y ampliación
+progresiva de pruebas legacy y de concurrencia.
+
+Architecture v1.1 (Operations and Fulfillment), v1.2 (Communications and
+Automations) y v1.3 (Analytics and Reporting) están planificadas. Architecture
+v2.0 — Revenue Intelligence está en estado **ROADMAP / NOT IMPLEMENTED**; su
+alcance se documenta en [docs/roadmap/revenue-intelligence.md](docs/roadmap/revenue-intelligence.md).
+
+Este cambio es documental: no agrega funcionalidades, tablas, migraciones,
+providers, fulfillment, integraciones externas ni código analítico.
+
 ## Requisitos
 
 - Node.js 22+
@@ -282,6 +301,9 @@ La documentación está en [docs/sales.md](docs/sales.md), [docs/payments.md](do
 Las decisiones de endurecimiento están en [ADR-010](docs/ADR-010-transactional-outbox.md),
 [ADR-011](docs/ADR-011-commercial-snapshot-contract.md), [ADR-012](docs/ADR-012-renewal-cycle-identity.md),
 [ADR-013](docs/ADR-013-commercial-cancellation-policy.md) y [ADR-014](docs/ADR-014-request-correlation.md).
+La gobernanza y el roadmap futuro están en [ADR-015](docs/ADR-015-architecture-versioning.md),
+[ADR-016](docs/ADR-016-revenue-intelligence-boundary.md), [ADR-017](docs/ADR-017-external-platforms-as-traffic-sources.md)
+y [ADR-018](docs/ADR-018-analytical-event-store-roadmap.md).
 
 Para validar el núcleo comercial en un esquema PostgreSQL aislado:
 

@@ -11,6 +11,13 @@
 
 **Veredicto:** `REQUIRES REMEDIATION`
 
+> **Cierre de gobernanza posterior:** Architecture v1.0 — Commercial Core queda
+> **APPROVED / FROZEN** desde el commit
+> `d4ee72096edb6d691675a8a518a6ee3aeb610a18`. El veredicto de aprobación es
+> **APPROVED WITH FOLLOW-UP**. El veredicto superior conserva el resultado
+> original de esta auditoría y no debe interpretarse como una reescritura de sus
+> hallazgos.
+
 Este documento es exclusivamente el informe de auditoría solicitado. No implementa correcciones ni inicia Architecture v1.1.
 
 ## 1. Resumen ejecutivo
@@ -459,3 +466,22 @@ La tabla siguiente se agrega al informe original. El commit se identifica como `
 **APPROVED WITH FOLLOW-UP**
 
 El seguimiento pendiente es operativo: monitorizar el dispatcher Outbox y actualizar las actions de GitHub cuando el runtime de Node lo requiera. No se inicia Architecture v1.1 ni se implementan integraciones externas.
+
+## 15. Cierre formal de Architecture v1.0
+
+Architecture v1.0 — Commercial Core queda declarada **APPROVED / FROZEN** en el
+commit `d4ee72096edb6d691675a8a518a6ee3aeb610a18`. El alcance congelado incluye
+Identity, Organizations, Permissions, Contacts, Opportunities, Pipeline,
+Follow-ups, Agenda, My Day, Catalog, Pricing, Sales, Payments, Subscriptions,
+Renewals, Transactional Outbox y Audit and Activity.
+
+El estado de aprobación es **APPROVED WITH FOLLOW-UP**. Los únicos follow-ups no
+bloqueantes son:
+
+- actualizar GitHub Actions cuando corresponda por la deprecación del runtime Node.js 20;
+- agregar observabilidad operacional al dispatcher Outbox;
+- ampliar progresivamente las pruebas de migración legacy y concurrencia.
+
+El [Architecture Book](architecture/README.md) consolida esta decisión y es la
+fuente oficial de verdad para las versiones posteriores. Revenue Intelligence se
+mantiene como Architecture v2.0 — **ROADMAP / NOT IMPLEMENTED**.

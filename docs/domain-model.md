@@ -1,5 +1,17 @@
 # Modelo de dominio CRM
 
+## Gobernanza arquitectónica
+
+Architecture v1.0 — Commercial Core está **APPROVED / FROZEN** desde el commit
+`d4ee72096edb6d691675a8a518a6ee3aeb610a18`, con veredicto **APPROVED WITH
+FOLLOW-UP**. El mapa oficial de versiones, dominios y decisiones está en el
+[SuperFlash Platform Architecture Book](architecture/README.md).
+
+Revenue Intelligence pertenece a Architecture v2.0 y permanece como
+**ROADMAP / NOT IMPLEMENTED**. Las plataformas externas serán futuras fuentes
+de tráfico; la inteligencia del negocio no se trasladará fuera de SuperFlash
+Platform.
+
 ## Comercial endurecido
 
 `Sale` es el acuerdo comercial, `Payment` el movimiento financiero, `Subscription` el ciclo recurrente y `Renewal` la identidad histórica de cada periodo. `SaleItem`, `Subscription` y `Renewal` persisten snapshots versionados; no se consulta el catálogo vivo para reconstruir acuerdos históricos.
