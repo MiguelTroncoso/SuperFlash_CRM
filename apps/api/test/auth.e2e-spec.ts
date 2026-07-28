@@ -93,6 +93,11 @@ describe('Auth HTTP flow', () => {
   });
 
   beforeEach(async () => {
+    await prisma.priceHistory.deleteMany();
+    await prisma.priceBookEntry.deleteMany();
+    await prisma.productVariant.deleteMany();
+    await prisma.productPlan.deleteMany();
+    await prisma.priceBook.deleteMany();
     await prisma.auditLog.deleteMany();
     await prisma.contactTag.deleteMany();
     await prisma.activity.deleteMany();
@@ -106,6 +111,7 @@ describe('Auth HTTP flow', () => {
     await prisma.contact.deleteMany();
     await prisma.campaign.deleteMany();
     await prisma.product.deleteMany();
+    await prisma.productCategory.deleteMany();
     await prisma.pipelineStage.deleteMany();
     await prisma.tag.deleteMany();
     await prisma.passwordResetToken.deleteMany();

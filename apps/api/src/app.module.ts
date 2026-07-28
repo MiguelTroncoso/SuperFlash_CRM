@@ -16,6 +16,7 @@ import { OpportunitiesModule } from './modules/opportunities/opportunities.modul
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { ProductsModule } from './modules/products/products.module';
+import { CatalogModule } from './modules/catalog/catalog.module';
 import { SalesModule } from './modules/sales/sales.module';
 import { UsersModule } from './modules/users/users.module';
 import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
@@ -52,6 +53,7 @@ import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
     SalesModule,
     PaymentsModule,
     ProductsModule,
+    CatalogModule,
     CampaignsModule,
     DashboardModule,
     AuditModule,

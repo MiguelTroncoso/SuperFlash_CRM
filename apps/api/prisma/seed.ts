@@ -1,6 +1,14 @@
 import argon2 from 'argon2';
 
-import { PipelineStageCategory, PrismaClient } from '@prisma/client';
+import {
+  BillingPeriodUnit,
+  CustomerSegment,
+  FulfillmentMode,
+  PipelineStageCategory,
+  PrismaClient,
+  ProductStatus,
+  ProductType,
+} from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -47,6 +55,13 @@ const permissions = [
   { key: 'reports.read', name: 'Leer reportes' },
   { key: 'settings.manage', name: 'Administrar configuración' },
   { key: 'audit.read', name: 'Leer auditoría' },
+  { key: 'catalog.read', name: 'Leer catálogo' },
+  { key: 'catalog.create', name: 'Crear catálogo' },
+  { key: 'catalog.update', name: 'Actualizar catálogo' },
+  { key: 'catalog.delete', name: 'Archivar catálogo' },
+  { key: 'catalog.prices.read', name: 'Leer precios del catálogo' },
+  { key: 'catalog.prices.manage', name: 'Administrar precios del catálogo' },
+  { key: 'catalog.costs.read', name: 'Leer costos del catálogo' },
 ] as const;
 
 const pipelineStages = [
@@ -122,7 +137,12 @@ const salesPermissionKeys = [
   'payments.delete',
   'products.read',
   'campaigns.read',
+  'catalog.read',
+  'catalog.prices.read',
 ] as const;
+
+const catalogExamplesEnabled =
+  process.env.NODE_ENV !== 'production' && process.env.SEED_CATALOG_EXAMPLES === 'true';
 
 const ownerCredentials = {
   email: process.env.SEED_OWNER_EMAIL?.trim() ?? '',
@@ -158,7 +178,9 @@ function permissionsForRole(roleName: string): readonly string[] {
   }
 
   return permissions
-    .filter((permission) => permission.key.endsWith('.read'))
+    .filter(
+      (permission) => permission.key.endsWith('.read') && permission.key !== 'catalog.costs.read',
+    )
     .map((permission) => permission.key);
 }
 
@@ -261,6 +283,117 @@ async function seed(): Promise<void> {
         });
       }
 
+      if (catalogExamplesEnabled) {
+        const examples = [
+          {
+            category: 'TV',
+            slug: 'tv',
+            product: 'Televisión',
+            productSlug: 'television',
+            type: ProductType.SERVICE,
+          },
+          {
+            category: 'Diseño',
+            slug: 'diseno',
+            product: 'Canva',
+            productSlug: 'canva',
+            type: ProductType.DIGITAL_ACCESS,
+          },
+          {
+            category: 'Edición',
+            slug: 'edicion',
+            product: 'CapCut',
+            productSlug: 'capcut',
+            type: ProductType.DIGITAL_ACCESS,
+          },
+        ] as const;
+        for (const example of examples) {
+          const category = await transaction.productCategory.upsert({
+            where: {
+              organizationId_id: {
+                organizationId: organization.id,
+                id:
+                  (
+                    await transaction.productCategory.findFirst({
+                      where: { organizationId: organization.id, slug: example.slug },
+                      select: { id: true },
+                    })
+                  )?.id ?? '00000000-0000-0000-0000-000000000000',
+              },
+            },
+            update: { name: example.category, active: true, deletedAt: null },
+            create: {
+              organizationId: organization.id,
+              name: example.category,
+              slug: example.slug,
+              order: examples.indexOf(example) + 1,
+            },
+          });
+          const existingProduct = await transaction.product.findFirst({
+            where: { organizationId: organization.id, slug: example.productSlug },
+            select: { id: true },
+          });
+          const product = existingProduct
+            ? await transaction.product.update({
+                where: {
+                  organizationId_id: { organizationId: organization.id, id: existingProduct.id },
+                },
+                data: {
+                  categoryId: category.id,
+                  status: ProductStatus.ACTIVE,
+                  active: true,
+                  deletedAt: null,
+                },
+              })
+            : await transaction.product.create({
+                data: {
+                  organizationId: organization.id,
+                  categoryId: category.id,
+                  name: example.product,
+                  slug: example.productSlug,
+                  type: example.type,
+                  fulfillmentMode: FulfillmentMode.MANUAL,
+                  status: ProductStatus.ACTIVE,
+                  active: true,
+                  currency: 'USD',
+                  price: 0,
+                },
+              });
+          for (const [index, months] of [1, 3].entries()) {
+            const code = `${example.productSlug.toUpperCase()}-${months}M`;
+            await transaction.productPlan.upsert({
+              where: {
+                organizationId_id: {
+                  organizationId: organization.id,
+                  id:
+                    (
+                      await transaction.productPlan.findFirst({
+                        where: { organizationId: organization.id, productId: product.id, code },
+                        select: { id: true },
+                      })
+                    )?.id ?? '00000000-0000-0000-0000-000000000000',
+                },
+              },
+              update: {
+                name: `${months} mes${months > 1 ? 'es' : ''}`,
+                active: true,
+                deletedAt: null,
+              },
+              create: {
+                organizationId: organization.id,
+                productId: product.id,
+                name: `${months} mes${months > 1 ? 'es' : ''}`,
+                code,
+                customerSegment: CustomerSegment.END_CUSTOMER,
+                billingPeriodUnit: BillingPeriodUnit.MONTH,
+                billingPeriodCount: months,
+                order: index + 1,
+              },
+            });
+          }
+        }
+      }
+
       if (hasCompleteOwnerCredentials()) {
         const ownerRoleId = roleRecords.get('Owner');
         if (!ownerRoleId) {
@@ -303,6 +436,7 @@ async function seed(): Promise<void> {
     });
 
     console.info('Seed completed successfully.');
+    if (catalogExamplesEnabled) console.info('Optional development catalog examples ensured.');
     if (hasCompleteOwnerCredentials()) {
       console.info(`Development owner ensured for ${normalizeEmail(ownerCredentials.email)}.`);
     } else {

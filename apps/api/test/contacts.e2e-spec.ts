@@ -79,6 +79,11 @@ describe('Contacts and lead intake HTTP flow', () => {
   });
 
   beforeEach(async () => {
+    await prisma.priceHistory.deleteMany();
+    await prisma.priceBookEntry.deleteMany();
+    await prisma.productVariant.deleteMany();
+    await prisma.productPlan.deleteMany();
+    await prisma.priceBook.deleteMany();
     await prisma.auditLog.deleteMany();
     await prisma.contactTag.deleteMany();
     await prisma.activity.deleteMany();
@@ -92,6 +97,7 @@ describe('Contacts and lead intake HTTP flow', () => {
     await prisma.contact.deleteMany();
     await prisma.campaign.deleteMany();
     await prisma.product.deleteMany();
+    await prisma.productCategory.deleteMany();
     await prisma.pipelineStage.deleteMany();
     await prisma.tag.deleteMany();
     await prisma.passwordResetToken.deleteMany();
@@ -578,6 +584,7 @@ async function createFixture(database: PrismaClient): Promise<Fixture> {
     data: {
       organizationId: organizationA.id,
       name: 'Producto A',
+      slug: 'producto-a',
       price: new Prisma.Decimal('100'),
       currency: 'USD',
       active: true,
@@ -587,6 +594,7 @@ async function createFixture(database: PrismaClient): Promise<Fixture> {
     data: {
       organizationId: organizationB.id,
       name: 'Producto B',
+      slug: 'producto-b',
       price: new Prisma.Decimal('100'),
       currency: 'USD',
       active: true,

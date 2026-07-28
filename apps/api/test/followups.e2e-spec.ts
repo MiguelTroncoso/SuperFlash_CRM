@@ -83,6 +83,11 @@ describe('Follow-ups, agenda and my-day HTTP flow', () => {
   });
 
   beforeEach(async () => {
+    await prisma.priceHistory.deleteMany();
+    await prisma.priceBookEntry.deleteMany();
+    await prisma.productVariant.deleteMany();
+    await prisma.productPlan.deleteMany();
+    await prisma.priceBook.deleteMany();
     await prisma.activity.deleteMany();
     await prisma.followUpHistory.deleteMany();
     await prisma.followUp.deleteMany();
@@ -96,6 +101,7 @@ describe('Follow-ups, agenda and my-day HTTP flow', () => {
     await prisma.sale.deleteMany();
     await prisma.campaign.deleteMany();
     await prisma.product.deleteMany();
+    await prisma.productCategory.deleteMany();
     await prisma.tag.deleteMany();
     await prisma.pipelineStage.deleteMany();
     await prisma.passwordResetToken.deleteMany();

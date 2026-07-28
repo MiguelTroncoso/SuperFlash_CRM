@@ -1,10 +1,16 @@
 import { randomUUID } from 'node:crypto';
 
 import {
+  BillingPeriodUnit,
+  CustomerSegment,
+  FulfillmentMode,
   FollowUpPriority,
   FollowUpStatus,
   PaymentStatus,
+  PriceBookStatus,
   PipelineStageCategory,
+  ProductStatus,
+  ProductType,
   Prisma,
   PrismaClient,
   SaleStatus,
@@ -35,6 +41,11 @@ async function cleanup(organizationIds: string[]): Promise<void> {
 
   await prisma.$transaction([
     prisma.auditLog.deleteMany({ where }),
+    prisma.priceHistory.deleteMany({ where }),
+    prisma.priceBookEntry.deleteMany({ where }),
+    prisma.productVariant.deleteMany({ where }),
+    prisma.productPlan.deleteMany({ where }),
+    prisma.priceBook.deleteMany({ where }),
     prisma.payment.deleteMany({ where }),
     prisma.saleItem.deleteMany({ where }),
     prisma.activity.deleteMany({ where }),
@@ -50,6 +61,7 @@ async function cleanup(organizationIds: string[]): Promise<void> {
     prisma.contact.deleteMany({ where }),
     prisma.pipelineStage.deleteMany({ where }),
     prisma.product.deleteMany({ where }),
+    prisma.productCategory.deleteMany({ where }),
     prisma.user.deleteMany({ where }),
     prisma.role.deleteMany({ where }),
     prisma.organization.deleteMany({ where: { id: { in: organizationIds } } }),
@@ -166,6 +178,7 @@ async function verifyIntegrity(): Promise<void> {
       data: {
         organizationId: organizationA.id,
         name: 'Integrity Product A',
+        slug: `integrity-product-a-${token}`,
         sku: `sku-${token}`,
         price: new Prisma.Decimal('100.00'),
         currency: 'USD',
@@ -176,6 +189,7 @@ async function verifyIntegrity(): Promise<void> {
       data: {
         organizationId: organizationB.id,
         name: 'Integrity Product B',
+        slug: `integrity-product-b-${token}`,
         sku: `sku-${token}`,
         price: new Prisma.Decimal('100.00'),
         currency: 'USD',
@@ -183,11 +197,115 @@ async function verifyIntegrity(): Promise<void> {
       },
     });
 
+    const categoryA = await prisma.productCategory.create({
+      data: {
+        organizationId: organizationA.id,
+        name: 'Integrity Category A',
+        slug: `integrity-category-a-${token}`,
+        order: 1,
+      },
+    });
+    await prisma.product.update({
+      where: { id: productA.id },
+      data: {
+        categoryId: categoryA.id,
+        type: ProductType.SERVICE,
+        fulfillmentMode: FulfillmentMode.MANUAL,
+        status: ProductStatus.ACTIVE,
+      },
+    });
+    const planA = await prisma.productPlan.create({
+      data: {
+        organizationId: organizationA.id,
+        productId: productA.id,
+        name: 'Integrity Monthly',
+        code: `INTEGRITY-${token}`,
+        customerSegment: CustomerSegment.END_CUSTOMER,
+        billingPeriodUnit: BillingPeriodUnit.MONTH,
+        billingPeriodCount: 1,
+        order: 1,
+      },
+    });
+    const variantA = await prisma.productVariant.create({
+      data: {
+        organizationId: organizationA.id,
+        productId: productA.id,
+        planId: planA.id,
+        name: 'Integrity HD',
+        code: `HD-${token}`,
+        attributes: { quality: 'HD' },
+        order: 1,
+      },
+    });
+    const priceBookA = await prisma.priceBook.create({
+      data: {
+        organizationId: organizationA.id,
+        name: 'Integrity Default',
+        status: PriceBookStatus.ACTIVE,
+        customerSegment: CustomerSegment.END_CUSTOMER,
+        countryCode: 'CL',
+        currency: 'USD',
+        isDefault: true,
+      },
+    });
+    const priceEntryA = await prisma.priceBookEntry.create({
+      data: {
+        organizationId: organizationA.id,
+        priceBookId: priceBookA.id,
+        productId: productA.id,
+        planId: planA.id,
+        variantId: variantA.id,
+        salePrice: new Prisma.Decimal('10.00'),
+        costPrice: new Prisma.Decimal('2.00'),
+      },
+    });
+    await prisma.priceHistory.create({
+      data: {
+        organizationId: organizationA.id,
+        priceBookEntryId: priceEntryA.id,
+        changedByUserId: userA.id,
+        newSalePrice: new Prisma.Decimal('10.00'),
+      },
+    });
+    await expectFailure('duplicate active price entry in one combination', () =>
+      prisma.priceBookEntry.create({
+        data: {
+          organizationId: organizationA.id,
+          priceBookId: priceBookA.id,
+          productId: productA.id,
+          planId: planA.id,
+          variantId: variantA.id,
+          salePrice: new Prisma.Decimal('11.00'),
+        },
+      }),
+    );
+    await expectFailure('price entry linked to another organization product', () =>
+      prisma.priceBookEntry.create({
+        data: {
+          organizationId: organizationA.id,
+          priceBookId: priceBookA.id,
+          productId: productB.id,
+          salePrice: new Prisma.Decimal('11.00'),
+        },
+      }),
+    );
+    await expectFailure('price history linked to another organization actor', () =>
+      prisma.priceHistory.create({
+        data: {
+          organizationId: organizationA.id,
+          priceBookEntryId: priceEntryA.id,
+          changedByUserId: userB.id,
+          newSalePrice: new Prisma.Decimal('11.00'),
+        },
+      }),
+    );
+
     await expectFailure('duplicate active product SKU in one organization', () =>
       prisma.product.create({
         data: {
           organizationId: organizationA.id,
           name: 'Duplicate SKU Product',
+          slug: `duplicate-sku-product-${token}`,
           sku: productA.sku,
           price: new Prisma.Decimal('100.00'),
           currency: 'USD',
@@ -203,6 +321,7 @@ async function verifyIntegrity(): Promise<void> {
       data: {
         organizationId: organizationA.id,
         name: 'Replacement SKU Product',
+        slug: `replacement-sku-product-${token}`,
         sku: productA.sku,
         price: new Prisma.Decimal('100.00'),
         currency: 'USD',
@@ -472,9 +591,9 @@ async function verifyIntegrity(): Promise<void> {
           productNameSnapshot: productA.name,
           skuSnapshot: productA.sku,
           quantity: new Prisma.Decimal('0'),
-          unitPrice: productA.price,
+          unitPrice: productA.price ?? new Prisma.Decimal(0),
           total: new Prisma.Decimal('0'),
-          currency: productA.currency,
+          currency: productA.currency ?? 'USD',
         },
       }),
     );
@@ -487,9 +606,9 @@ async function verifyIntegrity(): Promise<void> {
         productNameSnapshot: productA.name,
         skuSnapshot: productA.sku,
         quantity: new Prisma.Decimal('2'),
-        unitPrice: productA.price,
+        unitPrice: productA.price ?? new Prisma.Decimal(0),
         total: new Prisma.Decimal('200.00'),
-        currency: productA.currency,
+        currency: productA.currency ?? 'USD',
       },
     });
 

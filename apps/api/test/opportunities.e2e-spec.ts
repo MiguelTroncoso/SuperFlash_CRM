@@ -80,6 +80,11 @@ describe('Opportunities and pipeline HTTP flow', () => {
   });
 
   beforeEach(async () => {
+    await prisma.priceHistory.deleteMany();
+    await prisma.priceBookEntry.deleteMany();
+    await prisma.productVariant.deleteMany();
+    await prisma.productPlan.deleteMany();
+    await prisma.priceBook.deleteMany();
     await prisma.auditLog.deleteMany();
     await prisma.contactTag.deleteMany();
     await prisma.activity.deleteMany();
@@ -93,6 +98,7 @@ describe('Opportunities and pipeline HTTP flow', () => {
     await prisma.contact.deleteMany();
     await prisma.campaign.deleteMany();
     await prisma.product.deleteMany();
+    await prisma.productCategory.deleteMany();
     await prisma.pipelineStage.deleteMany();
     await prisma.tag.deleteMany();
     await prisma.passwordResetToken.deleteMany();
@@ -914,6 +920,7 @@ async function createFixture(prisma: PrismaClient): Promise<Fixture> {
       data: {
         organizationId: organizationA.id,
         name: 'Product A',
+        slug: 'product-a',
         price: new Prisma.Decimal('100'),
         currency: 'CLP',
       },
@@ -922,6 +929,7 @@ async function createFixture(prisma: PrismaClient): Promise<Fixture> {
       data: {
         organizationId: organizationB.id,
         name: 'Product B',
+        slug: 'product-b',
         price: new Prisma.Decimal('100'),
         currency: 'CLP',
       },

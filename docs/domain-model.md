@@ -40,6 +40,18 @@ erDiagram
     SaleItem }o--o| Product : snapshots
     Sale ||--o{ Payment : receives
 
+    Organization ||--o{ ProductCategory : organizes
+    ProductCategory ||--o{ Product : groups
+    Product ||--o{ ProductPlan : offers
+    Product ||--o{ ProductVariant : has
+    ProductPlan ||--o{ ProductVariant : scopes
+    Organization ||--o{ PriceBook : defines
+    PriceBook ||--o{ PriceBookEntry : contains
+    Product ||--o{ PriceBookEntry : priced
+    ProductPlan ||--o{ PriceBookEntry : priced
+    ProductVariant ||--o{ PriceBookEntry : priced
+    PriceBookEntry ||--o{ PriceHistory : changes
+
     Contact ||--o{ ContactTag : tagged
     Tag ||--o{ ContactTag : classifies
     Organization ||--o{ Tag : defines
@@ -51,7 +63,7 @@ erDiagram
 
 ## Modelos
 
-El esquema contiene `Organization`, `Role`, `Permission`, `User`, `Contact`, `Tag`, `ContactTag`, `Opportunity`, `OpportunityStageHistory`, `PipelineStage`, `Activity`, `FollowUp`, `FollowUpHistory`, `Product`, `Sale`, `SaleItem`, `Payment`, `Campaign`, `Expense` y `AuditLog`.
+El esquema contiene `Organization`, `Role`, `Permission`, `User`, `Contact`, `Tag`, `ContactTag`, `Opportunity`, `OpportunityStageHistory`, `PipelineStage`, `Activity`, `FollowUp`, `FollowUpHistory`, `ProductCategory`, `Product`, `ProductPlan`, `ProductVariant`, `PriceBook`, `PriceBookEntry`, `PriceHistory`, `Sale`, `SaleItem`, `Payment`, `Campaign`, `Expense` y `AuditLog`.
 
 Todas las entidades tenant-aware usan UUID, timestamps y `organizationId`. El soft delete se representa mediante `deletedAt`, excepto `AuditLog`, que es append-only e inmutable.
 
@@ -68,6 +80,7 @@ Todas las entidades tenant-aware usan UUID, timestamps y `organizationId`. El so
 - `FollowUpStatus`: `PENDING`, `COMPLETED`, `RESCHEDULED`, `CANCELLED`.
 - `FollowUpHistoryAction`: `CREATED`, `UPDATED`, `COMPLETED`, `CANCELLED`, `RESCHEDULED`, `ASSIGNEE_CHANGED`, `ARCHIVED`, `RESTORED`.
 - `UserStatus`, `FollowUpPriority`, `SaleStatus` y `PaymentStatus` completan los estados operativos.
+- `ProductType`, `FulfillmentMode`, `CustomerSegment`, `BillingPeriodUnit`, `ProductStatus` y `PriceBookStatus` gobiernan el catálogo y la resolución de precios.
 
 Las etapas del pipeline son configurables por organización. Los nombres iniciales existen únicamente en el seed.
 
@@ -82,6 +95,10 @@ El estado público de una oportunidad se deriva en servidor: `ARCHIVED` cuando e
 Cada entidad tenant-aware expone `@@unique([organizationId, id])`. Las relaciones sensibles referencian pares `(organizationId, id)`, de modo que una fila de una organización no puede apuntar a una fila de otra organización, incluso mediante SQL directo.
 
 Teléfonos normalizados de contactos, SKU de productos y `opportunityId` de ventas activas usan índices únicos parciales en PostgreSQL. PostgreSQL permite múltiples valores `NULL` en los índices únicos compuestos; los índices parciales además excluyen filas eliminadas o ventas canceladas.
+
+Los slugs/códigos activos del catálogo, el default de price books y las combinaciones activas de entradas
+de precio también están protegidos por índices parciales. Los montos del catálogo son `Decimal(18,2)`;
+`PriceHistory` es append-only y conserva cada alta o modificación de precio.
 
 ## Auditoría y checks
 

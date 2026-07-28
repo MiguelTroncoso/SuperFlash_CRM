@@ -69,6 +69,55 @@ enum PaymentStatus {
   CANCELLED
 }
 
+enum ProductType {
+  SUBSCRIPTION
+  CREDIT_PACKAGE
+  LICENSE
+  SERVICE
+  DIGITAL_ACCESS
+  OTHER
+}
+
+enum FulfillmentMode {
+  MANUAL
+  API
+  INVITATION
+  CREDENTIALS
+  DOWNLOAD
+  OTHER
+}
+
+enum CustomerSegment {
+  END_CUSTOMER
+  RESELLER
+  SUPER_RESELLER
+  ADMIN
+  BUSINESS
+  ANY
+}
+
+enum BillingPeriodUnit {
+  DAY
+  WEEK
+  MONTH
+  YEAR
+  ONE_TIME
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  DISCONTINUED
+}
+
+enum PriceBookStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
 model Organization {
   id        String    @id @default(uuid()) @db.Uuid
   name      String
@@ -90,6 +139,12 @@ model Organization {
   activities                Activity[]
   followUps                 FollowUp[]
   products                  Product[]
+  productCategories         ProductCategory[]
+  productPlans              ProductPlan[]
+  productVariants           ProductVariant[]
+  priceBooks                PriceBook[]
+  priceBookEntries          PriceBookEntry[]
+  priceHistories            PriceHistory[]
   sales                     Sale[]
   saleItems                 SaleItem[]
   payments                  Payment[]
@@ -163,6 +218,7 @@ model User {
   completedFollowUps        FollowUp[]                @relation("FollowUpCompletedBy")
   cancelledFollowUps        FollowUp[]                @relation("FollowUpCancelledBy")
   followUpHistories         FollowUpHistory[]         @relation("FollowUpHistoryActor")
+  priceHistories            PriceHistory[]            @relation("PriceHistoryActor")
 
   @@unique([organizationId, id])
   @@unique([organizationId, email])
@@ -518,31 +574,234 @@ model FollowUpHistory {
 }
 
 model Product {
+  id                     String        @id @default(uuid()) @db.Uuid
+  organizationId         String        @db.Uuid
+  categoryId             String?       @db.Uuid
+  name                   String
+  slug                   String
+  sku                    String?
+  description            String?
+  type                   ProductType   @default(OTHER)
+  fulfillmentMode        FulfillmentMode @default(MANUAL)
+  status                 ProductStatus @default(DRAFT)
+  active                 Boolean       @default(true)
+  requiresSubscription   Boolean       @default(false)
+  allowsDemo             Boolean       @default(false)
+  demoDurationHours      Int?
+  requiresCustomerEmail  Boolean       @default(false)
+  requiresCustomerPhone  Boolean       @default(false)
+  requiresManualReview   Boolean       @default(false)
+  metadata               Json?
+
+  // Deprecated compatibility fields retained for existing opportunity/sale fixtures.
+  category               String?
+  billingType            String?
+  durationDays           Int?
+  price                  Decimal?      @default(0) @db.Decimal(14, 2)
+  currency               String?       @default("USD")
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+  deletedAt              DateTime?
+
+  organization  Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  productCategory ProductCategory? @relation(fields: [organizationId, categoryId], references: [organizationId, id], onDelete: Restrict)
+  opportunities Opportunity[]
+  saleItems     SaleItem[]
+  plans         ProductPlan[]
+  variants      ProductVariant[]
+  priceEntries  PriceBookEntry[]
+
+  @@unique([organizationId, id])
+  @@index([organizationId])
+  @@index([organizationId, categoryId])
+  @@index([organizationId, slug])
+  // Partial uniqueness for active, non-null SKUs is defined in SQL migrations.
+  @@index([organizationId, sku])
+  @@index([active])
+  @@index([status])
+  @@index([type])
+  @@index([fulfillmentMode])
+  @@index([createdAt])
+}
+
+model ProductCategory {
   id             String    @id @default(uuid()) @db.Uuid
   organizationId String    @db.Uuid
   name           String
-  sku            String?
+  slug           String
   description    String?
-  category       String?
-  billingType    String?
-  durationDays   Int?
-  price          Decimal   @db.Decimal(14, 2)
-  currency       String
   active         Boolean   @default(true)
+  order          Int
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
 
-  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  opportunities Opportunity[]
-  saleItems     SaleItem[]
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  products     Product[]
 
   @@unique([organizationId, id])
   @@index([organizationId])
-  // Partial uniqueness for active, non-null SKUs is defined in the SQL migration.
-  @@index([organizationId, sku])
+  @@index([organizationId, slug])
+  @@index([organizationId, order])
   @@index([active])
   @@index([createdAt])
+}
+
+model ProductPlan {
+  id                 String            @id @default(uuid()) @db.Uuid
+  organizationId     String            @db.Uuid
+  productId          String            @db.Uuid
+  name               String
+  code               String?
+  description        String?
+  customerSegment    CustomerSegment
+  billingPeriodUnit  BillingPeriodUnit
+  billingPeriodCount Int               @default(1)
+  quantity           Decimal?          @db.Decimal(18, 3)
+  deviceLimit        Int?
+  creditAmount       Decimal?          @db.Decimal(18, 3)
+  active             Boolean           @default(true)
+  order              Int
+  metadata           Json?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  deletedAt          DateTime?
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  product      Product           @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
+  variants     ProductVariant[]
+  priceEntries PriceBookEntry[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, productId, id])
+  @@index([organizationId])
+  @@index([productId])
+  @@index([organizationId, productId, order])
+  @@index([customerSegment])
+  @@index([active])
+  @@index([createdAt])
+}
+
+model ProductVariant {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  productId      String       @db.Uuid
+  planId         String?      @db.Uuid
+  name           String
+  code           String?
+  attributes     Json
+  active         Boolean      @default(true)
+  order          Int
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  product      Product       @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
+  plan         ProductPlan?  @relation(fields: [organizationId, productId, planId], references: [organizationId, productId, id], onDelete: Restrict)
+  priceEntries PriceBookEntry[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, productId, id])
+  @@index([organizationId])
+  @@index([productId])
+  @@index([planId])
+  @@index([organizationId, productId, order])
+  @@index([active])
+  @@index([createdAt])
+}
+
+model PriceBook {
+  id              String           @id @default(uuid()) @db.Uuid
+  organizationId  String           @db.Uuid
+  name            String
+  description     String?
+  status          PriceBookStatus
+  customerSegment CustomerSegment
+  countryCode     String?
+  currency        String
+  validFrom       DateTime?
+  validUntil      DateTime?
+  isDefault       Boolean          @default(false)
+  priority        Int              @default(0)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  archivedAt      DateTime?
+  deletedAt       DateTime?
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  entries      PriceBookEntry[]
+
+  @@unique([organizationId, id])
+  @@index([organizationId])
+  @@index([status])
+  @@index([customerSegment])
+  @@index([countryCode])
+  @@index([currency])
+  @@index([validFrom, validUntil])
+  @@index([createdAt])
+}
+
+model PriceBookEntry {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  priceBookId    String    @db.Uuid
+  productId      String    @db.Uuid
+  planId         String?   @db.Uuid
+  variantId      String?   @db.Uuid
+  salePrice      Decimal   @db.Decimal(18, 2)
+  costPrice      Decimal?  @db.Decimal(18, 2)
+  minimumPrice   Decimal?  @db.Decimal(18, 2)
+  taxIncluded   Boolean   @default(false)
+  active         Boolean   @default(true)
+  validFrom      DateTime?
+  validUntil     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  priceBook    PriceBook       @relation(fields: [organizationId, priceBookId], references: [organizationId, id], onDelete: Restrict)
+  product      Product         @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
+  plan         ProductPlan?    @relation(fields: [organizationId, productId, planId], references: [organizationId, productId, id], onDelete: Restrict)
+  variant      ProductVariant? @relation(fields: [organizationId, productId, variantId], references: [organizationId, productId, id], onDelete: Restrict)
+  histories    PriceHistory[]
+
+  @@unique([organizationId, id])
+  @@index([organizationId])
+  @@index([priceBookId])
+  @@index([productId])
+  @@index([planId])
+  @@index([variantId])
+  @@index([active])
+  @@index([validFrom, validUntil])
+  @@index([createdAt])
+}
+
+model PriceHistory {
+  id                String    @id @default(uuid()) @db.Uuid
+  organizationId    String    @db.Uuid
+  priceBookEntryId  String    @db.Uuid
+  changedByUserId   String?   @db.Uuid
+  previousSalePrice Decimal?  @db.Decimal(18, 2)
+  newSalePrice      Decimal?  @db.Decimal(18, 2)
+  previousCostPrice Decimal?  @db.Decimal(18, 2)
+  newCostPrice      Decimal?  @db.Decimal(18, 2)
+  previousMinimumPrice Decimal? @db.Decimal(18, 2)
+  newMinimumPrice   Decimal? @db.Decimal(18, 2)
+  reason            String?
+  changedAt         DateTime  @default(now())
+  createdAt         DateTime  @default(now())
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  priceBookEntry PriceBookEntry @relation(fields: [organizationId, priceBookEntryId], references: [organizationId, id], onDelete: Restrict)
+  changedBy     User?          @relation("PriceHistoryActor", fields: [organizationId, changedByUserId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@index([organizationId])
+  @@index([priceBookEntryId])
+  @@index([changedByUserId])
+  @@index([changedAt])
 }
 
 model Sale {

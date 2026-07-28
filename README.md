@@ -212,6 +212,32 @@ DATABASE_URL='postgresql://superflash:superflash@localhost:5432/superflash?schem
 
 La documentación detallada está en [docs/follow-ups.md](docs/follow-ups.md), [docs/agenda.md](docs/agenda.md) y [docs/my-day.md](docs/my-day.md).
 
+## Catálogo multiproducto y precios
+
+El Sprint 7 incorpora el catálogo backend multiproducto sin frontend CRM, ventas, pagos ni suscripciones:
+
+- Categorías, productos, planes y variantes bajo `/api/v1/catalog`.
+- Price books, entradas de precio e historial append-only.
+- Resolución vigente por segmento, país, moneda, default y prioridad.
+- Ofertas activas agrupadas por producto.
+- Integridad multiempresa mediante claves compuestas, índices parciales y locks advisory.
+
+La documentación está en [docs/catalog.md](docs/catalog.md), [docs/products.md](docs/products.md) y [docs/pricing.md](docs/pricing.md).
+El seed no crea ejemplos por defecto; para datos de desarrollo usar `SEED_CATALOG_EXAMPLES=true npm run db:seed`.
+
+La migración del catálogo se aplica junto con las anteriores:
+
+```bash
+npm run db:migrate:deploy
+npm run db:generate
+```
+
+## Estado del Sprint 7
+
+Este sprint contiene únicamente catálogo multiproducto, planes, variantes, price books, resolución de
+precios y ofertas backend. No incluye CRUD de ventas/pagos, suscripciones, fulfillment, frontend CRM,
+checkout, cupones, impuestos avanzados, proveedores externos ni automatizaciones posteriores.
+
 ## Estado del Sprint 6
 
 Este sprint contiene seguimientos, historial, agenda y el backend de Mi Día sobre el dominio de

@@ -11,8 +11,8 @@
     "prisma:verify-integrity": "tsx prisma/verify-integrity.ts",
     "prisma:validate": "prisma validate --schema prisma/schema.prisma",
     "test": "jest --runInBand",
-    "test:unit": "jest --runInBand test/auth.security.spec.ts test/contacts.unit.spec.ts test/opportunities.unit.spec.ts test/followups.unit.spec.ts",
-    "test:integration": "jest --runInBand test/auth.e2e-spec.ts test/contacts.e2e-spec.ts test/opportunities.e2e-spec.ts test/followups.e2e-spec.ts",
+    "test:unit": "jest --runInBand test/auth.security.spec.ts test/contacts.unit.spec.ts test/opportunities.unit.spec.ts test/followups.unit.spec.ts test/catalog.unit.spec.ts",
+    "test:integration": "jest --runInBand test/auth.e2e-spec.ts test/contacts.e2e-spec.ts test/opportunities.e2e-spec.ts test/followups.e2e-spec.ts test/catalog.e2e-spec.ts",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "typecheck": "tsc --noEmit"
