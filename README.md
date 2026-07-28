@@ -250,3 +250,36 @@ proveedores externos ni automatizaciones posteriores.
 Este sprint contiene seguimientos, historial, agenda y el backend de Mi Día sobre el dominio de
 oportunidades. No incluye frontend CRM, productos CRUD, ventas, pagos, dashboard financiero, WhatsApp,
 Meta Ads, notificaciones, recordatorios automáticos ni importación CSV.
+
+## Núcleo comercial: Sales, Payments, Subscriptions y Renewals
+
+El Macro Sprint 8–11 incorpora únicamente el núcleo comercial backend, sin fulfillment, providers,
+IPTV, WhatsApp, automatizaciones, IA ni integraciones externas:
+
+- `POST`, conversión desde oportunidad, listado, detalle y transiciones bajo `/api/v1/sales`.
+- Pagos parciales, confirmación, fallos y reembolsos bajo `/api/v1/sales/:saleId/payments` y `/api/v1/payments`.
+- Suscripciones creadas desde `SaleItem`, ciclos de cobro y transiciones bajo `/api/v1/subscriptions`.
+- Renovaciones con estados, vencimiento y generación idempotente de una nueva venta bajo `/api/v1/renewals`.
+
+Las ventas e ítems conservan snapshots completos del catálogo. El saldo se calcula en servidor a partir
+de pagos confirmados y reembolsos; no se persisten `remainingBalance` ni `paidAmount`. Las confirmaciones,
+conversiones y pagos concurrentes usan locks de PostgreSQL y transacciones cortas. Cada operación relevante
+genera `AuditLog` y los eventos de dominio se publican después del commit.
+
+La documentación está en [docs/sales.md](docs/sales.md), [docs/payments.md](docs/payments.md),
+[docs/subscriptions.md](docs/subscriptions.md), [docs/renewals.md](docs/renewals.md) y
+[docs/domain-model.md](docs/domain-model.md). Las decisiones principales están en
+[ADR-006](docs/ADR-006-sales-snapshot.md), [ADR-007](docs/ADR-007-calculated-balance.md),
+[ADR-008](docs/ADR-008-subscription-lifecycle.md) y [ADR-009](docs/ADR-009-renewal-engine.md).
+
+Para validar el núcleo comercial en un esquema PostgreSQL aislado:
+
+```bash
+DATABASE_URL='postgresql://superflash:superflash@localhost:5432/superflash?schema=auth_test' npm run db:migrate:deploy
+DATABASE_URL='postgresql://superflash:superflash@localhost:5432/superflash?schema=auth_test' \
+NODE_ENV=test COOKIE_SECURE=false SWAGGER_ENABLED=false \
+JWT_ACCESS_SECRET='ci-only-auth-test-secret-change-me-1234567890' npm run test:integration
+```
+
+La suite acumulada supera 200 pruebas entre unitarias e integración. CI ejecuta migraciones, seed,
+verificación de integridad, Prettier, tests, lint, typecheck y builds de API/Web.

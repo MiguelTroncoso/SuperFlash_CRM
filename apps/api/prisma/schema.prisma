@@ -56,16 +56,54 @@ enum FollowUpHistoryAction {
 }
 
 enum SaleStatus {
-  OPEN
-  WON
+  DRAFT
+  PENDING
+  CONFIRMED
+  FULFILLED
   CANCELLED
 }
 
 enum PaymentStatus {
   PENDING
-  COMPLETED
+  CONFIRMED
   FAILED
   REFUNDED
+}
+
+enum PaymentMethod {
+  TRANSFER
+  PAYPAL
+  BINANCE
+  MERCADOPAGO
+  STRIPE
+  CASH
+  MANUAL
+  OTHER
+}
+
+enum SubscriptionStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+  CANCELLED
+}
+
+enum BillingCycle {
+  TRIAL
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  SEMI_ANNUAL
+  ANNUAL
+  CUSTOM
+}
+
+enum RenewalStatus {
+  PENDING
+  DUE
+  OVERDUE
+  PAID
   CANCELLED
 }
 
@@ -148,6 +186,8 @@ model Organization {
   sales                     Sale[]
   saleItems                 SaleItem[]
   payments                  Payment[]
+  subscriptions             Subscription[]
+  renewals                  Renewal[]
   campaigns                 Campaign[]
   expenses                  Expense[]
   auditLogs                 AuditLog[]
@@ -209,6 +249,8 @@ model User {
   activities                Activity[]                @relation("ActivityAuthor")
   followUps                 FollowUp[]                @relation("FollowUpResponsible")
   sales                     Sale[]                    @relation("SaleSeller")
+  subscriptions             Subscription[]            @relation("SubscriptionOwner")
+  renewals                  Renewal[]                 @relation("RenewalOwner")
   campaigns                 Campaign[]                @relation("CampaignOwner")
   auditLogs                 AuditLog[]                @relation("AuditActor")
   opportunityStageHistories OpportunityStageHistory[] @relation("OpportunityStageHistoryActor")
@@ -294,10 +336,12 @@ model Contact {
   updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
 
-  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  assignedTo    User?         @relation("ContactAssignee", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  assignedTo    User?          @relation("ContactAssignee", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
   tags          ContactTag[]
   opportunities Opportunity[]
+  sales         Sale[]
+  subscriptions Subscription[]
   activities    Activity[]
 
   @@unique([organizationId, id])
@@ -574,42 +618,43 @@ model FollowUpHistory {
 }
 
 model Product {
-  id                     String        @id @default(uuid()) @db.Uuid
-  organizationId         String        @db.Uuid
-  categoryId             String?       @db.Uuid
-  name                   String
-  slug                   String
-  sku                    String?
-  description            String?
-  type                   ProductType   @default(OTHER)
-  fulfillmentMode        FulfillmentMode @default(MANUAL)
-  status                 ProductStatus @default(DRAFT)
-  active                 Boolean       @default(true)
-  requiresSubscription   Boolean       @default(false)
-  allowsDemo             Boolean       @default(false)
-  demoDurationHours      Int?
-  requiresCustomerEmail  Boolean       @default(false)
-  requiresCustomerPhone  Boolean       @default(false)
-  requiresManualReview   Boolean       @default(false)
-  metadata               Json?
+  id                    String          @id @default(uuid()) @db.Uuid
+  organizationId        String          @db.Uuid
+  categoryId            String?         @db.Uuid
+  name                  String
+  slug                  String
+  sku                   String?
+  description           String?
+  type                  ProductType     @default(OTHER)
+  fulfillmentMode       FulfillmentMode @default(MANUAL)
+  status                ProductStatus   @default(DRAFT)
+  active                Boolean         @default(true)
+  requiresSubscription  Boolean         @default(false)
+  allowsDemo            Boolean         @default(false)
+  demoDurationHours     Int?
+  requiresCustomerEmail Boolean         @default(false)
+  requiresCustomerPhone Boolean         @default(false)
+  requiresManualReview  Boolean         @default(false)
+  metadata              Json?
 
   // Deprecated compatibility fields retained for existing opportunity/sale fixtures.
-  category               String?
-  billingType            String?
-  durationDays           Int?
-  price                  Decimal?      @default(0) @db.Decimal(14, 2)
-  currency               String?       @default("USD")
-  createdAt              DateTime      @default(now())
-  updatedAt              DateTime      @updatedAt
-  deletedAt              DateTime?
+  category     String?
+  billingType  String?
+  durationDays Int?
+  price        Decimal?  @default(0) @db.Decimal(14, 2)
+  currency     String?   @default("USD")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
 
-  organization  Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   productCategory ProductCategory? @relation(fields: [organizationId, categoryId], references: [organizationId, id], onDelete: Restrict)
-  opportunities Opportunity[]
-  saleItems     SaleItem[]
-  plans         ProductPlan[]
-  variants      ProductVariant[]
-  priceEntries  PriceBookEntry[]
+  opportunities   Opportunity[]
+  saleItems       SaleItem[]
+  subscriptions   Subscription[]
+  plans           ProductPlan[]
+  variants        ProductVariant[]
+  priceEntries    PriceBookEntry[]
 
   @@unique([organizationId, id])
   @@index([organizationId])
@@ -667,10 +712,12 @@ model ProductPlan {
   updatedAt          DateTime          @updatedAt
   deletedAt          DateTime?
 
-  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  product      Product           @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
-  variants     ProductVariant[]
-  priceEntries PriceBookEntry[]
+  organization  Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  product       Product          @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
+  variants      ProductVariant[]
+  priceEntries  PriceBookEntry[]
+  saleItems     SaleItem[]
+  subscriptions Subscription[]
 
   @@unique([organizationId, id])
   @@unique([organizationId, productId, id])
@@ -683,23 +730,25 @@ model ProductPlan {
 }
 
 model ProductVariant {
-  id             String       @id @default(uuid()) @db.Uuid
-  organizationId String       @db.Uuid
-  productId      String       @db.Uuid
-  planId         String?      @db.Uuid
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  productId      String    @db.Uuid
+  planId         String?   @db.Uuid
   name           String
   code           String?
   attributes     Json
-  active         Boolean      @default(true)
+  active         Boolean   @default(true)
   order          Int
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
 
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  product      Product       @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
-  plan         ProductPlan?  @relation(fields: [organizationId, productId, planId], references: [organizationId, productId, id], onDelete: Restrict)
-  priceEntries PriceBookEntry[]
+  organization  Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  product       Product          @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
+  plan          ProductPlan?     @relation(fields: [organizationId, productId, planId], references: [organizationId, productId, id], onDelete: Restrict)
+  priceEntries  PriceBookEntry[]
+  saleItems     SaleItem[]
+  subscriptions Subscription[]
 
   @@unique([organizationId, id])
   @@unique([organizationId, productId, id])
@@ -712,8 +761,8 @@ model ProductVariant {
 }
 
 model PriceBook {
-  id              String           @id @default(uuid()) @db.Uuid
-  organizationId  String           @db.Uuid
+  id              String          @id @default(uuid()) @db.Uuid
+  organizationId  String          @db.Uuid
   name            String
   description     String?
   status          PriceBookStatus
@@ -722,14 +771,14 @@ model PriceBook {
   currency        String
   validFrom       DateTime?
   validUntil      DateTime?
-  isDefault       Boolean          @default(false)
-  priority        Int              @default(0)
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  isDefault       Boolean         @default(false)
+  priority        Int             @default(0)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
   archivedAt      DateTime?
   deletedAt       DateTime?
 
-  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   entries      PriceBookEntry[]
 
   @@unique([organizationId, id])
@@ -752,7 +801,7 @@ model PriceBookEntry {
   salePrice      Decimal   @db.Decimal(18, 2)
   costPrice      Decimal?  @db.Decimal(18, 2)
   minimumPrice   Decimal?  @db.Decimal(18, 2)
-  taxIncluded   Boolean   @default(false)
+  taxIncluded    Boolean   @default(false)
   active         Boolean   @default(true)
   validFrom      DateTime?
   validUntil     DateTime?
@@ -766,6 +815,7 @@ model PriceBookEntry {
   plan         ProductPlan?    @relation(fields: [organizationId, productId, planId], references: [organizationId, productId, id], onDelete: Restrict)
   variant      ProductVariant? @relation(fields: [organizationId, productId, variantId], references: [organizationId, productId, id], onDelete: Restrict)
   histories    PriceHistory[]
+  saleItems    SaleItem[]
 
   @@unique([organizationId, id])
   @@index([organizationId])
@@ -779,23 +829,23 @@ model PriceBookEntry {
 }
 
 model PriceHistory {
-  id                String    @id @default(uuid()) @db.Uuid
-  organizationId    String    @db.Uuid
-  priceBookEntryId  String    @db.Uuid
-  changedByUserId   String?   @db.Uuid
-  previousSalePrice Decimal?  @db.Decimal(18, 2)
-  newSalePrice      Decimal?  @db.Decimal(18, 2)
-  previousCostPrice Decimal?  @db.Decimal(18, 2)
-  newCostPrice      Decimal?  @db.Decimal(18, 2)
+  id                   String   @id @default(uuid()) @db.Uuid
+  organizationId       String   @db.Uuid
+  priceBookEntryId     String   @db.Uuid
+  changedByUserId      String?  @db.Uuid
+  previousSalePrice    Decimal? @db.Decimal(18, 2)
+  newSalePrice         Decimal? @db.Decimal(18, 2)
+  previousCostPrice    Decimal? @db.Decimal(18, 2)
+  newCostPrice         Decimal? @db.Decimal(18, 2)
   previousMinimumPrice Decimal? @db.Decimal(18, 2)
-  newMinimumPrice   Decimal? @db.Decimal(18, 2)
-  reason            String?
-  changedAt         DateTime  @default(now())
-  createdAt         DateTime  @default(now())
+  newMinimumPrice      Decimal? @db.Decimal(18, 2)
+  reason               String?
+  changedAt            DateTime @default(now())
+  createdAt            DateTime @default(now())
 
-  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   priceBookEntry PriceBookEntry @relation(fields: [organizationId, priceBookEntryId], references: [organizationId, id], onDelete: Restrict)
-  changedBy     User?          @relation("PriceHistoryActor", fields: [organizationId, changedByUserId], references: [organizationId, id], onDelete: Restrict)
+  changedBy      User?          @relation("PriceHistoryActor", fields: [organizationId, changedByUserId], references: [organizationId, id], onDelete: Restrict)
 
   @@unique([organizationId, id])
   @@index([organizationId])
@@ -807,60 +857,89 @@ model PriceHistory {
 model Sale {
   id                 String     @id @default(uuid()) @db.Uuid
   organizationId     String     @db.Uuid
-  opportunityId      String     @db.Uuid
+  contactId          String     @db.Uuid
+  opportunityId      String?    @db.Uuid
   userId             String?    @db.Uuid
   status             SaleStatus
-  subtotal           Decimal    @db.Decimal(14, 2)
-  total              Decimal    @db.Decimal(14, 2)
+  subtotal           Decimal    @db.Decimal(18, 2)
+  discountAmount     Decimal    @default(0) @db.Decimal(18, 2)
+  taxAmount          Decimal    @default(0) @db.Decimal(18, 2)
+  total              Decimal    @db.Decimal(18, 2)
   currency           String
   soldAt             DateTime?
   cancelledAt        DateTime?
   cancellationReason String?
   note               String?
+  version            Int        @default(0)
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
   deletedAt          DateTime?
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  opportunity  Opportunity  @relation(fields: [organizationId, opportunityId], references: [organizationId, id], onDelete: Restrict)
-  seller       User?        @relation("SaleSeller", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
-  items        SaleItem[]
-  payments     Payment[]
-  activities   Activity[]
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  contact       Contact        @relation(fields: [organizationId, contactId], references: [organizationId, id], onDelete: Restrict)
+  opportunity   Opportunity?   @relation(fields: [organizationId, opportunityId], references: [organizationId, id], onDelete: Restrict)
+  seller        User?          @relation("SaleSeller", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
+  renewalFrom   Renewal?       @relation("RenewalGeneratedSale")
+  renewalItems  Renewal[]      @relation("RenewalSourceSale")
+  subscriptions Subscription[]
+  items         SaleItem[]
+  payments      Payment[]
+  activities    Activity[]
 
   @@unique([organizationId, id])
   @@index([organizationId])
-  // The active-sale uniqueness rule is defined as a partial SQL index.
-  @@index([opportunityId])
-  @@index([userId])
-  @@index([status])
+  @@index([organizationId, opportunityId])
+  @@index([organizationId, contactId])
+  @@index([organizationId, userId])
+  @@index([organizationId, status])
+  @@index([organizationId, currency])
   @@index([soldAt])
   @@index([createdAt])
 }
 
 model SaleItem {
-  id                  String    @id @default(uuid()) @db.Uuid
-  organizationId      String    @db.Uuid
-  saleId              String    @db.Uuid
-  productId           String?   @db.Uuid
-  productNameSnapshot String
-  skuSnapshot         String?
-  quantity            Decimal   @db.Decimal(14, 3)
-  unitPrice           Decimal   @db.Decimal(14, 2)
-  total               Decimal   @db.Decimal(14, 2)
-  currency            String
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-  deletedAt           DateTime?
+  id                           String             @id @default(uuid()) @db.Uuid
+  organizationId               String             @db.Uuid
+  saleId                       String             @db.Uuid
+  productId                    String?            @db.Uuid
+  planId                       String?            @db.Uuid
+  variantId                    String?            @db.Uuid
+  priceBookEntryId             String?            @db.Uuid
+  productNameSnapshot          String
+  productSlugSnapshot          String?
+  productTypeSnapshot          ProductType?
+  fulfillmentModeSnapshot      FulfillmentMode?
+  requiresSubscriptionSnapshot Boolean            @default(false)
+  skuSnapshot                  String?
+  planNameSnapshot             String?
+  variantNameSnapshot          String?
+  billingPeriodUnitSnapshot    BillingPeriodUnit?
+  billingPeriodCountSnapshot   Int?
+  catalogSnapshot              Json
+  quantity                     Decimal            @db.Decimal(18, 3)
+  unitPrice                    Decimal            @db.Decimal(18, 2)
+  discountAmount               Decimal            @default(0) @db.Decimal(18, 2)
+  taxAmount                    Decimal            @default(0) @db.Decimal(18, 2)
+  total                        Decimal            @db.Decimal(18, 2)
+  currency                     String
+  createdAt                    DateTime           @default(now())
+  updatedAt                    DateTime           @updatedAt
+  deletedAt                    DateTime?
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  sale         Sale         @relation(fields: [organizationId, saleId], references: [organizationId, id], onDelete: Restrict)
-  product      Product?     @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  sale           Sale            @relation(fields: [organizationId, saleId], references: [organizationId, id], onDelete: Restrict)
+  product        Product?        @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
+  plan           ProductPlan?    @relation(fields: [organizationId, planId], references: [organizationId, id], onDelete: Restrict)
+  variant        ProductVariant? @relation(fields: [organizationId, variantId], references: [organizationId, id], onDelete: Restrict)
+  priceBookEntry PriceBookEntry? @relation(fields: [organizationId, priceBookEntryId], references: [organizationId, id], onDelete: Restrict)
+  subscription   Subscription?
 
   @@unique([organizationId, id])
   @@index([organizationId])
-  @@index([saleId])
-  @@index([productId])
+  @@index([organizationId, saleId])
+  @@index([organizationId, productId])
+  @@index([organizationId, planId])
+  @@index([organizationId, variantId])
   @@index([createdAt])
 }
 
@@ -868,15 +947,23 @@ model Payment {
   id             String        @id @default(uuid()) @db.Uuid
   organizationId String        @db.Uuid
   saleId         String        @db.Uuid
-  grossAmount    Decimal       @db.Decimal(14, 2)
-  feeAmount      Decimal       @default(0) @db.Decimal(14, 2)
-  netAmount      Decimal       @db.Decimal(14, 2)
+  grossAmount    Decimal       @db.Decimal(18, 2)
+  feeAmount      Decimal       @default(0) @db.Decimal(18, 2)
+  netAmount      Decimal       @db.Decimal(18, 2)
+  refundedAmount Decimal       @default(0) @db.Decimal(18, 2)
   currency       String
-  method         String
+  method         PaymentMethod
   reference      String?
+  idempotencyKey String?
   status         PaymentStatus
-  paymentDate    DateTime
+  paymentDate    DateTime      @default(now())
+  confirmedAt    DateTime?
+  failedAt       DateTime?
+  refundedAt     DateTime?
+  refundReason   String?
   note           String?
+  metadata       Json?
+  version        Int           @default(0)
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   deletedAt      DateTime?
@@ -885,10 +972,107 @@ model Payment {
   sale         Sale         @relation(fields: [organizationId, saleId], references: [organizationId, id], onDelete: Restrict)
 
   @@unique([organizationId, id])
+  @@unique([organizationId, idempotencyKey])
   @@index([organizationId])
-  @@index([saleId])
-  @@index([status])
+  @@index([organizationId, saleId])
+  @@index([organizationId, status])
   @@index([paymentDate])
+  @@index([createdAt])
+}
+
+model Subscription {
+  id                  String             @id @default(uuid()) @db.Uuid
+  organizationId      String             @db.Uuid
+  saleId              String             @db.Uuid
+  saleItemId          String             @db.Uuid
+  contactId           String             @db.Uuid
+  userId              String?            @db.Uuid
+  productId           String?            @db.Uuid
+  planId              String?            @db.Uuid
+  variantId           String?            @db.Uuid
+  status              SubscriptionStatus @default(PENDING)
+  billingCycle        BillingCycle
+  customIntervalDays  Int?
+  currency            String
+  amount              Decimal            @db.Decimal(18, 2)
+  quantity            Decimal            @default(1) @db.Decimal(18, 3)
+  productNameSnapshot String
+  skuSnapshot         String?
+  planNameSnapshot    String?
+  variantNameSnapshot String?
+  catalogSnapshot     Json
+  startsAt            DateTime
+  trialEndsAt         DateTime?
+  currentPeriodStart  DateTime?
+  currentPeriodEnd    DateTime?
+  nextBillingAt       DateTime?
+  activatedAt         DateTime?
+  suspendedAt         DateTime?
+  expiredAt           DateTime?
+  cancelledAt         DateTime?
+  cancellationReason  String?
+  version             Int                @default(0)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  deletedAt           DateTime?
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  sale         Sale            @relation(fields: [organizationId, saleId], references: [organizationId, id], onDelete: Restrict)
+  saleItem     SaleItem        @relation(fields: [organizationId, saleItemId], references: [organizationId, id], onDelete: Restrict)
+  contact      Contact         @relation(fields: [organizationId, contactId], references: [organizationId, id], onDelete: Restrict)
+  owner        User?           @relation("SubscriptionOwner", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
+  product      Product?        @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
+  plan         ProductPlan?    @relation(fields: [organizationId, planId], references: [organizationId, id], onDelete: Restrict)
+  variant      ProductVariant? @relation(fields: [organizationId, variantId], references: [organizationId, id], onDelete: Restrict)
+  renewals     Renewal[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, saleItemId])
+  @@index([organizationId])
+  @@index([organizationId, saleId])
+  @@index([organizationId, contactId])
+  @@index([organizationId, userId])
+  @@index([organizationId, status])
+  @@index([organizationId, nextBillingAt])
+  @@index([createdAt])
+}
+
+model Renewal {
+  id                  String        @id @default(uuid()) @db.Uuid
+  organizationId      String        @db.Uuid
+  subscriptionId      String        @db.Uuid
+  sourceSaleId        String        @db.Uuid
+  generatedSaleId     String?       @db.Uuid
+  userId              String?       @db.Uuid
+  status              RenewalStatus @default(PENDING)
+  billingCycle        BillingCycle
+  amount              Decimal       @db.Decimal(18, 2)
+  currency            String
+  dueAt               DateTime
+  paidAt              DateTime?
+  productNameSnapshot String
+  skuSnapshot         String?
+  catalogSnapshot     Json
+  notes               String?
+  version             Int           @default(0)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  deletedAt           DateTime?
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  subscription  Subscription @relation(fields: [organizationId, subscriptionId], references: [organizationId, id], onDelete: Restrict)
+  sourceSale    Sale         @relation("RenewalSourceSale", fields: [organizationId, sourceSaleId], references: [organizationId, id], onDelete: Restrict)
+  generatedSale Sale?        @relation("RenewalGeneratedSale", fields: [organizationId, generatedSaleId], references: [organizationId, id], onDelete: Restrict)
+  owner         User?        @relation("RenewalOwner", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, generatedSaleId])
+  @@index([organizationId])
+  @@index([organizationId, subscriptionId])
+  @@index([organizationId, sourceSaleId])
+  @@index([organizationId, userId])
+  @@index([organizationId, status])
+  @@index([organizationId, dueAt])
   @@index([createdAt])
 }
 

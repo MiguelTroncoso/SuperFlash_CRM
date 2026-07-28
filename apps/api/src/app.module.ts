@@ -5,6 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
 import { appConfiguration, validateEnvironment } from './config/configuration';
 import { PrismaModule } from './infrastructure/prisma/prisma.module';
+import { EventsModule } from './infrastructure/events/events.module';
 import { ActivitiesModule } from './modules/activities/activities.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -20,6 +21,8 @@ import { CatalogModule } from './modules/catalog/catalog.module';
 import { SalesModule } from './modules/sales/sales.module';
 import { UsersModule } from './modules/users/users.module';
 import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
+import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
+import { RenewalsModule } from './modules/renewals/renewals.module';
 
 @Module({
   imports: [
@@ -43,6 +46,7 @@ import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
       },
     }),
     PrismaModule,
+    EventsModule,
     AuthModule,
     UsersModule,
     OrganizationsModule,
@@ -52,6 +56,8 @@ import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
     FollowUpsModule,
     SalesModule,
     PaymentsModule,
+    SubscriptionsModule,
+    RenewalsModule,
     ProductsModule,
     CatalogModule,
     CampaignsModule,

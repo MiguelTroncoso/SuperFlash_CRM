@@ -27,7 +27,7 @@ export function configureApplication(app: INestApplication, configuration: AppCo
   if (configuration.swaggerEnabled) {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('SuperFlash CRM API')
-      .setDescription('API de autenticación y autorización multiempresa.')
+      .setDescription('API multiempresa de autenticación, CRM y núcleo comercial.')
       .setVersion('1.0')
       .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' })
       .addCookieAuth('superflash_refresh_token')

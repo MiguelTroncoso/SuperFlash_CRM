@@ -41,6 +41,8 @@ async function cleanup(organizationIds: string[]): Promise<void> {
 
   await prisma.$transaction([
     prisma.auditLog.deleteMany({ where }),
+    prisma.renewal.deleteMany({ where }),
+    prisma.subscription.deleteMany({ where }),
     prisma.priceHistory.deleteMany({ where }),
     prisma.priceBookEntry.deleteMany({ where }),
     prisma.productVariant.deleteMany({ where }),
@@ -518,9 +520,10 @@ async function verifyIntegrity(): Promise<void> {
     const sale = await prisma.sale.create({
       data: {
         organizationId: organizationA.id,
+        contactId: manualContactA.id,
         opportunityId: opportunity.id,
         userId: userA.id,
-        status: SaleStatus.OPEN,
+        status: SaleStatus.PENDING,
         subtotal: new Prisma.Decimal('200.00'),
         total: new Prisma.Decimal('200.00'),
         currency: 'USD',
@@ -531,8 +534,9 @@ async function verifyIntegrity(): Promise<void> {
       prisma.sale.create({
         data: {
           organizationId: organizationA.id,
+          contactId: manualContactA.id,
           opportunityId: opportunity.id,
-          status: SaleStatus.OPEN,
+          status: SaleStatus.PENDING,
           subtotal: new Prisma.Decimal('50.00'),
           total: new Prisma.Decimal('50.00'),
           currency: 'USD',
@@ -543,6 +547,7 @@ async function verifyIntegrity(): Promise<void> {
     await prisma.sale.create({
       data: {
         organizationId: organizationA.id,
+        contactId: manualContactA.id,
         opportunityId: opportunity.id,
         status: SaleStatus.CANCELLED,
         subtotal: new Prisma.Decimal('50.00'),
@@ -560,7 +565,7 @@ async function verifyIntegrity(): Promise<void> {
           feeAmount: new Prisma.Decimal('0.00'),
           netAmount: new Prisma.Decimal('-1.00'),
           currency: 'USD',
-          method: 'integrity',
+          method: 'MANUAL',
           status: PaymentStatus.PENDING,
           paymentDate: new Date(),
         },
@@ -575,7 +580,7 @@ async function verifyIntegrity(): Promise<void> {
           feeAmount: new Prisma.Decimal('1.00'),
           netAmount: new Prisma.Decimal('10.01'),
           currency: 'USD',
-          method: 'integrity',
+          method: 'MANUAL',
           status: PaymentStatus.PENDING,
           paymentDate: new Date(),
         },
@@ -590,6 +595,7 @@ async function verifyIntegrity(): Promise<void> {
           productId: productA.id,
           productNameSnapshot: productA.name,
           skuSnapshot: productA.sku,
+          catalogSnapshot: {},
           quantity: new Prisma.Decimal('0'),
           unitPrice: productA.price ?? new Prisma.Decimal(0),
           total: new Prisma.Decimal('0'),
@@ -605,6 +611,7 @@ async function verifyIntegrity(): Promise<void> {
         productId: productA.id,
         productNameSnapshot: productA.name,
         skuSnapshot: productA.sku,
+        catalogSnapshot: { productName: productA.name, sku: productA.sku },
         quantity: new Prisma.Decimal('2'),
         unitPrice: productA.price ?? new Prisma.Decimal(0),
         total: new Prisma.Decimal('200.00'),

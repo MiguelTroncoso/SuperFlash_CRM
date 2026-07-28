@@ -90,6 +90,8 @@ describe('Opportunities and pipeline HTTP flow', () => {
     await prisma.activity.deleteMany();
     await prisma.followUpHistory.deleteMany();
     await prisma.followUp.deleteMany();
+    await prisma.renewal.deleteMany();
+    await prisma.subscription.deleteMany();
     await prisma.saleItem.deleteMany();
     await prisma.payment.deleteMany();
     await prisma.sale.deleteMany();
@@ -381,8 +383,9 @@ describe('Opportunities and pipeline HTTP flow', () => {
     await prisma.sale.create({
       data: {
         organizationId: fixture.organizationA,
+        contactId: fixture.contactA,
         opportunityId: body(created).id,
-        status: 'WON',
+        status: 'CONFIRMED',
         subtotal: new Prisma.Decimal('10'),
         total: new Prisma.Decimal('10'),
         currency: 'USD',

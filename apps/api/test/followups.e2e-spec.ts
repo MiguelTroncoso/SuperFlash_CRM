@@ -91,6 +91,8 @@ describe('Follow-ups, agenda and my-day HTTP flow', () => {
     await prisma.activity.deleteMany();
     await prisma.followUpHistory.deleteMany();
     await prisma.followUp.deleteMany();
+    await prisma.renewal.deleteMany();
+    await prisma.subscription.deleteMany();
     await prisma.auditLog.deleteMany();
     await prisma.opportunityStageHistory.deleteMany();
     await prisma.opportunity.deleteMany();

@@ -107,3 +107,28 @@ precio. `PriceBook.priority` está limitada a `-10000..10000`.
 `AuditLog` conserva actor, acción, tabla, registro, valores anterior/nuevo, IP y fecha. No tiene `updatedAt` ni `deletedAt`; la aplicación debe tratarlo como append-only y nunca actualizarlo o eliminarlo.
 
 La migración agrega checks para órdenes positivas, cantidades mayores que cero y montos no negativos. En pagos valida `netAmount <= grossAmount`.
+
+## Núcleo comercial (Sprint 8–11)
+
+```mermaid
+erDiagram
+    Opportunity ||--o{ Sale : converts
+    Contact ||--o{ Sale : buys
+    Sale ||--|{ SaleItem : contains
+    Sale ||--o{ Payment : receives
+    SaleItem }o--o| Product : references
+    SaleItem }o--o| ProductPlan : references
+    SaleItem }o--o| ProductVariant : references
+    SaleItem ||--o| Subscription : starts
+    Subscription ||--o{ Renewal : schedules
+    Renewal }o--|| Sale : source
+    Renewal ||--o| Sale : generates
+```
+
+`Sale` representa el acuerdo comercial y sus `SaleItem` conservan un snapshot JSON más campos tipados del catálogo. El snapshot es la fuente histórica de la venta, por lo que los cambios posteriores del catálogo no alteran el acuerdo.
+
+`Payment` guarda importes bruto, comisión, neto y reembolsado. El saldo se calcula como `Sale.total - sum(Payment.netAmount - Payment.refundedAmount)` únicamente sobre pagos confirmados o reembolsados; no existen columnas derivadas `remainingBalance` ni `paidAmount`.
+
+`Subscription` nace de un `SaleItem` y conserva su snapshot. `Renewal` pertenece a una suscripción y a la venta fuente; al pagarse crea una venta nueva con sus propios ítems y pago, sin modificar la venta anterior.
+
+Las confirmaciones de ventas, confirmaciones de pagos, creación/pago de renovaciones y conversiones de oportunidades bloquean la fila agregada con `FOR UPDATE`. Las operaciones se mantienen dentro de transacciones cortas y publican eventos de aplicación después del commit.
