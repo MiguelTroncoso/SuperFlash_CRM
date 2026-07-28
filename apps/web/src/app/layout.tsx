@@ -1,8 +1,6 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 
-import { LayoutShell } from '@/components/layout/layout-shell';
-
 import './globals.css';
 import { Providers } from './providers';
 
@@ -19,9 +17,7 @@ export default function RootLayout({ children }: RootLayoutProps): React.ReactEl
   return (
     <html lang="es">
       <body>
-        <Providers>
-          <LayoutShell>{children}</LayoutShell>
-        </Providers>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

@@ -149,6 +149,29 @@ El modelo aplica `deletedAt` para soft delete en las entidades del dominio. Las 
 
 El backend usa Feature First: cada módulo de negocio vive en `apps/api/src/modules/<feature>` y no se organizan carpetas globales de controllers, services o models.
 
+## Frontend Foundation
+
+Sprint 15–17 incorpora la primera experiencia profesional del workspace en
+`apps/web`: Layout con Sidebar/Header colapsable, modo oscuro, responsive,
+Command Palette, Dashboard, Mi Día, Contactos, Pipeline Kanban, Ventas,
+Catálogo, Providers, Fulfillment, Credenciales, Trials y Activaciones.
+
+La web consume exclusivamente la API existente. React Query gestiona caché y
+estados remotos; React Hook Form/Zod validan formularios; TanStack Table y
+dnd-kit resuelven tablas y Kanban; Recharts compone el gráfico del Dashboard.
+Los tokens no se persisten en el navegador y las credenciales se mantienen
+enmascaradas salvo reveal autorizado. Consulta [docs/frontend.md](docs/frontend.md),
+[docs/design-system.md](docs/design-system.md) y [docs/navigation.md](docs/navigation.md).
+
+Comandos frontend:
+
+```bash
+npm run dev:web
+npm run test:web
+npm run typecheck --workspace=@superflash/web
+npm run build:web
+```
+
 ## CI
 
 GitHub Actions instala dependencias, genera Prisma Client, ejecuta migraciones públicas y aisladas, seed, verificación de integridad, pruebas unitarias e integración, Prettier, lint, typecheck y builds frontend/backend.

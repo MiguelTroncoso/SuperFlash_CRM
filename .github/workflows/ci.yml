@@ -66,6 +66,9 @@ jobs:
       - name: Unit tests
         run: npm run test:unit
 
+      - name: Frontend tests
+        run: npm run test:web
+
       - name: Apply isolated domain migrations
         env:
           DATABASE_URL: postgresql://superflash:superflash@localhost:5432/superflash?schema=auth_test

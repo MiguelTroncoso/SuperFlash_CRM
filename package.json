@@ -20,6 +20,7 @@
     "test": "npm run test --workspace=@superflash/api",
     "test:unit": "npm run test:unit --workspace=@superflash/api",
     "test:integration": "npm run test:integration --workspace=@superflash/api",
+    "test:web": "npm run test --workspace=@superflash/web",
     "dev:api": "npm run start:dev --workspace=@superflash/api",
     "dev:web": "npm run dev --workspace=@superflash/web",
     "format": "prettier --write .",

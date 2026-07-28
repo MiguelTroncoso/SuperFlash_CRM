@@ -62,6 +62,16 @@ Revenue Intelligence permanecen fuera de la implementación actual. El detalle
 de Revenue Intelligence está en
 [docs/roadmap/revenue-intelligence.md](../roadmap/revenue-intelligence.md).
 
+### Frontend Foundation
+
+La interfaz profesional de Architecture v1.0/v1.1 se implementa como una capa
+de consumo: no crea dominios, endpoints ni reglas de negocio. El App Router
+organiza el workspace por features y consume los contratos existentes de CRM,
+Commercial Core y Operations and Fulfillment. La documentación de UX, diseño y
+navegación está en [docs/frontend.md](../frontend.md),
+[docs/design-system.md](../design-system.md) y
+[docs/navigation.md](../navigation.md).
+
 ## Reglas de versionado
 
 - Una versión de arquitectura se identifica como `vMAJOR.MINOR`.
