@@ -8,6 +8,15 @@ coverage/
 .env
 .env.*
 !.env.example
+!.env.production.example
+
+.env.production
+backups/
+certificates/
+certs/
+secrets/
+*.pem
+*.key
 
 docker-data/
 .DS_Store

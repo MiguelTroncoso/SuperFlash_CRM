@@ -66,6 +66,26 @@ Para detener los servicios:
 docker compose down
 ```
 
+## Producción
+
+La base para el VPS está separada en `docker-compose.prod.yml`. No reemplaza
+el compose de desarrollo y no incluye Mailpit, Adminer, bind mounts del código
+ni puertos públicos para PostgreSQL o Redis.
+
+```bash
+cp .env.production.example .env.production
+chmod 600 .env.production
+# editar .env.production con secretos únicos de producción
+./scripts/production/deploy.sh
+```
+
+En producción, Web queda en `127.0.0.1:3000`, API en `127.0.0.1:3001` y los
+servicios de datos solo en la red interna Docker. Nginx y Certbot se gestionan
+en el VPS usando las referencias de `deploy/nginx/`. La operación completa está
+documentada en [docs/production-deployment.md](docs/production-deployment.md),
+con procedimientos de backup en [docs/backup-restore.md](docs/backup-restore.md)
+y rollback en [docs/rollback.md](docs/rollback.md).
+
 ## Desarrollo local
 
 Con PostgreSQL y Redis disponibles localmente:
