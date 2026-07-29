@@ -15,6 +15,8 @@ export interface AppConfiguration {
   passwordResetTtlMinutes: number;
   defaultTimezone: string;
   credentialEncryptionKey: string;
+  whatsappGraphApiVersion: string;
+  whatsappWebhookPublicUrl: string;
 }
 
 type Environment = Readonly<Record<string, string | undefined>>;
@@ -99,6 +101,8 @@ export function buildConfiguration(environment: Environment): AppConfiguration {
     passwordResetTtlMinutes: 30,
     defaultTimezone,
     credentialEncryptionKey,
+    whatsappGraphApiVersion: environment.WHATSAPP_GRAPH_API_VERSION?.trim() || 'v23.0',
+    whatsappWebhookPublicUrl: environment.WHATSAPP_WEBHOOK_PUBLIC_URL?.trim() || '',
   };
 }
 

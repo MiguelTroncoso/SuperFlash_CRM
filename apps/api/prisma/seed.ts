@@ -108,6 +108,11 @@ const permissions = [
   { key: 'templates.delete', name: 'Archivar plantillas' },
   { key: 'notifications.read', name: 'Leer notificaciones' },
   { key: 'notifications.update', name: 'Gestionar notificaciones' },
+  { key: 'whatsapp.read', name: 'Leer WhatsApp' },
+  { key: 'whatsapp.send', name: 'Enviar mensajes WhatsApp' },
+  { key: 'whatsapp.manage', name: 'Administrar conexión WhatsApp' },
+  { key: 'whatsapp.templates.read', name: 'Leer plantillas WhatsApp' },
+  { key: 'whatsapp.conversations.assign', name: 'Asignar conversaciones WhatsApp' },
 ] as const;
 
 const pipelineStages = [
@@ -191,6 +196,10 @@ const salesPermissionKeys = [
   'campaigns.read',
   'catalog.read',
   'catalog.prices.read',
+  'whatsapp.read',
+  'whatsapp.send',
+  'whatsapp.templates.read',
+  'whatsapp.conversations.assign',
 ] as const;
 
 const catalogExamplesEnabled =

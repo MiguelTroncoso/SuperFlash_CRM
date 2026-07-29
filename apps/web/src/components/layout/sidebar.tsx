@@ -44,6 +44,7 @@ const sections: { label: string; items: NavItem[] }[] = [
   {
     label: 'Comunicaciones',
     items: [
+      { label: 'WhatsApp', href: '/whatsapp', icon: '◉', permission: 'whatsapp.read' },
       {
         label: 'Automatizaciones',
         href: '/automations',

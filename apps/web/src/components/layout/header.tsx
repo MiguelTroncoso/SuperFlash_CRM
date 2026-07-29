@@ -50,6 +50,14 @@ const titles: Record<string, { title: string; subtitle: string }> = {
     title: 'Ejecuciones',
     subtitle: 'Historial y diagnóstico del motor de automatización.',
   },
+  '/whatsapp': {
+    title: 'WhatsApp',
+    subtitle: 'Conversaciones de WhatsApp Business Cloud API.',
+  },
+  '/settings/integrations/whatsapp': {
+    title: 'WhatsApp',
+    subtitle: 'Configuración segura de la integración oficial.',
+  },
 };
 
 export function Header(): React.ReactElement {

@@ -23,8 +23,8 @@ Las integraciones externas, atribución avanzada, IA y Analytical Event Store
 siguen en roadmap en [docs/roadmap/revenue-intelligence.md](docs/roadmap/revenue-intelligence.md).
 
 La implementación v1.1 agrega exclusivamente la capa operativa posterior a la
-venta. No incluye integraciones externas reales, WhatsApp, automatizaciones,
-Revenue Intelligence ni frontend CRM completo.
+venta. La integración oficial de WhatsApp Cloud API se mantiene como boundary
+externo aislado y no agrega bots ni automatizaciones externas.
 
 ## Requisitos
 
@@ -231,6 +231,26 @@ La API expone la autenticación bajo `/api/v1/auth`:
 - `GET /security-check` es un endpoint técnico protegido por `audit.read`.
 
 Configura las variables de autenticación en `.env`. En producción `JWT_ACCESS_SECRET` debe existir, ser único y tener al menos 32 caracteres. Swagger está disponible en `/api/docs` cuando `SWAGGER_ENABLED=true`.
+
+## WhatsApp Cloud API
+
+La integración oficial se configura desde `/settings/integrations/whatsapp` y
+expone la bandeja en `/whatsapp`. El backend implementa verificación pública,
+firma HMAC, contactos inbound idempotentes, oportunidades iniciales,
+conversaciones, mensajes, plantillas aprobadas y sincronización de estados.
+Los endpoints autenticados están bajo `/api/v1/integrations/whatsapp`; el
+webhook público es únicamente `GET/POST
+/api/v1/integrations/whatsapp/webhook`. Los permisos independientes son
+`whatsapp.read`, `whatsapp.send`, `whatsapp.manage`,
+`whatsapp.templates.read` y `whatsapp.conversations.assign`.
+
+Configura `WHATSAPP_GRAPH_API_VERSION` y
+`WHATSAPP_WEBHOOK_PUBLIC_URL` en el entorno. WABA ID, Phone Number ID, Access
+Token, App Secret y Verify Token se guardan por organización cifrados en la
+base de datos; nunca se devuelven completos ni se escriben en logs. Consulta
+[docs/whatsapp-production-setup.md](docs/whatsapp-production-setup.md),
+[docs/whatsapp-webhook.md](docs/whatsapp-webhook.md) y
+[docs/whatsapp-troubleshooting.md](docs/whatsapp-troubleshooting.md).
 
 Para ejecutar las pruebas de integración sin tocar la base de desarrollo, usa un esquema aislado:
 

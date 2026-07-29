@@ -20,6 +20,6 @@ import { TagsService } from './tags.service';
     ContactAccessPolicy,
     TagsService,
   ],
-  exports: [ContactsService, ContactAccessPolicy],
+  exports: [ContactsService, ContactAccessPolicy, PhoneNormalizerService],
 })
 export class ContactsModule {}

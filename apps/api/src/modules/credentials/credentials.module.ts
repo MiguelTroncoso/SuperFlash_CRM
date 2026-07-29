@@ -10,6 +10,6 @@ import { CredentialsService } from './credentials.service';
   imports: [AuditModule, AuthModule],
   controllers: [CredentialsController],
   providers: [CredentialEncryptionService, CredentialsService],
-  exports: [CredentialsService],
+  exports: [CredentialsService, CredentialEncryptionService],
 })
 export class CredentialsModule {}

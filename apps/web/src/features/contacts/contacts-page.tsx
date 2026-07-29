@@ -19,10 +19,55 @@ import { ContactForm, type ContactFormValues } from './contact-form';
 import { api, queryString } from '@/lib/api-client';
 import type { Contact } from '@/lib/types';
 
+function ContactWhatsAppTab({ contact }: { readonly contact: Contact }): React.ReactElement {
+  const conversations = useQuery({
+    queryKey: ['contact-whatsapp', contact.id, contact.phone],
+    queryFn: () => api.getWhatsAppConversations(queryString({ search: contact.phone ?? '' })),
+    enabled: Boolean(contact.phone),
+  });
+  const rows = conversations.data?.data ?? [];
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-950">
+        <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">WhatsApp</p>
+        <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+          {contact.phone
+            ? `Conversaciones asociadas a ${contact.phone}.`
+            : 'Este contacto no tiene teléfono.'}
+        </p>
+      </div>
+      {rows.length === 0 ? (
+        <p className="text-sm text-slate-500">
+          No hay conversaciones de WhatsApp para este contacto.
+        </p>
+      ) : (
+        rows.map((conversation) => (
+          <a
+            className="block rounded-2xl border border-slate-200 p-4 hover:border-brand-300 dark:border-slate-800"
+            href={`/whatsapp?conversation=${conversation.id}`}
+            key={conversation.id}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span className="font-bold text-slate-900 dark:text-white">
+                {conversation.externalContactPhoneNormalized}
+              </span>
+              <StatusBadge status={conversation.status} />
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
+              {conversation.unreadCount} mensajes sin leer
+            </p>
+          </a>
+        ))
+      )}
+    </div>
+  );
+}
+
 export function ContactsPage(): React.ReactElement {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [drawer, setDrawer] = useState<'create' | 'edit' | null>(null);
+  const [drawerTab, setDrawerTab] = useState<'details' | 'whatsapp'>('details');
   const [selected, setSelected] = useState<Contact | null>(null);
   const queryClient = useQueryClient();
   const toast = useToastStore((state) => state.push);
@@ -68,6 +113,7 @@ export function ContactsPage(): React.ReactElement {
           onClick={() => {
             setSelected(row.original);
             setDrawer('edit');
+            setDrawerTab('details');
           }}
           type="button"
         >
@@ -132,6 +178,7 @@ export function ContactsPage(): React.ReactElement {
               onClick={() => {
                 setSelected(null);
                 setDrawer('create');
+                setDrawerTab('details');
               }}
             >
               ＋ Nuevo contacto
@@ -178,15 +225,37 @@ export function ContactsPage(): React.ReactElement {
           open={drawer !== null}
           title={drawer === 'create' ? 'Nuevo contacto' : 'Editar contacto'}
         >
-          <ContactForm
-            contact={selected}
-            onCancel={() => setDrawer(null)}
-            onSubmit={(values) => {
-              if (drawer === 'create') create.mutate(values);
-              else update.mutate(values);
-            }}
-            submitting={create.isPending || update.isPending}
-          />
+          {drawer === 'edit' && selected ? (
+            <div className="mb-5 flex gap-2 border-b border-slate-200 pb-3 dark:border-slate-800">
+              <Button
+                onClick={() => setDrawerTab('details')}
+                size="sm"
+                variant={drawerTab === 'details' ? 'primary' : 'ghost'}
+              >
+                Datos
+              </Button>
+              <Button
+                onClick={() => setDrawerTab('whatsapp')}
+                size="sm"
+                variant={drawerTab === 'whatsapp' ? 'primary' : 'ghost'}
+              >
+                WhatsApp
+              </Button>
+            </div>
+          ) : null}
+          {drawerTab === 'whatsapp' && selected ? (
+            <ContactWhatsAppTab contact={selected} />
+          ) : (
+            <ContactForm
+              contact={selected}
+              onCancel={() => setDrawer(null)}
+              onSubmit={(values) => {
+                if (drawer === 'create') create.mutate(values);
+                else update.mutate(values);
+              }}
+              submitting={create.isPending || update.isPending}
+            />
+          )}
         </Drawer>
       </PageGrid>
     </QueryState>

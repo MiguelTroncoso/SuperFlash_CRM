@@ -28,6 +28,10 @@ import type {
   Sale,
   Tag,
   Trial,
+  WhatsAppConnection,
+  WhatsAppConversation,
+  WhatsAppMessage,
+  WhatsAppTemplate,
 } from './types';
 
 const configuredUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
@@ -188,6 +192,37 @@ export const api = {
     request<{ data: RevenueTrendPoint[] }>(`/revenue-intelligence/trends${query}`),
   getRevenueForecast: (query = '') =>
     request<{ data: RevenueForecast[] }>(`/revenue-intelligence/forecast${query}`),
+  getWhatsAppConnection: () =>
+    request<WhatsAppConnection | null>('/integrations/whatsapp/connection'),
+  saveWhatsAppConnection: (body: JsonRecord) =>
+    request<WhatsAppConnection>('/integrations/whatsapp/connection', {
+      method: 'PUT',
+      ...jsonBody(body),
+    }),
+  testWhatsAppConnection: () =>
+    request<WhatsAppConnection>('/integrations/whatsapp/connection/test', { method: 'POST' }),
+  disconnectWhatsApp: () =>
+    request<void>('/integrations/whatsapp/connection/disconnect', { method: 'POST' }),
+  getWhatsAppConversations: (query = '') =>
+    request<Paginated<WhatsAppConversation>>(`/integrations/whatsapp/conversations${query}`),
+  getWhatsAppMessages: (id: string, query = '') =>
+    request<Paginated<WhatsAppMessage>>(
+      `/integrations/whatsapp/conversations/${id}/messages${query}`,
+    ),
+  sendWhatsAppMessage: (id: string, body: JsonRecord) =>
+    request<WhatsAppMessage>(`/integrations/whatsapp/conversations/${id}/messages`, {
+      method: 'POST',
+      ...jsonBody(body),
+    }),
+  assignWhatsAppConversation: (id: string, assignedUserId: string | null) =>
+    request<WhatsAppConversation>(`/integrations/whatsapp/conversations/${id}/assignee`, {
+      method: 'PATCH',
+      ...jsonBody({ assignedUserId }),
+    }),
+  getWhatsAppTemplates: () =>
+    request<{ data: WhatsAppTemplate[] }>('/integrations/whatsapp/templates'),
+  syncWhatsAppTemplates: () =>
+    request<{ synced: number }>('/integrations/whatsapp/templates/sync', { method: 'POST' }),
 };
 
 export function queryString(params: Record<string, string | number | boolean | undefined>): string {

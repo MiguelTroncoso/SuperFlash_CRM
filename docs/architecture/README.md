@@ -63,6 +63,12 @@ tenant y no introducen dependencias con proveedores externos. El motor usa una
 cola durable respaldada por PostgreSQL, reintentos con backoff y `requestId`
 end-to-end.
 
+La integración WhatsApp Cloud API se implementa como un boundary externo de
+comunicaciones: usa solo la API oficial de Meta, mantiene secretos cifrados por
+organización, recibe eventos mediante webhook firmado y entrega mensajes por
+Outbox durable. Esta integración no cambia el núcleo transaccional ni habilita
+bots o automatizaciones externas.
+
 ### Evolución y roadmap futuro
 
 Operations and Fulfillment está implementado como Architecture v1.1 y pendiente

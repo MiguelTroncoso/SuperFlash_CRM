@@ -45,6 +45,8 @@ services:
       WEB_URL: ${WEB_URL:?WEB_URL is required}
       DATABASE_URL: postgresql://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB is required}?schema=public
       REDIS_URL: redis://redis:6379
+      WHATSAPP_GRAPH_API_VERSION: ${WHATSAPP_GRAPH_API_VERSION:?WHATSAPP_GRAPH_API_VERSION is required}
+      WHATSAPP_WEBHOOK_PUBLIC_URL: ${WHATSAPP_WEBHOOK_PUBLIC_URL:?WHATSAPP_WEBHOOK_PUBLIC_URL is required}
     depends_on:
       postgres:
         condition: service_healthy

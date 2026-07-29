@@ -42,7 +42,12 @@ export type CommercialEventName =
   | 'ActivationCreated'
   | 'ActivationActivated'
   | 'ActivationSuspended'
-  | 'ActivationRevoked';
+  | 'ActivationRevoked'
+  | 'WhatsAppWebhookReceived'
+  | 'WhatsAppMessageQueued'
+  | 'WhatsAppMessageSent'
+  | 'WhatsAppMessageFailed'
+  | 'WhatsAppMessageStatusUpdated';
 
 export interface CommercialEvent {
   eventId: string;

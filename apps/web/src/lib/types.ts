@@ -388,3 +388,60 @@ export interface RevenueDashboard {
   funnel: RevenueFunnel;
   forecast: RevenueForecast[];
 }
+
+export interface WhatsAppConnection {
+  id: string;
+  wabaId: string;
+  phoneNumberId: string;
+  businessPhoneNumber: string;
+  graphApiVersion: string;
+  status: string;
+  accessToken: string;
+  appSecret: string;
+  webhookVerifyToken: string;
+  lastHealthcheckAt: string | null;
+  lastHealthcheckError: string | null;
+  lastWebhookReceivedAt: string | null;
+}
+
+export interface WhatsAppConversation {
+  id: string;
+  externalContactPhone: string;
+  externalContactPhoneNormalized: string;
+  externalContactName: string | null;
+  status: string;
+  windowStartedAt: string | null;
+  windowExpiresAt: string | null;
+  lastMessageAt: string | null;
+  unreadCount: number;
+  contact: { id: string; name: string; phone: string | null } | null;
+  assignedTo: Person | null;
+}
+
+export interface WhatsAppMessage {
+  id: string;
+  externalMessageId: string | null;
+  direction: string;
+  type: string;
+  status: string;
+  text: string | null;
+  templateName: string | null;
+  templateLanguage: string | null;
+  mediaMimeType: string | null;
+  mediaFilename: string | null;
+  caption: string | null;
+  location: JsonRecord | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+}
+
+export interface WhatsAppTemplate {
+  id: string;
+  name: string;
+  language: string | null;
+  category: string | null;
+  status: string;
+  components: unknown;
+  updatedAt: string;
+}

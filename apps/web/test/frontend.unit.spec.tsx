@@ -10,6 +10,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { useUiStore } from '@/lib/ui-store';
 import { api } from '@/lib/api-client';
 import { ExecutiveDashboardPage } from '@/features/revenue-intelligence/revenue-pages';
+import { WhatsAppPage } from '@/features/whatsapp/whatsapp-page';
 import type { AuthUser, RevenueDashboard } from '@/lib/types';
 import type { ColumnDef } from '@tanstack/react-table';
 
@@ -178,5 +179,31 @@ describe('frontend foundation', () => {
     expect(await screen.findByText('Dashboard ejecutivo')).toBeInTheDocument();
     expect((await screen.findAllByText('USD 100')).length).toBeGreaterThan(0);
     expect(screen.getByText('Venta')).toBeInTheDocument();
+  });
+
+  it('renders WhatsApp configuration without exposing secrets', async () => {
+    jest.spyOn(api, 'getWhatsAppConnection').mockResolvedValue({
+      id: 'connection-1',
+      wabaId: 'waba-1',
+      phoneNumberId: 'phone-1',
+      businessPhoneNumber: '+56912345678',
+      graphApiVersion: 'v23.0',
+      status: 'CONNECTED',
+      accessToken: '••••••••',
+      appSecret: '••••••••',
+      webhookVerifyToken: '••••••••',
+      lastHealthcheckAt: null,
+      lastHealthcheckError: null,
+      lastWebhookReceivedAt: null,
+    });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <WhatsAppPage settingsOnly />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText('Configuración Cloud API')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('waba-1')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('meta-access-token')).not.toBeInTheDocument();
   });
 });

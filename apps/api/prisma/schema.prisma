@@ -172,6 +172,52 @@ enum NotificationStatus {
   ARCHIVED
 }
 
+enum WhatsAppConnectionStatus {
+  DISCONNECTED
+  CONNECTED
+  ERROR
+}
+
+enum WhatsAppConversationStatus {
+  OPEN
+  CLOSED
+  ARCHIVED
+}
+
+enum WhatsAppMessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum WhatsAppMessageType {
+  TEXT
+  TEMPLATE
+  IMAGE
+  AUDIO
+  VIDEO
+  DOCUMENT
+  LOCATION
+  CONTACTS
+  BUTTON
+  INTERACTIVE
+  UNKNOWN
+}
+
+enum WhatsAppMessageDeliveryStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum WhatsAppWebhookEventStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
 enum ProductType {
   SUBSCRIPTION
   CREDIT_PACKAGE
@@ -343,6 +389,12 @@ model Organization {
   automationExecutions      AutomationExecution[]
   automationActionRuns      AutomationExecutionAction[]
   notifications             Notification[]
+  whatsappConnections       WhatsAppConnection[]
+  whatsappPhoneNumbers      WhatsAppPhoneNumber[]
+  whatsappConversations     WhatsAppConversation[]
+  whatsappMessages          WhatsAppMessage[]
+  whatsappWebhookEvents     WhatsAppWebhookEvent[]
+  whatsappMessageStatuses   WhatsAppMessageStatus[]
 
   @@index([createdAt])
 }
@@ -393,33 +445,34 @@ model User {
   updatedAt      DateTime   @updatedAt
   deletedAt      DateTime?
 
-  organization              Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  role                      Role                      @relation(fields: [organizationId, roleId], references: [organizationId, id], onDelete: Restrict)
-  contacts                  Contact[]                 @relation("ContactAssignee")
-  opportunities             Opportunity[]             @relation("OpportunityOwner")
-  activities                Activity[]                @relation("ActivityAuthor")
-  followUps                 FollowUp[]                @relation("FollowUpResponsible")
-  sales                     Sale[]                    @relation("SaleSeller")
-  subscriptions             Subscription[]            @relation("SubscriptionOwner")
-  renewals                  Renewal[]                 @relation("RenewalOwner")
-  campaigns                 Campaign[]                @relation("CampaignOwner")
-  auditLogs                 AuditLog[]                @relation("AuditActor")
-  outboxEvents              OutboxEvent[]             @relation("OutboxActor")
-  opportunityStageHistories OpportunityStageHistory[] @relation("OpportunityStageHistoryActor")
-  authSessions              AuthSession[]
-  passwordResetTokens       PasswordResetToken[]
-  createdFollowUps          FollowUp[]                @relation("FollowUpCreatedBy")
-  completedFollowUps        FollowUp[]                @relation("FollowUpCompletedBy")
-  cancelledFollowUps        FollowUp[]                @relation("FollowUpCancelledBy")
-  followUpHistories         FollowUpHistory[]         @relation("FollowUpHistoryActor")
-  priceHistories            PriceHistory[]            @relation("PriceHistoryActor")
-  assignedFulfillments      Fulfillment[]             @relation("FulfillmentAssignee")
-  ownedTrials               Trial[]                   @relation("TrialOwner")
-  credentialReveals         CredentialRecord[]        @relation("CredentialRevealedBy")
-  createdMessageTemplates   MessageTemplate[]         @relation("MessageTemplateCreator")
-  createdAutomationRules   AutomationRule[]          @relation("AutomationRuleCreator")
-  automationExecutions     AutomationExecution[]     @relation("AutomationExecutionActor")
-  notifications             Notification[]
+  organization                  Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  role                          Role                      @relation(fields: [organizationId, roleId], references: [organizationId, id], onDelete: Restrict)
+  contacts                      Contact[]                 @relation("ContactAssignee")
+  opportunities                 Opportunity[]             @relation("OpportunityOwner")
+  activities                    Activity[]                @relation("ActivityAuthor")
+  followUps                     FollowUp[]                @relation("FollowUpResponsible")
+  sales                         Sale[]                    @relation("SaleSeller")
+  subscriptions                 Subscription[]            @relation("SubscriptionOwner")
+  renewals                      Renewal[]                 @relation("RenewalOwner")
+  campaigns                     Campaign[]                @relation("CampaignOwner")
+  auditLogs                     AuditLog[]                @relation("AuditActor")
+  outboxEvents                  OutboxEvent[]             @relation("OutboxActor")
+  opportunityStageHistories     OpportunityStageHistory[] @relation("OpportunityStageHistoryActor")
+  authSessions                  AuthSession[]
+  passwordResetTokens           PasswordResetToken[]
+  createdFollowUps              FollowUp[]                @relation("FollowUpCreatedBy")
+  completedFollowUps            FollowUp[]                @relation("FollowUpCompletedBy")
+  cancelledFollowUps            FollowUp[]                @relation("FollowUpCancelledBy")
+  followUpHistories             FollowUpHistory[]         @relation("FollowUpHistoryActor")
+  priceHistories                PriceHistory[]            @relation("PriceHistoryActor")
+  assignedFulfillments          Fulfillment[]             @relation("FulfillmentAssignee")
+  ownedTrials                   Trial[]                   @relation("TrialOwner")
+  credentialReveals             CredentialRecord[]        @relation("CredentialRevealedBy")
+  createdMessageTemplates       MessageTemplate[]         @relation("MessageTemplateCreator")
+  createdAutomationRules        AutomationRule[]          @relation("AutomationRuleCreator")
+  automationExecutions          AutomationExecution[]     @relation("AutomationExecutionActor")
+  notifications                 Notification[]
+  assignedWhatsAppConversations WhatsAppConversation[]    @relation("WhatsAppConversationAssignee")
 
   @@unique([organizationId, id])
   @@unique([organizationId, email])
@@ -495,14 +548,16 @@ model Contact {
   updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
 
-  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  assignedTo    User?          @relation("ContactAssignee", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
-  tags          ContactTag[]
-  opportunities Opportunity[]
-  sales         Sale[]
-  subscriptions Subscription[]
-  activities    Activity[]
-  trials        Trial[]
+  organization          Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  assignedTo            User?                  @relation("ContactAssignee", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
+  tags                  ContactTag[]
+  opportunities         Opportunity[]
+  sales                 Sale[]
+  subscriptions         Subscription[]
+  activities            Activity[]
+  trials                Trial[]
+  whatsappConversations WhatsAppConversation[]
+  whatsappMessages      WhatsAppMessage[]
 
   @@unique([organizationId, id])
   @@index([organizationId])
@@ -1621,48 +1676,55 @@ model AuditLog {
 }
 
 model MessageTemplate {
-  id              String                 @id @default(uuid()) @db.Uuid
-  organizationId  String                 @db.Uuid
-  createdByUserId String?                @db.Uuid
-  name            String
-  slug            String
-  channel         MessageTemplateChannel @default(INTERNAL)
-  status          MessageTemplateStatus  @default(ACTIVE)
-  subject         String?
-  body            String
-  variables       Json?
-  version         Int                    @default(1)
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
-  deletedAt       DateTime?
+  id                 String                 @id @default(uuid()) @db.Uuid
+  organizationId     String                 @db.Uuid
+  createdByUserId    String?                @db.Uuid
+  name               String
+  slug               String
+  channel            MessageTemplateChannel @default(INTERNAL)
+  status             MessageTemplateStatus  @default(ACTIVE)
+  subject            String?
+  body               String
+  variables          Json?
+  whatsappExternalId String?
+  whatsappName       String?
+  whatsappLanguage   String?
+  whatsappCategory   String?
+  whatsappStatus     String?
+  whatsappComponents Json?
+  version            Int                    @default(1)
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+  deletedAt          DateTime?
 
-  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  createdBy    User?             @relation("MessageTemplateCreator", fields: [organizationId, createdByUserId], references: [organizationId, id], onDelete: Restrict)
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  createdBy    User?            @relation("MessageTemplateCreator", fields: [organizationId, createdByUserId], references: [organizationId, id], onDelete: Restrict)
   rules        AutomationRule[]
 
   @@unique([organizationId, id])
   @@unique([organizationId, slug])
   @@index([organizationId, status, channel])
+  @@index([organizationId, whatsappName, whatsappLanguage])
   @@index([organizationId, createdAt])
 }
 
 model AutomationRule {
-  id              String             @id @default(uuid()) @db.Uuid
-  organizationId  String             @db.Uuid
-  createdByUserId String             @db.Uuid
-  templateId      String?            @db.Uuid
+  id              String            @id @default(uuid()) @db.Uuid
+  organizationId  String            @db.Uuid
+  createdByUserId String            @db.Uuid
+  templateId      String?           @db.Uuid
   name            String
   description     String?
   trigger         AutomationTrigger
   conditions      Json?
-  active          Boolean            @default(false)
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
+  active          Boolean           @default(false)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
   deletedAt       DateTime?
 
-  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  createdBy    User                 @relation("AutomationRuleCreator", fields: [organizationId, createdByUserId], references: [organizationId, id], onDelete: Restrict)
-  template     MessageTemplate?     @relation(fields: [organizationId, templateId], references: [organizationId, id], onDelete: Restrict)
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  createdBy    User                  @relation("AutomationRuleCreator", fields: [organizationId, createdByUserId], references: [organizationId, id], onDelete: Restrict)
+  template     MessageTemplate?      @relation(fields: [organizationId, templateId], references: [organizationId, id], onDelete: Restrict)
   actions      AutomationAction[]
   executions   AutomationExecution[]
 
@@ -1673,17 +1735,17 @@ model AutomationRule {
 }
 
 model AutomationAction {
-  id                String               @id @default(uuid()) @db.Uuid
-  organizationId    String               @db.Uuid
-  automationRuleId  String               @db.Uuid
-  actionOrder       Int
-  type              AutomationActionType
-  config            Json
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
+  id               String               @id @default(uuid()) @db.Uuid
+  organizationId   String               @db.Uuid
+  automationRuleId String               @db.Uuid
+  actionOrder      Int
+  type             AutomationActionType
+  config           Json
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
 
-  organization Organization                 @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  rule         AutomationRule               @relation(fields: [organizationId, automationRuleId], references: [organizationId, id], onDelete: Restrict)
+  organization Organization                @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  rule         AutomationRule              @relation(fields: [organizationId, automationRuleId], references: [organizationId, id], onDelete: Restrict)
   executions   AutomationExecutionAction[]
 
   @@unique([organizationId, id])
@@ -1692,29 +1754,29 @@ model AutomationAction {
 }
 
 model AutomationExecution {
-  id              String                    @id @default(uuid()) @db.Uuid
-  organizationId  String                    @db.Uuid
-  automationRuleId String                   @db.Uuid
-  actorId         String?                   @db.Uuid
-  trigger         AutomationTrigger
-  sourceEventId   String                    @db.Uuid
-  aggregateType   String
-  aggregateId     String                    @db.Uuid
-  requestId       String
-  status          AutomationExecutionStatus @default(QUEUED)
-  attempts        Int                       @default(0)
-  availableAt     DateTime                  @default(now())
-  processingAt    DateTime?
-  completedAt     DateTime?
-  lastError       String?
-  inputPayload    Json
-  resultPayload   Json?
-  createdAt       DateTime                  @default(now())
-  updatedAt       DateTime                  @updatedAt
+  id               String                    @id @default(uuid()) @db.Uuid
+  organizationId   String                    @db.Uuid
+  automationRuleId String                    @db.Uuid
+  actorId          String?                   @db.Uuid
+  trigger          AutomationTrigger
+  sourceEventId    String                    @db.Uuid
+  aggregateType    String
+  aggregateId      String                    @db.Uuid
+  requestId        String
+  status           AutomationExecutionStatus @default(QUEUED)
+  attempts         Int                       @default(0)
+  availableAt      DateTime                  @default(now())
+  processingAt     DateTime?
+  completedAt      DateTime?
+  lastError        String?
+  inputPayload     Json
+  resultPayload    Json?
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
 
-  organization Organization                 @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  rule         AutomationRule               @relation(fields: [organizationId, automationRuleId], references: [organizationId, id], onDelete: Restrict)
-  actor        User?                         @relation("AutomationExecutionActor", fields: [organizationId, actorId], references: [organizationId, id], onDelete: Restrict)
+  organization Organization                @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  rule         AutomationRule              @relation(fields: [organizationId, automationRuleId], references: [organizationId, id], onDelete: Restrict)
+  actor        User?                       @relation("AutomationExecutionActor", fields: [organizationId, actorId], references: [organizationId, id], onDelete: Restrict)
   actions      AutomationExecutionAction[]
 
   @@unique([organizationId, id])
@@ -1726,24 +1788,24 @@ model AutomationExecution {
 }
 
 model AutomationExecutionAction {
-  id                 String               @id @default(uuid()) @db.Uuid
-  organizationId     String               @db.Uuid
-  automationExecutionId String            @db.Uuid
-  automationActionId String               @db.Uuid
-  actionOrder        Int
-  type               AutomationActionType
-  config             Json
-  status             AutomationActionStatus @default(PENDING)
-  startedAt          DateTime?
-  completedAt        DateTime?
-  errorMessage       String?
-  resultPayload      Json?
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
+  id                    String                 @id @default(uuid()) @db.Uuid
+  organizationId        String                 @db.Uuid
+  automationExecutionId String                 @db.Uuid
+  automationActionId    String                 @db.Uuid
+  actionOrder           Int
+  type                  AutomationActionType
+  config                Json
+  status                AutomationActionStatus @default(PENDING)
+  startedAt             DateTime?
+  completedAt           DateTime?
+  errorMessage          String?
+  resultPayload         Json?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
 
-  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  execution    AutomationExecution   @relation(fields: [organizationId, automationExecutionId], references: [organizationId, id], onDelete: Restrict)
-  action       AutomationAction      @relation(fields: [organizationId, automationActionId], references: [organizationId, id], onDelete: Restrict)
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  execution    AutomationExecution @relation(fields: [organizationId, automationExecutionId], references: [organizationId, id], onDelete: Restrict)
+  action       AutomationAction    @relation(fields: [organizationId, automationActionId], references: [organizationId, id], onDelete: Restrict)
 
   @@unique([organizationId, id])
   @@unique([organizationId, automationExecutionId, actionOrder])
@@ -1774,4 +1836,203 @@ model Notification {
   @@index([organizationId, userId, status, createdAt])
   @@index([organizationId, createdAt])
   @@index([requestId])
+}
+
+model WhatsAppConnection {
+  id                          String                   @id @default(uuid()) @db.Uuid
+  organizationId              String                   @db.Uuid
+  wabaId                      String
+  phoneNumberId               String
+  businessPhoneNumber         String
+  accessTokenEncrypted        String
+  appSecretEncrypted          String
+  webhookVerifyTokenEncrypted String
+  graphApiVersion             String                   @default("v23.0")
+  status                      WhatsAppConnectionStatus @default(DISCONNECTED)
+  lastHealthcheckAt           DateTime?
+  lastHealthcheckError        String?
+  lastWebhookReceivedAt       DateTime?
+  createdAt                   DateTime                 @default(now())
+  updatedAt                   DateTime                 @updatedAt
+  deletedAt                   DateTime?
+
+  organization  Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  phoneNumbers  WhatsAppPhoneNumber[]
+  conversations WhatsAppConversation[]
+  messages      WhatsAppMessage[]
+  webhookEvents WhatsAppWebhookEvent[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, phoneNumberId])
+  @@index([organizationId, status])
+  @@index([organizationId, wabaId])
+  @@index([lastHealthcheckAt])
+  @@index([lastWebhookReceivedAt])
+}
+
+model WhatsAppPhoneNumber {
+  id                 String    @id @default(uuid()) @db.Uuid
+  organizationId     String    @db.Uuid
+  connectionId       String    @db.Uuid
+  phoneNumberId      String
+  displayPhoneNumber String
+  verifiedName       String?
+  qualityRating      String?
+  active             Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  deletedAt          DateTime?
+
+  organization  Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  connection    WhatsAppConnection     @relation(fields: [organizationId, connectionId], references: [organizationId, id], onDelete: Restrict)
+  conversations WhatsAppConversation[]
+  messages      WhatsAppMessage[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, phoneNumberId])
+  @@index([organizationId, connectionId])
+  @@index([organizationId, active])
+  @@index([createdAt])
+}
+
+model WhatsAppConversation {
+  id                             String                     @id @default(uuid()) @db.Uuid
+  organizationId                 String                     @db.Uuid
+  connectionId                   String                     @db.Uuid
+  phoneNumberId                  String                     @db.Uuid
+  contactId                      String                     @db.Uuid
+  assignedUserId                 String?                    @db.Uuid
+  externalContactPhone           String
+  externalContactPhoneNormalized String
+  externalContactName            String?
+  status                         WhatsAppConversationStatus @default(OPEN)
+  windowStartedAt                DateTime?
+  windowExpiresAt                DateTime?
+  lastMessageAt                  DateTime?
+  lastInboundAt                  DateTime?
+  lastOutboundAt                 DateTime?
+  unreadCount                    Int                        @default(0)
+  createdAt                      DateTime                   @default(now())
+  updatedAt                      DateTime                   @updatedAt
+  deletedAt                      DateTime?
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  connection   WhatsAppConnection  @relation(fields: [organizationId, connectionId], references: [organizationId, id], onDelete: Restrict)
+  phoneNumber  WhatsAppPhoneNumber @relation(fields: [organizationId, phoneNumberId], references: [organizationId, id], onDelete: Restrict)
+  contact      Contact             @relation(fields: [organizationId, contactId], references: [organizationId, id], onDelete: Restrict)
+  assignedUser User?               @relation("WhatsAppConversationAssignee", fields: [organizationId, assignedUserId], references: [organizationId, id], onDelete: Restrict)
+  messages     WhatsAppMessage[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, phoneNumberId, externalContactPhoneNormalized])
+  @@index([organizationId, status, lastMessageAt])
+  @@index([organizationId, contactId])
+  @@index([organizationId, assignedUserId])
+  @@index([organizationId, externalContactPhoneNormalized])
+  @@index([windowExpiresAt])
+  @@index([createdAt])
+}
+
+model WhatsAppMessage {
+  id                 String                        @id @default(uuid()) @db.Uuid
+  organizationId     String                        @db.Uuid
+  conversationId     String                        @db.Uuid
+  connectionId       String                        @db.Uuid
+  phoneNumberId      String                        @db.Uuid
+  contactId          String                        @db.Uuid
+  externalMessageId  String?
+  idempotencyKey     String?
+  direction          WhatsAppMessageDirection
+  type               WhatsAppMessageType
+  status             WhatsAppMessageDeliveryStatus @default(QUEUED)
+  text               String?
+  templateName       String?
+  templateLanguage   String?
+  templateComponents Json?
+  mediaId            String?
+  mediaMimeType      String?
+  mediaFilename      String?
+  caption            String?
+  location           Json?
+  contactsPayload    Json?
+  sanitizedPayload   Json?
+  errorCode          String?
+  errorMessage       String?
+  attempts           Int                           @default(0)
+  nextAttemptAt      DateTime?
+  processingAt       DateTime?
+  sentAt             DateTime?
+  deliveredAt        DateTime?
+  readAt             DateTime?
+  failedAt           DateTime?
+  requestId          String?
+  createdAt          DateTime                      @default(now())
+  updatedAt          DateTime                      @updatedAt
+  deletedAt          DateTime?
+
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  conversation WhatsAppConversation    @relation(fields: [organizationId, conversationId], references: [organizationId, id], onDelete: Restrict)
+  connection   WhatsAppConnection      @relation(fields: [organizationId, connectionId], references: [organizationId, id], onDelete: Restrict)
+  phoneNumber  WhatsAppPhoneNumber     @relation(fields: [organizationId, phoneNumberId], references: [organizationId, id], onDelete: Restrict)
+  contact      Contact                 @relation(fields: [organizationId, contactId], references: [organizationId, id], onDelete: Restrict)
+  statuses     WhatsAppMessageStatus[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, externalMessageId])
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, conversationId, createdAt])
+  @@index([organizationId, status, nextAttemptAt])
+  @@index([organizationId, contactId, createdAt])
+  @@index([externalMessageId])
+  @@index([requestId])
+}
+
+model WhatsAppWebhookEvent {
+  id             String                     @id @default(uuid()) @db.Uuid
+  organizationId String                     @db.Uuid
+  connectionId   String                     @db.Uuid
+  eventKey       String
+  status         WhatsAppWebhookEventStatus @default(PENDING)
+  payload        Json
+  requestId      String
+  attempts       Int                        @default(0)
+  availableAt    DateTime                   @default(now())
+  processingAt   DateTime?
+  processedAt    DateTime?
+  lastError      String?
+  receivedAt     DateTime                   @default(now())
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  connection   WhatsAppConnection @relation(fields: [organizationId, connectionId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, eventKey])
+  @@index([organizationId, status, availableAt])
+  @@index([organizationId, connectionId, receivedAt])
+  @@index([requestId])
+}
+
+model WhatsAppMessageStatus {
+  id                String                        @id @default(uuid()) @db.Uuid
+  organizationId    String                        @db.Uuid
+  messageId         String?                       @db.Uuid
+  externalMessageId String
+  status            WhatsAppMessageDeliveryStatus
+  recipientPhone    String?
+  timestamp         DateTime
+  errorCode         String?
+  errorMessage      String?
+  sanitizedPayload  Json?
+  createdAt         DateTime                      @default(now())
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  message      WhatsAppMessage? @relation(fields: [organizationId, messageId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, externalMessageId, status])
+  @@index([organizationId, messageId, createdAt])
+  @@index([organizationId, externalMessageId])
+  @@index([createdAt])
 }
