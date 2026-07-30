@@ -35,6 +35,10 @@ import type {
   RevenueForecast,
   RevenueTrendPoint,
   Sale,
+  SmartInboxConversation,
+  SmartInboxDetailResponse,
+  SmartInboxListResponse,
+  SmartInboxTimelineEvent,
   StockMovement,
   Tag,
   Trial,
@@ -336,6 +340,96 @@ export const api = {
     request<{ data: WhatsAppTemplate[] }>('/integrations/whatsapp/templates'),
   syncWhatsAppTemplates: () =>
     request<{ synced: number }>('/integrations/whatsapp/templates/sync', { method: 'POST' }),
+  getSmartInboxConversations: (query = '') =>
+    request<SmartInboxListResponse>(`/smart-inbox/conversations${query}`),
+  getSmartInboxConversation: (id: string) =>
+    request<SmartInboxDetailResponse>(`/smart-inbox/conversations/${id}`),
+  getSmartInboxTimeline: (id: string) =>
+    request<{ data: SmartInboxTimelineEvent[] }>(`/smart-inbox/conversations/${id}/timeline`),
+  markSmartInboxRead: (id: string) =>
+    request<{ id: string; unreadCount: number }>(`/smart-inbox/conversations/${id}/read`, {
+      method: 'POST',
+    }),
+  assignSmartInboxConversation: (id: string, assignedUserId: string | null) =>
+    request<SmartInboxConversation>(`/smart-inbox/conversations/${id}/assignee`, {
+      method: 'PATCH',
+      ...jsonBody({ assignedUserId }),
+    }),
+  sendSmartInboxMessage: (id: string, body: JsonRecord) =>
+    request<WhatsAppMessage>(`/smart-inbox/conversations/${id}/messages`, {
+      method: 'POST',
+      ...jsonBody(body),
+    }),
+  addSmartInboxNote: (id: string, note: string) =>
+    request<JsonRecord>(`/smart-inbox/conversations/${id}/actions/note`, {
+      method: 'POST',
+      ...jsonBody({ note }),
+    }),
+  moveSmartInboxPipeline: (id: string, body: { pipelineStageId: string; reason?: string }) =>
+    request<Opportunity>(`/smart-inbox/conversations/${id}/actions/move-pipeline`, {
+      method: 'POST',
+      ...jsonBody(body),
+    }),
+  createSmartInboxSale: (id: string, body: JsonRecord) =>
+    request<Sale>(`/smart-inbox/conversations/${id}/actions/create-sale`, {
+      method: 'POST',
+      ...jsonBody(body),
+    }),
+  scheduleSmartInboxFollowUp: (id: string, body: JsonRecord) =>
+    request<JsonRecord>(`/smart-inbox/conversations/${id}/actions/follow-up`, {
+      method: 'POST',
+      ...jsonBody(body),
+    }),
+  createSmartInboxFulfillment: (id: string, body: JsonRecord) =>
+    request<Fulfillment>(`/smart-inbox/conversations/${id}/actions/fulfillment`, {
+      method: 'POST',
+      ...jsonBody(body),
+    }),
+  createSmartInboxTrial: (id: string, body: JsonRecord) =>
+    request<Trial>(`/smart-inbox/conversations/${id}/actions/trial`, {
+      method: 'POST',
+      ...jsonBody(body),
+    }),
+  closeSmartInboxConversation: (id: string) =>
+    request<JsonRecord>(`/smart-inbox/conversations/${id}/close`, { method: 'POST' }),
+  archiveSmartInboxConversation: (id: string) =>
+    request<JsonRecord>(`/smart-inbox/conversations/${id}/archive`, { method: 'POST' }),
+  restoreSmartInboxConversation: (id: string) =>
+    request<JsonRecord>(`/smart-inbox/conversations/${id}/restore`, { method: 'POST' }),
+  subscribeSmartInboxEvents: (onEvent: (event: JsonRecord) => void): (() => void) => {
+    const controller = new AbortController();
+    const token = useAuthStore.getState().accessToken;
+    const consume = async (): Promise<void> => {
+      const response = await fetch(`${API_BASE_URL}/smart-inbox/events`, {
+        ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+        credentials: 'include',
+        signal: controller.signal,
+      });
+      if (!response.ok || !response.body) return;
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (!controller.signal.aborted) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        buffer += decoder.decode(chunk.value, { stream: true });
+        const frames = buffer.split('\n\n');
+        buffer = frames.pop() ?? '';
+        frames.forEach((frame) => {
+          const line = frame.split('\n').find((entry) => entry.startsWith('data:'));
+          if (!line) return;
+          try {
+            const parsed = JSON.parse(line.slice(5).trim()) as JsonRecord;
+            onEvent(parsed);
+          } catch {
+            // SSE frames are ignored when malformed; the next frame remains consumable.
+          }
+        });
+      }
+    };
+    void consume().catch(() => undefined);
+    return () => controller.abort();
+  },
 };
 
 export function queryString(params: Record<string, string | number | boolean | undefined>): string {

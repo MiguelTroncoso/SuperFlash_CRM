@@ -1,5 +1,5 @@
-import { WhatsAppPage } from '@/features/whatsapp/whatsapp-page';
+import { SmartInboxPage } from '@/features/smart-inbox/smart-inbox-page';
 
 export default function Page(): React.ReactElement {
-  return <WhatsAppPage />;
+  return <SmartInboxPage />;
 }

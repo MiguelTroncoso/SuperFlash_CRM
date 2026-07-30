@@ -121,6 +121,7 @@ Una versión arquitectónica solo puede aprobarse cuando:
 | Architecture v1.2 | Communications and Automations | **IMPLEMENTED / PENDING REVIEW** | Templates, variables, reglas, triggers, acciones, ejecuciones y notificaciones internas. |
 | Architecture v1.3 | Analytics and Reporting        | **PLANNED**                      | Analítica y reporting; no iniciado.                                                      |
 | Architecture v2.0 | Revenue Intelligence           | **IMPLEMENTED / PHASE 1**        | KPIs, embudos, cohortes, tendencias, forecast básico y dashboard ejecutivo de lectura.   |
+| Architecture v2.1 | Operational Workspace          | **IMPLEMENTED / PENDING REVIEW** | Smart Inbox, timeline operacional, acciones contextuales y preparación realtime.         |
 
 ### Architecture v1.0 — Commercial Core
 
@@ -166,6 +167,22 @@ nueva y no se registran como modelos de negocio en Prisma. No se implementan
 atribución externa, MarketingSpend, IA, conversión de monedas ni Analytical
 Event Store.
 
+### Architecture v2.1 — Operational Workspace
+
+Estado: **IMPLEMENTED / PENDING REVIEW**
+
+El Operational Workspace transforma la vista principal de WhatsApp en un Smart
+Inbox tenant-aware. Reutiliza los servicios existentes de conversaciones,
+pipeline, ventas, seguimientos, fulfillment y trials; no crea un segundo motor
+comercial ni modifica el contrato de la integración Cloud API. El backend
+expone consultas paginadas, timeline unificada, acciones protegidas por los
+permisos existentes y un stream SSE por organización. El frontend ofrece un
+layout de tres columnas, filtros, composer, panel operacional y acciones rápidas
+responsive con soporte claro/oscuro.
+
+Meta Business, WABA, webhooks reales, tokens reales y migración de conversaciones
+permanecen fuera del alcance y están reservados para Sprint 26.1.
+
 ## Índice de ADRs
 
 - [ADR-006 — Sales Snapshot](../ADR-006-sales-snapshot.md)
@@ -191,13 +208,14 @@ Las definiciones de la fase están documentadas en [revenue-intelligence.md](../
 
 ## Historial de decisiones
 
-| Hito                          | Evidencia                                         | Resultado                                                                 |
-| ----------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------- |
-| Bootstrap y dominios CRM      | Historial de commits de los Sprints 1–7.1         | Base multiempresa y Feature First.                                        |
-| Commercial Core               | `9bcada0928c440b022863359e2156439883aebaf`        | Sales, Payments, Subscriptions y Renewals implementados.                  |
-| CI Recovery                   | `16503b9720a6033efb5ce9b64ce80395ab76168a`        | CI recuperado y verificado.                                               |
-| Architecture Review v1.0      | `4bc0658942172f967a11b2e52f0bec338a7ee034`        | Hallazgos HIGH/MEDIUM documentados.                                       |
-| Architecture v1.0 Remediation | `d4ee72096edb6d691675a8a518a6ee3aeb610a18`        | Hallazgos remediados; Commercial Core aprobado con follow-ups.            |
-| Governance update             | Este cambio documental                            | v1.0 congelada y roadmap Revenue Intelligence registrado.                 |
-| Architecture v1.1 Operations  | `feat: implement operations and fulfillment core` | Implementación operativa pendiente de revisión formal.                    |
-| Architecture v2.0 Phase 1     | `feat: implement revenue intelligence phase 1`    | KPIs, lectura analítica, funnels, cohortes, tendencias y forecast básico. |
+| Hito                                    | Evidencia                                           | Resultado                                                                 |
+| --------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------- |
+| Bootstrap y dominios CRM                | Historial de commits de los Sprints 1–7.1           | Base multiempresa y Feature First.                                        |
+| Commercial Core                         | `9bcada0928c440b022863359e2156439883aebaf`          | Sales, Payments, Subscriptions y Renewals implementados.                  |
+| CI Recovery                             | `16503b9720a6033efb5ce9b64ce80395ab76168a`          | CI recuperado y verificado.                                               |
+| Architecture Review v1.0                | `4bc0658942172f967a11b2e52f0bec338a7ee034`          | Hallazgos HIGH/MEDIUM documentados.                                       |
+| Architecture v1.0 Remediation           | `d4ee72096edb6d691675a8a518a6ee3aeb610a18`          | Hallazgos remediados; Commercial Core aprobado con follow-ups.            |
+| Governance update                       | Este cambio documental                              | v1.0 congelada y roadmap Revenue Intelligence registrado.                 |
+| Architecture v1.1 Operations            | `feat: implement operations and fulfillment core`   | Implementación operativa pendiente de revisión formal.                    |
+| Architecture v2.0 Phase 1               | `feat: implement revenue intelligence phase 1`      | KPIs, lectura analítica, funnels, cohortes, tendencias y forecast básico. |
+| Architecture v2.1 Operational Workspace | `feat: implement smart inbox operational workspace` | Smart Inbox operacional implementado; pendiente de revisión formal.       |

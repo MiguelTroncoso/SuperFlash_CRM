@@ -1,4 +1,5 @@
-import type { InputHTMLAttributes } from 'react';
+import { forwardRef } from 'react';
+import type { InputHTMLAttributes, TextareaHTMLAttributes } from 'react';
 
 import { cn } from '@/lib/utils';
 
@@ -32,17 +33,18 @@ export function Select({
   );
 }
 
-export function Textarea({
-  className,
-  ...props
-}: React.TextareaHTMLAttributes<HTMLTextAreaElement>): React.ReactElement {
+export const Textarea = forwardRef<
+  HTMLTextAreaElement,
+  TextareaHTMLAttributes<HTMLTextAreaElement>
+>(function Textarea({ className, ...props }, ref): React.ReactElement {
   return (
     <textarea
       className={cn(
         'min-h-24 w-full resize-y rounded-xl border border-border-default bg-surface-card px-3 py-2.5 text-sm text-content-primary outline-none transition placeholder:text-content-muted focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10',
         className,
       )}
+      ref={ref}
       {...props}
     />
   );
-}
+});

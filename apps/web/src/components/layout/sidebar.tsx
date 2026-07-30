@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect } from 'react';
+import { Fragment, useEffect } from 'react';
 
 import { useAuthStore } from '@/lib/auth-store';
 import { useUiStore } from '@/lib/ui-store';
@@ -13,6 +13,7 @@ interface NavItem {
   href: string;
   icon: string;
   permission?: string;
+  children?: Array<{ label: string; href: string }>;
 }
 const sections: { label: string; items: NavItem[] }[] = [
   {
@@ -45,7 +46,22 @@ const sections: { label: string; items: NavItem[] }[] = [
   {
     label: 'Comunicaciones',
     items: [
-      { label: 'WhatsApp', href: '/whatsapp', icon: '◉', permission: 'whatsapp.read' },
+      {
+        label: 'WhatsApp',
+        href: '/whatsapp',
+        icon: '◉',
+        permission: 'whatsapp.read',
+        children: [
+          { label: 'Inbox', href: '/whatsapp' },
+          { label: 'Sin asignar', href: '/whatsapp?view=UNASSIGNED' },
+          { label: 'Mis conversaciones', href: '/whatsapp?view=MINE' },
+          { label: 'Pendientes', href: '/whatsapp?view=PENDING' },
+          { label: 'Renovaciones', href: '/whatsapp?view=RENEWALS' },
+          { label: 'Cerradas', href: '/whatsapp?view=CLOSED' },
+          { label: 'Archivadas', href: '/whatsapp?view=ARCHIVED' },
+          { label: 'Papelera', href: '/whatsapp?view=TRASH' },
+        ],
+      },
       {
         label: 'Automatizaciones',
         href: '/automations',
@@ -133,32 +149,47 @@ export function Sidebar(): React.ReactElement {
                   const active =
                     item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
                   return (
-                    <Link
-                      aria-label={item.label}
-                      className={cn(
-                        'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition',
-                        active
-                          ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300'
-                          : 'text-content-secondary hover:bg-surface-muted hover:text-content-primary',
-                        collapsed && !mobileOpen && 'justify-center px-2',
-                      )}
-                      href={item.href}
-                      key={item.href}
-                      onClick={() => setMobileOpen(false)}
-                      title={collapsed ? item.label : undefined}
-                    >
-                      <span
+                    <Fragment key={item.href}>
+                      <Link
+                        aria-label={item.label}
                         className={cn(
-                          'flex h-7 w-7 items-center justify-center rounded-lg text-base',
+                          'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition',
                           active
-                            ? 'bg-surface-card/80'
-                            : 'bg-surface-muted group-hover:bg-surface-card',
+                            ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300'
+                            : 'text-content-secondary hover:bg-surface-muted hover:text-content-primary',
+                          collapsed && !mobileOpen && 'justify-center px-2',
                         )}
+                        href={item.href}
+                        onClick={() => setMobileOpen(false)}
+                        title={collapsed ? item.label : undefined}
                       >
-                        {item.icon}
-                      </span>
-                      {collapsed && !mobileOpen ? null : <span>{item.label}</span>}
-                    </Link>
+                        <span
+                          className={cn(
+                            'flex h-7 w-7 items-center justify-center rounded-lg text-base',
+                            active
+                              ? 'bg-surface-card/80'
+                              : 'bg-surface-muted group-hover:bg-surface-card',
+                          )}
+                        >
+                          {item.icon}
+                        </span>
+                        {collapsed && !mobileOpen ? null : <span>{item.label}</span>}
+                      </Link>
+                      {item.children && active && (!collapsed || mobileOpen) ? (
+                        <div className="ml-10 mt-1 space-y-0.5 border-l border-border-subtle pl-3">
+                          {item.children.map((child) => (
+                            <Link
+                              className="block truncate rounded-lg px-2 py-1.5 text-[11px] font-semibold text-content-muted hover:bg-surface-muted hover:text-content-primary"
+                              href={child.href}
+                              key={child.href}
+                              onClick={() => setMobileOpen(false)}
+                            >
+                              {child.label}
+                            </Link>
+                          ))}
+                        </div>
+                      ) : null}
+                    </Fragment>
                   );
                 })}
               </div>

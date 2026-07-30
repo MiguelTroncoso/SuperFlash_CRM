@@ -563,3 +563,107 @@ export interface WhatsAppTemplate {
   components: unknown;
   updatedAt: string;
 }
+
+export interface SmartInboxConversation {
+  id: string;
+  avatar: string;
+  name: string;
+  externalContactName: string | null;
+  phone: string;
+  phoneNormalized: string;
+  flag: string;
+  country: string | null;
+  lastMessage: string | null;
+  lastMessageAt: string | null;
+  responsible: string | null;
+  assignedTo: Person | null;
+  pipeline: Pick<PipelineStage, 'id' | 'name' | 'color' | 'category'> | null;
+  opportunity: { id: string; title: string } | null;
+  tags: Tag[];
+  source: string | null;
+  channel: string;
+  status: string;
+  window: { open: boolean; expiresAt: string | null };
+  unreadCount: number;
+  isVip: boolean;
+  renewalDue: boolean;
+  chips: string[];
+}
+
+export interface SmartInboxMessage {
+  id: string;
+  direction: string;
+  type: string;
+  status: string;
+  text: string | null;
+  templateName?: string | null;
+  caption?: string | null;
+  createdAt: string;
+}
+
+export interface SmartInboxTimelineEvent {
+  id: string;
+  kind: string;
+  title: string;
+  description: string | null;
+  occurredAt: string;
+  metadata: JsonRecord | null;
+}
+
+export interface SmartInboxPanelSale {
+  id: string;
+  status: string;
+  total: string;
+  currency: string;
+  createdAt: string;
+  items: Array<{
+    id: string;
+    saleId: string;
+    productId: string;
+    productNameSnapshot: string;
+    quantity: string;
+    unitPrice: string;
+    total: string;
+    currency: string;
+    requiresSubscriptionSnapshot: boolean;
+  }>;
+}
+
+export interface SmartInboxPanel {
+  contact: Contact & { source: string | null };
+  opportunities: Array<{
+    id: string;
+    title: string;
+    pipelineStage: PipelineStage;
+    campaign: NamedRelation | null;
+    product: NamedRelation | null;
+    assignedTo: Person | null;
+  }>;
+  sales: SmartInboxPanelSale[];
+  subscriptions: JsonRecord[];
+  trials: JsonRecord[];
+  followUps: JsonRecord[];
+  metrics: {
+    firstResponseSeconds: number | null;
+    averageResponseSeconds: number | null;
+    messageCount: number;
+    saleCount: number;
+    revenue: string;
+    mrr: string;
+    ltv: string;
+    lastPurchaseAt: string | null;
+    nextRenewalAt: string | null;
+    activeProducts: string[];
+  };
+}
+
+export interface SmartInboxListResponse extends Paginated<SmartInboxConversation> {
+  views: Record<string, number>;
+}
+
+export interface SmartInboxDetailResponse {
+  conversation: SmartInboxConversation;
+  messages: SmartInboxMessage[];
+  timeline: SmartInboxTimelineEvent[];
+  panel: SmartInboxPanel;
+}

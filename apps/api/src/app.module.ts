@@ -32,6 +32,7 @@ import { ProvidersModule } from './modules/providers/providers.module';
 import { TrialsModule } from './modules/trials/trials.module';
 import { AutomationModule } from './modules/automation/automation.module';
 import { RevenueIntelligenceModule } from './modules/revenue-intelligence/revenue-intelligence.module';
+import { SmartInboxModule } from './modules/smart-inbox/smart-inbox.module';
 
 @Module({
   imports: [
@@ -81,6 +82,7 @@ import { RevenueIntelligenceModule } from './modules/revenue-intelligence/revenu
     ActivationsModule,
     AutomationModule,
     RevenueIntelligenceModule,
+    SmartInboxModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
