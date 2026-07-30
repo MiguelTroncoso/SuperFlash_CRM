@@ -76,6 +76,13 @@ registran credenciales ni se realizan llamadas externas en el endpoint de
 verificación local. Telegram, Instagram Direct y Messenger permanecen como
 providers futuros.
 
+Architecture v2.3 agrega `WhatsApp Read Only`: un provider que solo consulta
+el read model local, un importador incremental con checkpoint y métricas de
+actividad. La sincronización es tenant-aware, auditable y no ejecuta llamadas
+externas. Smart Inbox permanece como workspace de observación y coordinación
+manual; no se envían, editan, eliminan, marcan ni archivan mensajes desde
+SuperFlash.
+
 ### Evolución y roadmap futuro
 
 Operations and Fulfillment está implementado como Architecture v1.1 y pendiente
@@ -121,15 +128,16 @@ Una versión arquitectónica solo puede aprobarse cuando:
 
 ## Versiones de arquitectura
 
-| Versión           | Nombre                         | Estado                           | Alcance                                                                                  |
-| ----------------- | ------------------------------ | -------------------------------- | ---------------------------------------------------------------------------------------- |
-| Architecture v1.0 | Commercial Core                | **APPROVED / FROZEN**            | Núcleo CRM, catálogo y ciclo comercial transaccional.                                    |
-| Architecture v1.1 | Operations and Fulfillment     | **IMPLEMENTED / PENDING REVIEW** | Providers, fulfillment, provisioning, credentials, trials y activations.                 |
-| Architecture v1.2 | Communications and Automations | **IMPLEMENTED / PENDING REVIEW** | Templates, variables, reglas, triggers, acciones, ejecuciones y notificaciones internas. |
-| Architecture v1.3 | Analytics and Reporting        | **PLANNED**                      | Analítica y reporting; no iniciado.                                                      |
-| Architecture v2.0 | Revenue Intelligence           | **IMPLEMENTED / PHASE 1**        | KPIs, embudos, cohortes, tendencias, forecast básico y dashboard ejecutivo de lectura.   |
-| Architecture v2.1 | Operational Workspace          | **IMPLEMENTED / PENDING REVIEW** | Smart Inbox, timeline operacional, acciones contextuales y preparación realtime.         |
-| Architecture v2.2 | Communication Layer            | **IMPLEMENTED**                  | Contratos de canales, provider WhatsApp foundation, webhook firmado, health y métricas.  |
+| Versión           | Nombre                         | Estado                           | Alcance                                                                                   |
+| ----------------- | ------------------------------ | -------------------------------- | ----------------------------------------------------------------------------------------- |
+| Architecture v1.0 | Commercial Core                | **APPROVED / FROZEN**            | Núcleo CRM, catálogo y ciclo comercial transaccional.                                     |
+| Architecture v1.1 | Operations and Fulfillment     | **IMPLEMENTED / PENDING REVIEW** | Providers, fulfillment, provisioning, credentials, trials y activations.                  |
+| Architecture v1.2 | Communications and Automations | **IMPLEMENTED / PENDING REVIEW** | Templates, variables, reglas, triggers, acciones, ejecuciones y notificaciones internas.  |
+| Architecture v1.3 | Analytics and Reporting        | **PLANNED**                      | Analítica y reporting; no iniciado.                                                       |
+| Architecture v2.0 | Revenue Intelligence           | **IMPLEMENTED / PHASE 1**        | KPIs, embudos, cohortes, tendencias, forecast básico y dashboard ejecutivo de lectura.    |
+| Architecture v2.1 | Operational Workspace          | **IMPLEMENTED / PENDING REVIEW** | Smart Inbox, timeline operacional, acciones contextuales y preparación realtime.          |
+| Architecture v2.2 | Communication Layer            | **IMPLEMENTED**                  | Contratos de canales, provider WhatsApp foundation, webhook firmado, health y métricas.   |
+| Architecture v2.3 | WhatsApp Read Only             | **IMPLEMENTED**                  | Read model local, sincronización incremental, checkpoint, health, Smart Inbox y métricas. |
 
 ### Architecture v1.0 — Commercial Core
 
@@ -183,10 +191,10 @@ El Operational Workspace transforma la vista principal de WhatsApp en un Smart
 Inbox tenant-aware. Reutiliza los servicios existentes de conversaciones,
 pipeline, ventas, seguimientos, fulfillment y trials; no crea un segundo motor
 comercial ni modifica el contrato de la integración Cloud API. El backend
-expone consultas paginadas, timeline unificada, acciones protegidas por los
-permisos existentes y un stream SSE por organización. El frontend ofrece un
-layout de tres columnas, filtros, composer, panel operacional y acciones rápidas
-responsive con soporte claro/oscuro.
+expone consultas paginadas, timeline unificada, acciones de CRM protegidas por
+los permisos existentes y un stream SSE por organización. Desde v2.3 el
+workspace observa el canal en modo Read Only: no muestra composer ni ejecuta
+acciones de escritura sobre mensajes o conversaciones.
 
 Meta Business, WABA, webhooks reales, tokens reales y migración de conversaciones
 permanecen fuera del alcance y están reservados para Sprint 26.2.
@@ -199,6 +207,19 @@ La capa de comunicación queda preparada para WhatsApp Cloud API sin activar
 credenciales, número oficial ni llamadas reales. Expone contratos internos,
 endpoint webhook compatible, health por tenant, métricas seguras y traducción a
 eventos del CRM. La conexión real está reservada para Sprint 26.2.
+
+### Architecture v2.3 — WhatsApp Read Only
+
+Estado: **IMPLEMENTED**
+
+El conector de solo lectura consume los datos inbound persistidos localmente y
+los mantiene disponibles para Smart Inbox y Revenue Intelligence. El
+`CommunicationSyncCheckpoint` permite reanudar, reindexar y auditar
+sincronizaciones por organización. Las rutas y servicios de escritura del
+workspace están bloqueados con `WHATSAPP_READ_ONLY`; no se habilita envío,
+respuesta automática, edición, eliminación, marcado ni archivado del canal.
+Meta real, WABA, tokens reales y activación productiva quedan fuera del
+alcance.
 
 ## Índice de ADRs
 
@@ -221,19 +242,24 @@ eventos del CRM. La conexión real está reservada para Sprint 26.2.
 - [ADR-022 — Trial Lifecycle](../ADR-022-trial-lifecycle.md)
 - [ADR-023 — Activation Model](../ADR-023-activation-model.md)
 
+La arquitectura de canales y sincronización está documentada en
+[WhatsApp Read Only](../whatsapp-readonly.md), [Synchronization](../synchronization.md)
+y [Read-only architecture](../read-only-architecture.md).
+
 Las definiciones de la fase están documentadas en [revenue-intelligence.md](../revenue-intelligence.md), [kpis.md](../kpis.md) y [funnels.md](../funnels.md).
 
 ## Historial de decisiones
 
-| Hito                                    | Evidencia                                                     | Resultado                                                                  |
-| --------------------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Bootstrap y dominios CRM                | Historial de commits de los Sprints 1–7.1                     | Base multiempresa y Feature First.                                         |
-| Commercial Core                         | `9bcada0928c440b022863359e2156439883aebaf`                    | Sales, Payments, Subscriptions y Renewals implementados.                   |
-| CI Recovery                             | `16503b9720a6033efb5ce9b64ce80395ab76168a`                    | CI recuperado y verificado.                                                |
-| Architecture Review v1.0                | `4bc0658942172f967a11b2e52f0bec338a7ee034`                    | Hallazgos HIGH/MEDIUM documentados.                                        |
-| Architecture v1.0 Remediation           | `d4ee72096edb6d691675a8a518a6ee3aeb610a18`                    | Hallazgos remediados; Commercial Core aprobado con follow-ups.             |
-| Governance update                       | Este cambio documental                                        | v1.0 congelada y roadmap Revenue Intelligence registrado.                  |
-| Architecture v1.1 Operations            | `feat: implement operations and fulfillment core`             | Implementación operativa pendiente de revisión formal.                     |
-| Architecture v2.0 Phase 1               | `feat: implement revenue intelligence phase 1`                | KPIs, lectura analítica, funnels, cohortes, tendencias y forecast básico.  |
-| Architecture v2.1 Operational Workspace | `feat: implement smart inbox operational workspace`           | Smart Inbox operacional implementado; pendiente de revisión formal.        |
-| Architecture v2.2 Communication Layer   | `feat: implement communication layer and whatsapp foundation` | Foundation de canales y provider WhatsApp implementado; go-live pendiente. |
+| Hito                                    | Evidencia                                                     | Resultado                                                                   |
+| --------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Bootstrap y dominios CRM                | Historial de commits de los Sprints 1–7.1                     | Base multiempresa y Feature First.                                          |
+| Commercial Core                         | `9bcada0928c440b022863359e2156439883aebaf`                    | Sales, Payments, Subscriptions y Renewals implementados.                    |
+| CI Recovery                             | `16503b9720a6033efb5ce9b64ce80395ab76168a`                    | CI recuperado y verificado.                                                 |
+| Architecture Review v1.0                | `4bc0658942172f967a11b2e52f0bec338a7ee034`                    | Hallazgos HIGH/MEDIUM documentados.                                         |
+| Architecture v1.0 Remediation           | `d4ee72096edb6d691675a8a518a6ee3aeb610a18`                    | Hallazgos remediados; Commercial Core aprobado con follow-ups.              |
+| Governance update                       | Este cambio documental                                        | v1.0 congelada y roadmap Revenue Intelligence registrado.                   |
+| Architecture v1.1 Operations            | `feat: implement operations and fulfillment core`             | Implementación operativa pendiente de revisión formal.                      |
+| Architecture v2.0 Phase 1               | `feat: implement revenue intelligence phase 1`                | KPIs, lectura analítica, funnels, cohortes, tendencias y forecast básico.   |
+| Architecture v2.1 Operational Workspace | `feat: implement smart inbox operational workspace`           | Smart Inbox operacional implementado; pendiente de revisión formal.         |
+| Architecture v2.2 Communication Layer   | `feat: implement communication layer and whatsapp foundation` | Foundation de canales y provider WhatsApp implementado; go-live pendiente.  |
+| Architecture v2.3 WhatsApp Read Only    | `feat: implement whatsapp read-only synchronization`          | Read model, checkpoint, sincronización y métricas de lectura implementados. |

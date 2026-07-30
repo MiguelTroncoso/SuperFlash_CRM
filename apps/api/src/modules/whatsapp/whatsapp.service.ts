@@ -143,6 +143,12 @@ export class WhatsAppService {
   }
 
   async testConnection(context: WhatsAppContext): Promise<Record<string, unknown>> {
+    if (this.isReadOnly())
+      throw whatsappException(
+        HttpStatus.METHOD_NOT_ALLOWED,
+        WHATSAPP_ERROR_CODES.READ_ONLY,
+        'El conector WhatsApp Read Only no realiza llamadas externas.',
+      );
     const connection = await this.requireConnection(context.user.organizationId, true);
     try {
       const result = await this.graphApi.testConnection({
@@ -310,6 +316,12 @@ export class WhatsAppService {
     dto: SendWhatsAppMessageDto,
     context: WhatsAppContext,
   ): Promise<Record<string, unknown>> {
+    if (this.isReadOnly())
+      throw whatsappException(
+        HttpStatus.METHOD_NOT_ALLOWED,
+        WHATSAPP_ERROR_CODES.READ_ONLY,
+        'WhatsApp Read Only no permite enviar mensajes.',
+      );
     const organizationId = context.user.organizationId;
     const conversation = await this.prisma.whatsAppConversation.findFirst({
       where: { id: conversationId, organizationId, deletedAt: null },
@@ -440,6 +452,12 @@ export class WhatsAppService {
     dto: AssignWhatsAppConversationDto,
     context: WhatsAppContext,
   ): Promise<Record<string, unknown>> {
+    if (this.isReadOnly())
+      throw whatsappException(
+        HttpStatus.METHOD_NOT_ALLOWED,
+        WHATSAPP_ERROR_CODES.READ_ONLY,
+        'WhatsApp Read Only no permite editar conversaciones.',
+      );
     const organizationId = context.user.organizationId;
     if (dto.assignedUserId) {
       const assignee = await this.prisma.user.findFirst({
@@ -533,6 +551,12 @@ export class WhatsAppService {
   }
 
   async syncTemplates(context: WhatsAppContext): Promise<Record<string, unknown>> {
+    if (this.isReadOnly())
+      throw whatsappException(
+        HttpStatus.METHOD_NOT_ALLOWED,
+        WHATSAPP_ERROR_CODES.READ_ONLY,
+        'WhatsApp Read Only no sincroniza plantillas.',
+      );
     const connection = await this.requireConnection(context.user.organizationId);
     const templates = await this.graphApi.listTemplates({
       graphApiVersion: connection.graphApiVersion,
@@ -740,6 +764,10 @@ export class WhatsAppService {
       failedAt: row.failedAt,
       createdAt: row.createdAt,
     };
+  }
+
+  private isReadOnly(): boolean {
+    return true;
   }
 
   private safeError(error: unknown): string {

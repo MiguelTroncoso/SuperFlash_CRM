@@ -45,11 +45,20 @@ describe('WhatsApp Cloud API HTTP flow', () => {
     const managePermission = await prisma.permission.create({
       data: { key: 'whatsapp.manage', name: 'WhatsApp manage' },
     });
+    const reportsPermission = await prisma.permission.create({
+      data: { key: 'reports.read', name: 'Reports read' },
+    });
     const role = await prisma.role.create({
       data: {
         organizationId,
         name: 'Owner',
-        permissions: { connect: [{ id: permission.id }, { id: managePermission.id }] },
+        permissions: {
+          connect: [
+            { id: permission.id },
+            { id: managePermission.id },
+            { id: reportsPermission.id },
+          ],
+        },
       },
     });
     email = `owner-${Date.now()}@example.com`;
@@ -125,6 +134,48 @@ describe('WhatsApp Cloud API HTTP flow', () => {
       channel: 'WHATSAPP',
       externalRequestMade: false,
     });
+  });
+
+  it('expone sincronización, checkpoint y métricas exclusivamente de lectura', async () => {
+    const accessToken = await token();
+    const health = await request(app.getHttpServer())
+      .get('/api/v1/communication/channels/whatsapp-read-only/health')
+      .set('Authorization', `Bearer ${accessToken}`);
+    expect(health.status).toBe(200);
+    expect(health.body).toMatchObject({
+      channel: 'WHATSAPP_READ_ONLY',
+      readOnly: true,
+      externalWriteEnabled: false,
+      externalRequestMade: false,
+    });
+
+    const status = await request(app.getHttpServer())
+      .get('/api/v1/communication/channels/whatsapp-read-only/sync-status')
+      .set('Authorization', `Bearer ${accessToken}`);
+    expect(status.status).toBe(200);
+    expect(status.body.readOnly).toBe(true);
+
+    const sync = await request(app.getHttpServer())
+      .post('/api/v1/communication/channels/whatsapp-read-only/sync')
+      .set('Authorization', `Bearer ${accessToken}`);
+    expect(sync.status).toBe(200);
+    expect(sync.body).toMatchObject({
+      status: 'SUCCEEDED',
+      readOnly: true,
+      externalWriteEnabled: false,
+    });
+
+    const reindex = await request(app.getHttpServer())
+      .post('/api/v1/communication/channels/whatsapp-read-only/reindex')
+      .set('Authorization', `Bearer ${accessToken}`);
+    expect(reindex.status).toBe(200);
+    expect(reindex.body.readOnly).toBe(true);
+
+    const metrics = await request(app.getHttpServer())
+      .get('/api/v1/revenue-intelligence/communication')
+      .set('Authorization', `Bearer ${accessToken}`);
+    expect(metrics.status).toBe(200);
+    expect(metrics.body).toMatchObject({ messagesToday: 0, conversationsToday: 0 });
   });
 
   it('verifica el callback público y rechaza firma inválida', async () => {

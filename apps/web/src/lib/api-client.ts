@@ -10,6 +10,8 @@ import type {
   Category,
   CommunicationChannelHealth,
   CommunicationConfigurationCheck,
+  WhatsAppReadOnlyHealth,
+  WhatsAppReadOnlySyncStatus,
   CredentialRecord,
   Fulfillment,
   JsonRecord,
@@ -32,6 +34,7 @@ import type {
   ProviderMapping,
   RevenueCohortRow,
   RevenueDashboard,
+  RevenueCommunicationMetrics,
   RevenueFunnel,
   RevenueKpis,
   RevenueForecast,
@@ -311,6 +314,8 @@ export const api = {
     request<{ data: RevenueTrendPoint[] }>(`/revenue-intelligence/trends${query}`),
   getRevenueForecast: (query = '') =>
     request<{ data: RevenueForecast[] }>(`/revenue-intelligence/forecast${query}`),
+  getRevenueCommunicationMetrics: (query = '') =>
+    request<RevenueCommunicationMetrics>(`/revenue-intelligence/communication${query}`),
   getWhatsAppConnection: () =>
     request<WhatsAppConnection | null>('/integrations/whatsapp/connection'),
   getCommunicationChannels: () =>
@@ -319,6 +324,18 @@ export const api = {
     request<CommunicationChannelHealth>('/communication/channels/whatsapp/health'),
   verifyWhatsAppChannelConfiguration: () =>
     request<CommunicationConfigurationCheck>('/communication/channels/whatsapp/verify', {
+      method: 'POST',
+    }),
+  getWhatsAppReadOnlyHealth: () =>
+    request<WhatsAppReadOnlyHealth>('/communication/channels/whatsapp-read-only/health'),
+  getWhatsAppReadOnlySyncStatus: () =>
+    request<WhatsAppReadOnlySyncStatus>('/communication/channels/whatsapp-read-only/sync-status'),
+  syncWhatsAppReadOnly: () =>
+    request<WhatsAppReadOnlySyncStatus>('/communication/channels/whatsapp-read-only/sync', {
+      method: 'POST',
+    }),
+  reindexWhatsAppReadOnly: () =>
+    request<WhatsAppReadOnlySyncStatus>('/communication/channels/whatsapp-read-only/reindex', {
       method: 'POST',
     }),
   saveWhatsAppConnection: (body: JsonRecord) =>

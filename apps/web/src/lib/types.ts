@@ -505,6 +505,33 @@ export interface RevenueDashboard {
   trends: RevenueTrendPoint[];
   funnel: RevenueFunnel;
   forecast: RevenueForecast[];
+  communication: RevenueCommunicationMetrics;
+}
+
+export interface RevenueCommunicationMetrics {
+  generatedAt: string;
+  period: { from: string; to: string };
+  conversationsToday: number;
+  conversationsByCountry: Array<{ country: string; conversations: number }>;
+  messagesToday: number;
+  messagesThisWeek: number;
+  messagesThisMonth: number;
+  newContacts: number;
+  activeCustomers: number;
+  inactiveCustomers: number;
+  minutesSinceLastMessage: number | null;
+  topCountry: { country: string; conversations: number } | null;
+  topContact: { contactId: string; name: string; messages: number } | null;
+  topConversations: Array<{
+    conversationId: string;
+    contactId: string;
+    name: string;
+    messages: number;
+    lastMessageAt: string | null;
+  }>;
+  activityByHour: Array<{ hour: number; messages: number }>;
+  activityByDay: Array<{ day: number; messages: number }>;
+  activityByMonth: Array<{ month: string; messages: number }>;
 }
 
 export interface WhatsAppConnection {
@@ -545,6 +572,37 @@ export interface CommunicationConfigurationCheck {
   missingConfiguration: string[];
   webhookPath: string;
   externalRequestMade: boolean;
+}
+
+export interface WhatsAppReadOnlyHealth {
+  channel: 'WHATSAPP_READ_ONLY';
+  provider: string;
+  status: string;
+  readOnly: true;
+  externalWriteEnabled: false;
+  externalRequestMade: false;
+  source: string;
+  lastWebhookReceivedAt: string | null;
+  checkpoint: WhatsAppReadOnlySyncStatus | null;
+  totals: { messages: number; conversations: number };
+  metrics: Record<string, number>;
+}
+
+export interface WhatsAppReadOnlySyncStatus {
+  id?: string;
+  status: string;
+  checkpoint: { at: string | null; id: string | null };
+  lastSynchronizedAt: string | null;
+  lastSuccessfulAt: string | null;
+  messagesImported: number;
+  conversationsImported: number;
+  contactsImported: number;
+  duplicatesAvoided: number;
+  errors: number;
+  nextRetryAt: string | null;
+  lastError: string | null;
+  readOnly: true;
+  externalWriteEnabled: false;
 }
 
 export interface WhatsAppConversation {

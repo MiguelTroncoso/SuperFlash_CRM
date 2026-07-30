@@ -15,6 +15,6 @@ import { WhatsAppWebhookService } from './whatsapp.webhook.service';
   imports: [AuditModule, AuthModule, ContactsModule, CredentialsModule],
   controllers: [WhatsAppController, WhatsAppWebhookController],
   providers: [WhatsAppService, WhatsAppWebhookService, WhatsAppGraphApiClient, WhatsAppProcessor],
-  exports: [WhatsAppService, WhatsAppWebhookService],
+  exports: [WhatsAppService, WhatsAppWebhookService, WhatsAppProcessor],
 })
 export class WhatsAppModule {}

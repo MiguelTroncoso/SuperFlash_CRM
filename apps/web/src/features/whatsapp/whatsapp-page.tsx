@@ -1,599 +1,214 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 
-import { PageGrid, PageHeader } from '@/components/shared/page-header';
-import { CountryPhoneField } from '@/components/shared/country-phone-field';
+import { PageHeader } from '@/components/shared/page-header';
 import { QueryState } from '@/components/shared/query-state';
+import { Badge, StatusBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Input, Select, Textarea } from '@/components/ui/input';
-import { PermissionGate } from '@/components/ui/permission-gate';
-import { StatusBadge } from '@/components/ui/badge';
 import { useToastStore } from '@/components/ui/toast';
-import { api, queryString } from '@/lib/api-client';
-import type {
-  CommunicationChannelHealth,
-  WhatsAppConnection,
-  WhatsAppConversation,
-  WhatsAppMessage,
-} from '@/lib/types';
+import { api } from '@/lib/api-client';
 
-interface ConnectionForm {
-  wabaId: string;
-  phoneNumberId: string;
-  businessPhoneNumber: string;
-  businessPhoneCountry: string;
-  graphApiVersion: string;
-  accessToken: string;
-  appSecret: string;
-  webhookVerifyToken: string;
+function formatDate(value: string | null): string {
+  return value ? new Date(value).toLocaleString() : '—';
 }
 
-interface MessageForm {
-  type: 'TEXT' | 'TEMPLATE';
-  text: string;
-  templateName: string;
-  templateLanguage: string;
-}
-
-function ConnectionSettings({
-  connection,
+function Metric({
+  label,
+  value,
 }: {
-  readonly connection: WhatsAppConnection | null;
+  readonly label: string;
+  readonly value: string | number;
 }): React.ReactElement {
-  const queryClient = useQueryClient();
-  const toast = useToastStore((state) => state.push);
-  const form = useForm<ConnectionForm>({
-    defaultValues: {
-      wabaId: '',
-      phoneNumberId: '',
-      businessPhoneNumber: '',
-      businessPhoneCountry: 'CL',
-      graphApiVersion: 'v23.0',
-      accessToken: '',
-      appSecret: '',
-      webhookVerifyToken: '',
-    },
-  });
-  useEffect(() => {
-    if (!connection) return;
-    form.reset({
-      wabaId: connection.wabaId,
-      phoneNumberId: connection.phoneNumberId,
-      businessPhoneNumber: connection.businessPhoneNumber,
-      businessPhoneCountry: 'CL',
-      graphApiVersion: connection.graphApiVersion,
-      accessToken: '',
-      appSecret: '',
-      webhookVerifyToken: '',
-    });
-  }, [connection, form]);
-  const save = useMutation({
-    mutationFn: (values: ConnectionForm) => {
-      const { businessPhoneCountry: _businessPhoneCountry, ...payload } = values;
-      return api.saveWhatsAppConnection(payload);
-    },
-    onSuccess: () => {
-      form.reset({ ...form.getValues(), accessToken: '', appSecret: '', webhookVerifyToken: '' });
-      void queryClient.invalidateQueries({ queryKey: ['whatsapp-connection'] });
-      toast({
-        title: 'Conexión guardada',
-        description: 'Los secretos se conservaron cifrados en el backend.',
-        tone: 'success',
-      });
-    },
-    onError: (error: Error) =>
-      toast({ title: 'No fue posible guardar', description: error.message, tone: 'error' }),
-  });
   return (
-    <Card>
-      <CardHeader>
-        <div>
-          <CardTitle>Configuración Cloud API</CardTitle>
-          <CardDescription>
-            Los campos secretos se escriben una vez y nunca se vuelven a mostrar.
-          </CardDescription>
-        </div>
-        <StatusBadge status={connection?.status ?? 'DISCONNECTED'} />
-      </CardHeader>
-      <CardContent>
-        <form
-          className="grid gap-4 md:grid-cols-2"
-          onSubmit={form.handleSubmit((values) => save.mutate(values))}
-        >
-          <label className="space-y-1 text-sm font-semibold">
-            WABA ID
-            <Input {...form.register('wabaId', { required: true })} placeholder="123456789" />
-          </label>
-          <label className="space-y-1 text-sm font-semibold">
-            Phone Number ID
-            <Input
-              {...form.register('phoneNumberId', { required: true })}
-              placeholder="987654321"
-            />
-          </label>
-          <div className="space-y-1 text-sm font-semibold">
-            Número comercial
-            <CountryPhoneField
-              country={form.watch('businessPhoneCountry')}
-              onCountryChange={(value) => form.setValue('businessPhoneCountry', value)}
-              onPhoneChange={(value) => form.setValue('businessPhoneNumber', value)}
-              phone={form.watch('businessPhoneNumber')}
-            />
-          </div>
-          <label className="space-y-1 text-sm font-semibold">
-            Graph API version
-            <Input {...form.register('graphApiVersion', { required: true })} />
-          </label>
-          <label className="space-y-1 text-sm font-semibold">
-            Access Token
-            <Input
-              type="password"
-              autoComplete="new-password"
-              {...form.register('accessToken')}
-              placeholder={
-                connection ? 'Conservado; deja vacío para mantenerlo' : 'Token permanente de Meta'
-              }
-            />
-          </label>
-          <label className="space-y-1 text-sm font-semibold">
-            App Secret
-            <Input
-              type="password"
-              autoComplete="new-password"
-              {...form.register('appSecret')}
-              placeholder={connection ? 'Conservado; deja vacío para mantenerlo' : 'App Secret'}
-            />
-          </label>
-          <label className="space-y-1 text-sm font-semibold md:col-span-2">
-            Webhook Verify Token
-            <Input
-              type="password"
-              autoComplete="new-password"
-              {...form.register('webhookVerifyToken')}
-              placeholder={
-                connection
-                  ? 'Conservado; deja vacío para mantenerlo'
-                  : 'Token que configurarás en Meta'
-              }
-            />
-          </label>
-          <div className="flex flex-wrap gap-2 md:col-span-2">
-            <PermissionGate permission="whatsapp.manage">
-              <Button disabled={save.isPending} type="submit">
-                {save.isPending ? 'Guardando…' : 'Guardar conexión'}
-              </Button>
-            </PermissionGate>
-          </div>
-        </form>
-        {connection ? (
-          <p className="mt-4 text-xs text-slate-500">
-            Webhook público:{' '}
-            <code className="rounded bg-surface-muted px-1">
-              /api/v1/integrations/whatsapp/webhook
-            </code>
-            . Último webhook:{' '}
-            {connection.lastWebhookReceivedAt
-              ? new Date(connection.lastWebhookReceivedAt).toLocaleString()
-              : 'sin eventos'}
-            .
-          </p>
-        ) : null}
-      </CardContent>
-    </Card>
-  );
-}
-
-function ChannelHealthCard({
-  health,
-  isVerifying,
-  onVerify,
-}: {
-  readonly health: CommunicationChannelHealth | undefined;
-  readonly isVerifying: boolean;
-  readonly onVerify: () => void;
-}): React.ReactElement {
-  const missingConfiguration = health?.missingConfiguration ?? [];
-
-  return (
-    <Card>
-      <CardHeader>
-        <div>
-          <CardTitle>Estado del canal</CardTitle>
-          <CardDescription>
-            Foundation de canales: WhatsApp está aislado del resto del CRM y no expone secretos.
-          </CardDescription>
-        </div>
-        <StatusBadge status={health?.status ?? 'PENDING_CONFIGURATION'} />
-      </CardHeader>
-      <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div>
-          <p className="text-xs text-content-muted">Proveedor</p>
-          <p className="font-semibold text-content-primary">{health?.provider ?? '—'}</p>
-        </div>
-        <div>
-          <p className="text-xs text-content-muted">Número conectado</p>
-          <p className="font-semibold text-content-primary">{health?.phoneNumber ?? '—'}</p>
-        </div>
-        <div>
-          <p className="text-xs text-content-muted">Graph API</p>
-          <p className="font-semibold text-content-primary">{health?.graphVersion ?? '—'}</p>
-        </div>
-        <div>
-          <p className="text-xs text-content-muted">Último mensaje recibido</p>
-          <p className="font-semibold text-content-primary">
-            {health?.lastMessageReceivedAt
-              ? new Date(health.lastMessageReceivedAt).toLocaleString()
-              : 'Sin eventos'}
-          </p>
-        </div>
-        <div className="sm:col-span-2 lg:col-span-4">
-          <p className="text-xs text-content-muted">Webhook</p>
-          <code className="mt-1 block break-all rounded-lg bg-surface-muted px-2 py-1 text-xs text-content-secondary">
-            {health?.webhookPath ?? '/api/v1/integrations/communication/whatsapp/webhook'}
-          </code>
-        </div>
-        {missingConfiguration.length ? (
-          <p className="sm:col-span-2 lg:col-span-4 text-xs text-amber-600 dark:text-amber-300">
-            Provider deshabilitado hasta configurar: {missingConfiguration.join(', ')}
-          </p>
-        ) : null}
-        <div className="sm:col-span-2 lg:col-span-4">
-          <Button disabled={isVerifying} onClick={onVerify} variant="outline">
-            {isVerifying ? 'Verificando…' : 'Verificar configuración'}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ConversationList({
-  conversations,
-  selectedId,
-  onSelect,
-}: {
-  readonly conversations: WhatsAppConversation[];
-  readonly selectedId: string | null;
-  readonly onSelect: (id: string) => void;
-}): React.ReactElement {
-  if (conversations.length === 0)
-    return (
-      <EmptyState
-        title="Sin conversaciones"
-        description="Los mensajes entrantes de WhatsApp aparecerán aquí."
-      />
-    );
-  return (
-    <div className="space-y-2">
-      {conversations.map((conversation) => (
-        <button
-          className={`w-full rounded-2xl border p-4 text-left transition ${selectedId === conversation.id ? 'border-brand-400 bg-brand-50 dark:border-brand-500/50 dark:bg-brand-500/10' : 'border-border-default bg-surface-card hover:border-brand-200'}`}
-          key={conversation.id}
-          onClick={() => onSelect(conversation.id)}
-          type="button"
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="font-bold text-slate-900 dark:text-white">
-                {conversation.contact?.name ||
-                  conversation.externalContactName ||
-                  conversation.externalContactPhone}
-              </p>
-              <p className="mt-1 text-xs text-slate-500">
-                {conversation.externalContactPhoneNormalized}
-              </p>
-            </div>
-            {conversation.unreadCount > 0 ? (
-              <span className="rounded-full bg-brand-600 px-2 py-0.5 text-xs font-bold text-white">
-                {conversation.unreadCount}
-              </span>
-            ) : null}
-          </div>
-          <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
-            <StatusBadge status={conversation.status} />
-            <span>
-              {conversation.lastMessageAt
-                ? new Date(conversation.lastMessageAt).toLocaleString()
-                : 'Sin mensajes'}
-            </span>
-          </div>
-        </button>
-      ))}
+    <div className="rounded-xl bg-surface-inset p-3">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-content-muted">
+        {label}
+      </p>
+      <p className="mt-1 text-lg font-bold text-content-primary">{value}</p>
     </div>
   );
 }
 
-function MessageThread({
-  conversation,
-  messages,
-  templates,
-}: {
-  readonly conversation: WhatsAppConversation;
-  readonly messages: WhatsAppMessage[];
-  readonly templates: { id: string; name: string; language: string | null; status: string }[];
-}): React.ReactElement {
+export function WhatsAppPage({
+  settingsOnly = true,
+}: { readonly settingsOnly?: boolean } = {}): React.ReactElement {
+  void settingsOnly;
+  const queryClient = useQueryClient();
   const toast = useToastStore((state) => state.push);
-  const form = useForm<MessageForm>({
-    defaultValues: { type: 'TEXT', text: '', templateName: '', templateLanguage: 'es' },
+  const health = useQuery({
+    queryKey: ['whatsapp-read-only-health'],
+    queryFn: api.getWhatsAppReadOnlyHealth,
+    refetchInterval: 15_000,
   });
-  const send = useMutation({
-    mutationFn: (values: MessageForm) =>
-      api.sendWhatsAppMessage(
-        conversation.id,
-        values.type === 'TEXT'
-          ? { type: values.type, text: values.text }
-          : {
-              type: values.type,
-              templateName: values.templateName,
-              templateLanguage: values.templateLanguage,
-            },
-      ),
+  const status = useQuery({
+    queryKey: ['whatsapp-read-only-sync-status'],
+    queryFn: api.getWhatsAppReadOnlySyncStatus,
+    refetchInterval: 15_000,
+  });
+  const sync = useMutation({
+    mutationFn: api.syncWhatsAppReadOnly,
     onSuccess: () => {
-      form.reset({ ...form.getValues(), text: '' });
+      void queryClient.invalidateQueries({ queryKey: ['whatsapp-read-only'] });
       toast({
-        title: 'Mensaje encolado',
-        description: 'El procesador enviará el mensaje y actualizará su estado desde el webhook.',
+        title: 'Sincronización completada',
+        description: 'Solo se actualizaron datos internos de lectura.',
         tone: 'success',
       });
     },
     onError: (error: Error) =>
+      toast({ title: 'Sincronización fallida', description: error.message, tone: 'error' }),
+  });
+  const reindex = useMutation({
+    mutationFn: api.reindexWhatsAppReadOnly,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['whatsapp-read-only'] });
       toast({
-        title: 'No fue posible encolar el mensaje',
-        description: error.message,
-        tone: 'error',
-      }),
-  });
-  const type = form.watch('type');
-  return (
-    <Card className="flex min-h-[620px] flex-col">
-      <CardHeader>
-        <div>
-          <CardTitle>{conversation.contact?.name || conversation.externalContactPhone}</CardTitle>
-          <CardDescription>
-            {conversation.externalContactPhoneNormalized} · ventana{' '}
-            {conversation.windowExpiresAt && new Date(conversation.windowExpiresAt) > new Date()
-              ? 'abierta'
-              : 'expirada'}
-          </CardDescription>
-        </div>
-        <StatusBadge status={conversation.status} />
-      </CardHeader>
-      <CardContent className="flex flex-1 flex-col gap-4">
-        <div className="flex-1 space-y-3 overflow-y-auto rounded-2xl bg-surface-inset p-4">
-          {messages.length === 0 ? (
-            <p className="py-12 text-center text-sm text-slate-400">Aún no hay mensajes.</p>
-          ) : (
-            messages.map((message) => (
-              <div
-                className={`flex ${message.direction === 'OUTBOUND' ? 'justify-end' : 'justify-start'}`}
-                key={message.id}
-              >
-                <div
-                  className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${message.direction === 'OUTBOUND' ? 'bg-brand-600 text-white' : 'bg-surface-card text-content-primary shadow-sm'}`}
-                >
-                  <p>{message.text || `[${message.type}]`}</p>
-                  <p
-                    className={`mt-2 text-[10px] ${message.direction === 'OUTBOUND' ? 'text-brand-100' : 'text-slate-400'}`}
-                  >
-                    {message.status} · {new Date(message.createdAt).toLocaleString()}
-                  </p>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-        <PermissionGate
-          permission="whatsapp.send"
-          fallback={
-            <p className="text-sm text-slate-500">No tienes permiso para enviar mensajes.</p>
-          }
-        >
-          <form className="space-y-3" onSubmit={form.handleSubmit((values) => send.mutate(values))}>
-            <div className="grid gap-3 sm:grid-cols-[160px_1fr]">
-              <Select {...form.register('type')}>
-                <option value="TEXT">Texto</option>
-                <option value="TEMPLATE">Plantilla aprobada</option>
-              </Select>
-              {type === 'TEXT' ? (
-                <Textarea
-                  {...form.register('text', { required: true })}
-                  placeholder="Escribe una respuesta…"
-                />
-              ) : (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Select {...form.register('templateName', { required: true })}>
-                    <option value="">Selecciona una plantilla</option>
-                    {templates
-                      .filter((template) => template.status === 'APPROVED')
-                      .map((template) => (
-                        <option key={`${template.name}-${template.language}`} value={template.name}>
-                          {template.name} · {template.language}
-                        </option>
-                      ))}
-                  </Select>
-                  <Input
-                    {...form.register('templateLanguage', { required: true })}
-                    placeholder="es"
-                  />
-                </div>
-              )}
-            </div>
-            <div className="flex justify-end">
-              <Button disabled={send.isPending} type="submit">
-                {send.isPending ? 'Enviando…' : 'Enviar'}
-              </Button>
-            </div>
-          </form>
-        </PermissionGate>
-      </CardContent>
-    </Card>
-  );
-}
-
-export function WhatsAppPage({
-  settingsOnly = false,
-}: { readonly settingsOnly?: boolean } = {}): React.ReactElement {
-  const toast = useToastStore((state) => state.push);
-  const [tab, setTab] = useState<'inbox' | 'settings'>('inbox');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const connection = useQuery({
-    queryKey: ['whatsapp-connection'],
-    queryFn: api.getWhatsAppConnection,
-  });
-  const channelHealth = useQuery({
-    queryKey: ['communication-whatsapp-health'],
-    queryFn: api.getWhatsAppChannelHealth,
-  });
-  const conversations = useQuery({
-    queryKey: ['whatsapp-conversations'],
-    queryFn: () => api.getWhatsAppConversations(queryString({ limit: 50 })),
-    enabled: !settingsOnly,
-  });
-  const selected =
-    conversations.data?.data.find((item) => item.id === selectedId) ??
-    conversations.data?.data[0] ??
-    null;
-  useEffect(() => {
-    setSelectedId(new URLSearchParams(window.location.search).get('conversation'));
-  }, []);
-  useEffect(() => {
-    if (!selectedId && selected) setSelectedId(selected.id);
-  }, [selected, selectedId]);
-  const messages = useQuery({
-    queryKey: ['whatsapp-messages', selected?.id],
-    queryFn: () => api.getWhatsAppMessages(selected?.id ?? ''),
-    enabled: Boolean(selected) && !settingsOnly,
-    refetchInterval: selected ? 5000 : false,
-  });
-  const templates = useQuery({
-    queryKey: ['whatsapp-templates'],
-    queryFn: api.getWhatsAppTemplates,
-    enabled: Boolean(connection.data) && !settingsOnly,
-  });
-  const test = useMutation({
-    mutationFn: api.testWhatsAppConnection,
-    onSuccess: () => void connection.refetch(),
-  });
-  const sync = useMutation({
-    mutationFn: api.syncWhatsAppTemplates,
-    onSuccess: () => void templates.refetch(),
-  });
-  const verifyConfiguration = useMutation({
-    mutationFn: api.verifyWhatsAppChannelConfiguration,
-    onSuccess: (result) => {
-      toast({
-        title: result.enabled ? 'Configuración completa' : 'Provider pendiente',
-        description: result.enabled
-          ? 'La configuración local está completa; no se realizó ninguna llamada externa.'
-          : `Faltan: ${result.missingConfiguration.join(', ')}`,
-        tone: result.enabled ? 'success' : 'error',
+        title: 'Reindexación completada',
+        description: 'Los contactos manuales no fueron sobrescritos.',
+        tone: 'success',
       });
     },
+    onError: (error: Error) =>
+      toast({ title: 'Reindexación fallida', description: error.message, tone: 'error' }),
   });
-  const isLoading =
-    connection.isLoading || channelHealth.isLoading || (!settingsOnly && conversations.isLoading);
-  const isError =
-    connection.isError || channelHealth.isError || (!settingsOnly && conversations.isError);
+
   return (
     <QueryState
-      isError={isError}
-      isLoading={isLoading}
+      isError={health.isError || status.isError}
+      isLoading={health.isLoading || status.isLoading}
       onRetry={() => {
-        void connection.refetch();
-        void channelHealth.refetch();
-        void conversations.refetch();
+        void health.refetch();
+        void status.refetch();
       }}
     >
-      <PageGrid>
+      <div className="space-y-5" data-testid="whatsapp-read-only-page">
         <PageHeader
-          eyebrow="Integrations"
-          title="WhatsApp"
-          description="Bandeja interna y configuración de WhatsApp Business Cloud API, con secretos protegidos en el backend."
+          eyebrow="Configuración · Canales"
+          title="WhatsApp Read Only"
+          description="SuperFlash observa el canal y conserva el historial. Las conversaciones continúan en WhatsApp Business."
           actions={
-            <div className="flex gap-2">
-              <Button
-                onClick={() => setTab('inbox')}
-                variant={tab === 'inbox' ? 'primary' : 'outline'}
-              >
-                Bandeja
-              </Button>
-              <Button
-                onClick={() => setTab('settings')}
-                variant={tab === 'settings' ? 'primary' : 'outline'}
-              >
-                Configuración
-              </Button>
-            </div>
+            <Badge className="bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+              Solo lectura
+            </Badge>
           }
         />
-        {settingsOnly || tab === 'settings' ? (
-          <>
-            <ChannelHealthCard
-              health={channelHealth.data}
-              isVerifying={verifyConfiguration.isPending}
-              onVerify={() => verifyConfiguration.mutate()}
-            />
-            <ConnectionSettings connection={connection.data ?? null} />
-            <div className="flex gap-2">
-              <PermissionGate permission="whatsapp.manage">
-                <Button
-                  disabled={test.isPending || !connection.data}
-                  onClick={() => test.mutate()}
-                  variant="outline"
-                >
-                  {test.isPending ? 'Validando…' : 'Probar conexión'}
-                </Button>
-              </PermissionGate>
-              <PermissionGate permission="whatsapp.templates.read">
-                <Button
-                  disabled={sync.isPending || !connection.data}
-                  onClick={() => sync.mutate()}
-                  variant="outline"
-                >
-                  {sync.isPending ? 'Sincronizando…' : 'Sincronizar plantillas'}
-                </Button>
-              </PermissionGate>
+
+        <Card>
+          <CardHeader>
+            <div>
+              <CardTitle>Estado del conector</CardTitle>
+              <CardDescription>
+                Fuente: {health.data?.source ?? 'read model local'} · sin llamadas externas.
+              </CardDescription>
             </div>
-          </>
-        ) : (
-          <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
-            <Card>
-              <CardHeader>
-                <div>
-                  <CardTitle>Conversaciones</CardTitle>
-                  <CardDescription>
-                    {conversations.data?.pagination.total ?? 0} conversaciones
-                  </CardDescription>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <ConversationList
-                  conversations={conversations.data?.data ?? []}
-                  selectedId={selected?.id ?? null}
-                  onSelect={setSelectedId}
+            <StatusBadge status={health.data?.status ?? 'PENDING_CONFIGURATION'} />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Metric label="Mensajes" value={health.data?.totals.messages ?? 0} />
+              <Metric label="Conversaciones" value={health.data?.totals.conversations ?? 0} />
+              <Metric
+                label="Último webhook"
+                value={formatDate(health.data?.lastWebhookReceivedAt ?? null)}
+              />
+              <Metric
+                label="Última sincronización"
+                value={formatDate(status.data?.lastSynchronizedAt ?? null)}
+              />
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs text-content-muted">
+              <span>Lectura externa: bloqueada</span>
+              <span>·</span>
+              <span>Escritura externa: bloqueada</span>
+              <span>·</span>
+              <span>Mensajes salientes: bloqueados</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button disabled={sync.isPending} onClick={() => sync.mutate()}>
+                {sync.isPending ? 'Sincronizando…' : 'Sincronizar ahora'}
+              </Button>
+              <Button
+                disabled={reindex.isPending}
+                onClick={() => reindex.mutate()}
+                variant="outline"
+              >
+                {reindex.isPending ? 'Reindexando…' : 'Reindexar'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="grid gap-5 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Checkpoint persistente</CardTitle>
+              <CardDescription>
+                Permite continuar tras reinicios sin reimportar mensajes.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {status.data ? (
+                <dl className="grid gap-3 text-sm sm:grid-cols-2">
+                  <div>
+                    <dt className="text-content-muted">Estado</dt>
+                    <dd className="font-semibold text-content-primary">{status.data.status}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-content-muted">Cursor</dt>
+                    <dd className="truncate font-mono text-xs text-content-primary">
+                      {status.data.checkpoint.id ?? '—'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-content-muted">Mensajes importados</dt>
+                    <dd className="font-semibold text-content-primary">
+                      {status.data.messagesImported}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-content-muted">Duplicados evitados</dt>
+                    <dd className="font-semibold text-content-primary">
+                      {status.data.duplicatesAvoided}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-content-muted">Contactos actualizados</dt>
+                    <dd className="font-semibold text-content-primary">
+                      {status.data.contactsImported}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-content-muted">Errores</dt>
+                    <dd className="font-semibold text-content-primary">{status.data.errors}</dd>
+                  </div>
+                </dl>
+              ) : (
+                <EmptyState
+                  title="Sin sincronizaciones"
+                  description="El primer checkpoint se creará al sincronizar."
                 />
-              </CardContent>
-            </Card>
-            {selected ? (
-              <MessageThread
-                conversation={selected}
-                messages={messages.data?.data ?? []}
-                templates={templates.data?.data ?? []}
-              />
-            ) : (
-              <EmptyState
-                title="Selecciona una conversación"
-                description="Elige un contacto para revisar el hilo y responder."
-              />
-            )}
-          </div>
-        )}
-      </PageGrid>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Reglas de seguridad</CardTitle>
+              <CardDescription>Garantías del conector en este sprint.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm text-content-secondary">
+              <p>✓ No existe método de envío en el provider Read Only.</p>
+              <p>✓ No se editan, eliminan, marcan ni archivan conversaciones del canal.</p>
+              <p>✓ Los datos manuales de contactos no se sobrescriben.</p>
+              <p>✓ Pipeline, ventas, pagos y fulfillment requieren acciones manuales.</p>
+              <p>✓ Los errores usan backoff y quedan auditados.</p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </QueryState>
   );
 }

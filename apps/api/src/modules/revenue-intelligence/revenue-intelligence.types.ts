@@ -95,4 +95,6 @@ export interface RevenueDashboard {
   trends: RevenueTrendPoint[];
   funnel: RevenueFunnelResult;
   forecast: RevenueForecast[];
+  communication: WhatsAppReadOnlyMetrics;
 }
+import type { WhatsAppReadOnlyMetrics } from '../communication/services/whatsapp-readonly-analytics.service';

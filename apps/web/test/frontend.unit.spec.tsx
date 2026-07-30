@@ -244,6 +244,25 @@ describe('frontend foundation', () => {
         stages: [{ key: 'SALE', label: 'Venta', count: 1, conversionRate: 100 }],
       },
       forecast: [],
+      communication: {
+        generatedAt: '2026-07-28T00:00:00.000Z',
+        period: { from: '2026-07-01T00:00:00.000Z', to: '2026-07-28T00:00:00.000Z' },
+        conversationsToday: 2,
+        conversationsByCountry: [{ country: 'CL', conversations: 2 }],
+        messagesToday: 3,
+        messagesThisWeek: 5,
+        messagesThisMonth: 10,
+        newContacts: 1,
+        activeCustomers: 1,
+        inactiveCustomers: 0,
+        minutesSinceLastMessage: 4,
+        topCountry: { country: 'CL', conversations: 2 },
+        topContact: { contactId: 'contact-1', name: 'Juan Pérez', messages: 3 },
+        topConversations: [],
+        activityByHour: [],
+        activityByDay: [],
+        activityByMonth: [],
+      },
     };
     jest.spyOn(api, 'getRevenueDashboard').mockResolvedValue(dashboard);
     jest.spyOn(api, 'getContactAssignees').mockResolvedValue([]);
@@ -256,25 +275,40 @@ describe('frontend foundation', () => {
     expect(await screen.findByText('Dashboard ejecutivo')).toBeInTheDocument();
     expect((await screen.findAllByText('USD 100')).length).toBeGreaterThan(0);
     expect(screen.getByText('Venta')).toBeInTheDocument();
+    expect(screen.getByText('Actividad de WhatsApp Read Only')).toBeInTheDocument();
     expect(screen.getByLabelText('País')).toBeInTheDocument();
     expect(screen.getByLabelText('Moneda')).toBeInTheDocument();
     expect(screen.getByLabelText('Vendedor')).toBeInTheDocument();
   });
 
-  it('renders WhatsApp configuration without exposing secrets', async () => {
-    jest.spyOn(api, 'getWhatsAppConnection').mockResolvedValue({
-      id: 'connection-1',
-      wabaId: 'waba-1',
-      phoneNumberId: 'phone-1',
-      businessPhoneNumber: '+56912345678',
-      graphApiVersion: 'v23.0',
+  it('renders the WhatsApp read-only connector without write controls or secrets', async () => {
+    jest.spyOn(api, 'getWhatsAppReadOnlyHealth').mockResolvedValue({
+      channel: 'WHATSAPP_READ_ONLY',
+      provider: 'PERSISTED_WEBHOOK_READ_MODEL',
       status: 'CONNECTED',
-      accessToken: '••••••••',
-      appSecret: '••••••••',
-      webhookVerifyToken: '••••••••',
-      lastHealthcheckAt: null,
-      lastHealthcheckError: null,
+      readOnly: true,
+      externalWriteEnabled: false,
+      externalRequestMade: false,
+      source: 'LOCAL_WHATSAPP_READ_MODEL',
       lastWebhookReceivedAt: null,
+      checkpoint: null,
+      totals: { messages: 3, conversations: 1 },
+      metrics: {},
+    });
+    jest.spyOn(api, 'getWhatsAppReadOnlySyncStatus').mockResolvedValue({
+      status: 'SUCCEEDED',
+      checkpoint: { at: null, id: null },
+      lastSynchronizedAt: null,
+      lastSuccessfulAt: null,
+      messagesImported: 3,
+      conversationsImported: 1,
+      contactsImported: 1,
+      duplicatesAvoided: 0,
+      errors: 0,
+      nextRetryAt: null,
+      lastError: null,
+      readOnly: true,
+      externalWriteEnabled: false,
     });
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
@@ -282,8 +316,9 @@ describe('frontend foundation', () => {
         <WhatsAppPage settingsOnly />
       </QueryClientProvider>,
     );
-    expect(await screen.findByText('Configuración Cloud API')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('waba-1')).toBeInTheDocument();
-    expect(screen.queryByDisplayValue('meta-access-token')).not.toBeInTheDocument();
+    expect(await screen.findByText('WhatsApp Read Only')).toBeInTheDocument();
+    expect(screen.getByText('Solo lectura')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sincronizar ahora' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /enviar|responder/i })).not.toBeInTheDocument();
   });
 });

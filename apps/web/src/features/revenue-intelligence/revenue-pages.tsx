@@ -28,6 +28,7 @@ import { MetricCard } from '@/components/ui/metric-card';
 import { api, queryString } from '@/lib/api-client';
 import type {
   RevenueCohortRow,
+  RevenueCommunicationMetrics,
   RevenueFilters,
   RevenueKpis,
   RevenueMoneyMetric,
@@ -213,6 +214,48 @@ function KpiCards({ kpis }: { readonly kpis: RevenueKpis }): React.ReactElement 
   );
 }
 
+function CommunicationMetricCards({
+  metrics,
+}: {
+  readonly metrics: RevenueCommunicationMetrics;
+}): React.ReactElement {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Actividad de WhatsApp Read Only</CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <MetricCard icon="◉" label="Conversaciones hoy" value={metrics.conversationsToday} />
+        <MetricCard icon="✉" label="Mensajes este mes" value={metrics.messagesThisMonth} />
+        <MetricCard icon="＋" label="Nuevos contactos" value={metrics.newContacts} />
+        <MetricCard
+          icon="◷"
+          label="Último mensaje"
+          value={
+            metrics.minutesSinceLastMessage === null
+              ? '—'
+              : `${metrics.minutesSinceLastMessage} min`
+          }
+        />
+      </CardContent>
+      <CardContent className="grid gap-3 border-t border-border-default pt-4 text-sm text-content-secondary sm:grid-cols-2">
+        <p>
+          País principal:{' '}
+          <span className="font-semibold text-content-primary">
+            {metrics.topCountry?.country ?? 'Sin datos'}
+          </span>
+        </p>
+        <p>
+          Contacto más activo:{' '}
+          <span className="font-semibold text-content-primary">
+            {metrics.topContact?.name ?? 'Sin datos'}
+          </span>
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function ExecutiveDashboardPage(): React.ReactElement {
   const { filters, query, setFilters } = useRevenueFilters();
   const result = useQuery({
@@ -237,6 +280,9 @@ export function ExecutiveDashboardPage(): React.ReactElement {
         {result.data ? (
           <>
             <KpiCards kpis={result.data.kpis} />
+            {result.data.communication ? (
+              <CommunicationMetricCards metrics={result.data.communication} />
+            ) : null}
             <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
               <Card>
                 <CardHeader>

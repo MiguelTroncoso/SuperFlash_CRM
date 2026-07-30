@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
 
@@ -223,13 +223,11 @@ export function SmartInboxPage(): React.ReactElement {
   const [sourceFilter, setSourceFilter] = useState('');
   const [campaignFilter, setCampaignFilter] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [composer, setComposer] = useState('');
   const [note, setNote] = useState('');
   const [followUpAt, setFollowUpAt] = useState('');
   const [saleProductId, setSaleProductId] = useState('');
   const [saleQuantity, setSaleQuantity] = useState('1');
   const [fulfillmentItemId, setFulfillmentItemId] = useState('');
-  const composerRef = useRef<HTMLTextAreaElement>(null);
   const filters = queryString({
     view,
     search,
@@ -291,10 +289,6 @@ export function SmartInboxPage(): React.ReactElement {
         event.preventDefault();
         setCommandOpen(true);
       }
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'e') {
-        event.preventDefault();
-        composerRef.current?.focus();
-      }
       if (event.key === 'Escape') setSelectedId((current) => current);
     };
     window.addEventListener('keydown', onKeyDown);
@@ -311,35 +305,6 @@ export function SmartInboxPage(): React.ReactElement {
     void queryClient.invalidateQueries({ queryKey: ['smart-inbox'] });
   };
 
-  const send = useMutation({
-    mutationFn: () =>
-      api.sendSmartInboxMessage(selectedId ?? '', { type: 'TEXT', text: composer.trim() }),
-    onSuccess: () => {
-      setComposer('');
-      refreshSelected();
-      toast({
-        title: 'Mensaje encolado',
-        description: 'La conversación se actualizará automáticamente.',
-        tone: 'success',
-      });
-    },
-    onError: (error: Error) =>
-      toast({ title: 'No fue posible enviar', description: error.message, tone: 'error' }),
-  });
-  const markRead = useMutation({
-    mutationFn: (conversationId: string) => api.markSmartInboxRead(conversationId),
-    onSuccess: refreshSelected,
-  });
-  const assign = useMutation({
-    mutationFn: (assignedUserId: string | null) =>
-      api.assignSmartInboxConversation(selectedId ?? '', assignedUserId),
-    onSuccess: () => {
-      refreshSelected();
-      toast({ title: 'Responsable actualizado', tone: 'success' });
-    },
-    onError: (error: Error) =>
-      toast({ title: 'No fue posible asignar', description: error.message, tone: 'error' }),
-  });
   const move = useMutation({
     mutationFn: (pipelineStageId: string) =>
       api.moveSmartInboxPipeline(selectedId ?? '', {
@@ -416,26 +381,6 @@ export function SmartInboxPage(): React.ReactElement {
         tone: 'error',
       }),
   });
-  const changeStatus = useMutation({
-    mutationFn: (action: 'close' | 'archive' | 'restore') => {
-      const actionMap = {
-        close: api.closeSmartInboxConversation,
-        archive: api.archiveSmartInboxConversation,
-        restore: api.restoreSmartInboxConversation,
-      };
-      return actionMap[action](selectedId ?? '');
-    },
-    onSuccess: () => {
-      refreshSelected();
-      toast({ title: 'Estado de conversación actualizado', tone: 'success' });
-    },
-    onError: (error: Error) =>
-      toast({
-        title: 'No fue posible cambiar el estado',
-        description: error.message,
-        tone: 'error',
-      }),
-  });
 
   const changeView = (nextView: ViewCode): void => {
     setView(nextView);
@@ -458,7 +403,7 @@ export function SmartInboxPage(): React.ReactElement {
         <PageHeader
           eyebrow="Operational workspace"
           title="WhatsApp Inbox"
-          description="Responde, vende y coordina la operación comercial desde una sola conversación."
+          description="Observa conversaciones entrantes y coordina manualmente la operación comercial."
           actions={
             <>
               <Badge className="bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
@@ -623,7 +568,6 @@ export function SmartInboxPage(): React.ReactElement {
                     key={conversation.id}
                     onSelect={() => {
                       setSelectedId(conversation.id);
-                      if (conversation.unreadCount > 0) markRead.mutate(conversation.id);
                     }}
                     selected={selectedId === conversation.id}
                   />
@@ -657,14 +601,6 @@ export function SmartInboxPage(): React.ReactElement {
                   </div>
                   <div className="flex items-center gap-2">
                     <StatusBadge status={selected.status} />
-                    <Button
-                      aria-label="Marcar conversación leída"
-                      onClick={() => selectedId && markRead.mutate(selectedId)}
-                      size="sm"
-                      variant="ghost"
-                    >
-                      ✓
-                    </Button>
                     <Button
                       aria-label="Cerrar panel de conversación"
                       onClick={() => setSelectedId(null)}
@@ -705,50 +641,8 @@ export function SmartInboxPage(): React.ReactElement {
                     />
                   )}
                 </div>
-                <div className="border-t border-border-subtle bg-surface-card p-3 sm:p-4">
-                  <div className="mb-2 flex flex-wrap gap-1.5">
-                    {['Plantilla', 'Respuesta rápida', 'Emoji', 'Adjuntar', 'Ubicación'].map(
-                      (action) => (
-                        <button
-                          className="rounded-lg bg-surface-muted px-2.5 py-1.5 text-[10px] font-semibold text-content-secondary hover:text-brand-600"
-                          key={action}
-                          type="button"
-                        >
-                          ＋ {action}
-                        </button>
-                      ),
-                    )}
-                  </div>
-                  <div className="flex items-end gap-2">
-                    <Textarea
-                      aria-label="Mensaje"
-                      className="min-h-16 resize-none"
-                      onChange={(event) => setComposer(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' && !event.shiftKey) {
-                          event.preventDefault();
-                          if (composer.trim() && selected.window.open) send.mutate();
-                        }
-                      }}
-                      placeholder={
-                        selected.window.open
-                          ? 'Escribe un mensaje... (Enter para enviar)'
-                          : 'La ventana está cerrada; usa una plantilla autorizada.'
-                      }
-                      ref={composerRef}
-                      value={composer}
-                    />
-                    <Button
-                      disabled={!composer.trim() || !selected.window.open || send.isPending}
-                      onClick={() => send.mutate()}
-                      size="sm"
-                    >
-                      Enviar
-                    </Button>
-                  </div>
-                  <p className="mt-2 text-[10px] text-content-muted">
-                    Shift+Enter salto · Ctrl/Cmd+E enfoca · Ctrl/Cmd+K búsqueda global
-                  </p>
+                <div className="border-t border-border-subtle bg-surface-inset p-3 text-center text-xs text-content-muted sm:p-4">
+                  WhatsApp Read Only: el operador continúa la conversación en WhatsApp Business.
                 </div>
               </>
             ) : (
@@ -832,22 +726,10 @@ export function SmartInboxPage(): React.ReactElement {
                 </PanelSection>
                 <PanelSection title="Action center">
                   <div className="space-y-2">
-                    <label className="block text-xs font-semibold text-content-secondary">
-                      Responsable
-                      <Select
-                        aria-label="Responsable"
-                        className="mt-1"
-                        onChange={(event) => assign.mutate(event.target.value || null)}
-                        value={selected.assignedTo?.id ?? ''}
-                      >
-                        <option value="">Sin responsable</option>
-                        {assignees.data?.map((person) => (
-                          <option key={person.id} value={person.id}>
-                            {personName(person)}
-                          </option>
-                        ))}
-                      </Select>
-                    </label>
+                    <div className="rounded-xl bg-surface-inset p-3 text-xs text-content-secondary">
+                      Responsable:{' '}
+                      {selected.assignedTo ? personName(selected.assignedTo) : 'Sin responsable'}
+                    </div>
                     {activeOpportunity ? (
                       <label className="block text-xs font-semibold text-content-secondary">
                         Pipeline
@@ -982,31 +864,9 @@ export function SmartInboxPage(): React.ReactElement {
                   <Timeline events={timeline} />
                 </PanelSection>
                 <PanelSection title="Estado">
-                  <div className="grid grid-cols-3 gap-2">
-                    <Button
-                      onClick={() =>
-                        changeStatus.mutate(selected.status === 'CLOSED' ? 'restore' : 'close')
-                      }
-                      size="sm"
-                      variant="outline"
-                    >
-                      {selected.status === 'CLOSED' ? 'Reabrir' : 'Cerrar'}
-                    </Button>
-                    <Button
-                      onClick={() => changeStatus.mutate('archive')}
-                      size="sm"
-                      variant="outline"
-                    >
-                      Archivar
-                    </Button>
-                    <Button
-                      onClick={() => changeStatus.mutate('restore')}
-                      size="sm"
-                      variant="ghost"
-                    >
-                      Restaurar
-                    </Button>
-                  </div>
+                  <p className="text-xs text-content-muted">
+                    El estado se actualiza únicamente desde los eventos entrantes del canal.
+                  </p>
                 </PanelSection>
               </>
             ) : (

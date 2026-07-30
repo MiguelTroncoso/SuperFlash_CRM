@@ -225,11 +225,12 @@ describe('Smart Inbox frontend', () => {
     );
   });
 
-  it('soporta el atajo Ctrl/Cmd+E para enfocar el composer', async () => {
+  it('mantiene el workspace en modo solo lectura para mensajes salientes', async () => {
     renderPage();
-    await screen.findByLabelText('Mensaje');
-    fireEvent.keyDown(window, { key: 'e', ctrlKey: true });
-    expect(screen.getByLabelText('Mensaje')).toHaveFocus();
+    expect(
+      await screen.findByText(/WhatsApp Read Only: el operador continúa/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText('Mensaje')).not.toBeInTheDocument();
   });
 });
 

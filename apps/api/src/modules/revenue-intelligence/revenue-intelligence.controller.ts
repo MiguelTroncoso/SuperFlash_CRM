@@ -53,6 +53,12 @@ export class RevenueIntelligenceController {
     return this.service.getForecast(query, user);
   }
 
+  @Get('communication')
+  @ApiOperation({ summary: 'Métricas de conversaciones entrantes de WhatsApp Read Only' })
+  communication(@Query() query: RevenueQueryDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.getCommunicationMetrics(query, user);
+  }
+
   @Get('materialized-views/status')
   @ApiOperation({ summary: 'Estado de los agregados materializados analíticos' })
   materializedViewStatus(@CurrentUser() user: AuthenticatedUser) {

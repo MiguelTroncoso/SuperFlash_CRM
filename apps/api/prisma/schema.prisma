@@ -218,6 +218,17 @@ enum WhatsAppWebhookEventStatus {
   FAILED
 }
 
+enum CommunicationSyncChannel {
+  WHATSAPP_READ_ONLY
+}
+
+enum CommunicationSyncStatus {
+  IDLE
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
 enum ProductType {
   SUBSCRIPTION
   CREDIT_PACKAGE
@@ -347,55 +358,56 @@ model Organization {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  users                     User[]
-  authSessions              AuthSession[]
-  passwordResetTokens       PasswordResetToken[]
-  roles                     Role[]
-  contacts                  Contact[]
-  tags                      Tag[]
-  contactTags               ContactTag[]
-  opportunities             Opportunity[]
-  opportunityStageHistories OpportunityStageHistory[]
-  pipelineStages            PipelineStage[]
-  activities                Activity[]
-  followUps                 FollowUp[]
-  products                  Product[]
-  productCategories         ProductCategory[]
-  productPlans              ProductPlan[]
-  productVariants           ProductVariant[]
-  priceBooks                PriceBook[]
-  priceBookEntries          PriceBookEntry[]
-  priceHistories            PriceHistory[]
-  sales                     Sale[]
-  saleItems                 SaleItem[]
-  payments                  Payment[]
-  subscriptions             Subscription[]
-  renewals                  Renewal[]
-  campaigns                 Campaign[]
-  expenses                  Expense[]
-  auditLogs                 AuditLog[]
-  followUpHistories         FollowUpHistory[]
-  outboxEvents              OutboxEvent[]
-  providers                 Provider[]
-  providerProductMappings   ProviderProductMapping[]
-  fulfillments              Fulfillment[]
-  provisioningAttempts      ProvisioningAttempt[]
-  credentialRecords         CredentialRecord[]
-  trials                    Trial[]
-  activations               Activation[]
-  messageTemplates          MessageTemplate[]
-  automationRules           AutomationRule[]
-  automationActions         AutomationAction[]
-  automationExecutions      AutomationExecution[]
-  automationActionRuns      AutomationExecutionAction[]
-  notifications             Notification[]
-  whatsappConnections       WhatsAppConnection[]
-  whatsappPhoneNumbers      WhatsAppPhoneNumber[]
-  whatsappConversations     WhatsAppConversation[]
-  whatsappMessages          WhatsAppMessage[]
-  whatsappWebhookEvents     WhatsAppWebhookEvent[]
-  whatsappMessageStatuses   WhatsAppMessageStatus[]
-  productStockMovements     ProductStockMovement[]
+  users                        User[]
+  authSessions                 AuthSession[]
+  passwordResetTokens          PasswordResetToken[]
+  roles                        Role[]
+  contacts                     Contact[]
+  tags                         Tag[]
+  contactTags                  ContactTag[]
+  opportunities                Opportunity[]
+  opportunityStageHistories    OpportunityStageHistory[]
+  pipelineStages               PipelineStage[]
+  activities                   Activity[]
+  followUps                    FollowUp[]
+  products                     Product[]
+  productCategories            ProductCategory[]
+  productPlans                 ProductPlan[]
+  productVariants              ProductVariant[]
+  priceBooks                   PriceBook[]
+  priceBookEntries             PriceBookEntry[]
+  priceHistories               PriceHistory[]
+  sales                        Sale[]
+  saleItems                    SaleItem[]
+  payments                     Payment[]
+  subscriptions                Subscription[]
+  renewals                     Renewal[]
+  campaigns                    Campaign[]
+  expenses                     Expense[]
+  auditLogs                    AuditLog[]
+  followUpHistories            FollowUpHistory[]
+  outboxEvents                 OutboxEvent[]
+  providers                    Provider[]
+  providerProductMappings      ProviderProductMapping[]
+  fulfillments                 Fulfillment[]
+  provisioningAttempts         ProvisioningAttempt[]
+  credentialRecords            CredentialRecord[]
+  trials                       Trial[]
+  activations                  Activation[]
+  messageTemplates             MessageTemplate[]
+  automationRules              AutomationRule[]
+  automationActions            AutomationAction[]
+  automationExecutions         AutomationExecution[]
+  automationActionRuns         AutomationExecutionAction[]
+  notifications                Notification[]
+  whatsappConnections          WhatsAppConnection[]
+  whatsappPhoneNumbers         WhatsAppPhoneNumber[]
+  whatsappConversations        WhatsAppConversation[]
+  whatsappMessages             WhatsAppMessage[]
+  whatsappWebhookEvents        WhatsAppWebhookEvent[]
+  whatsappMessageStatuses      WhatsAppMessageStatus[]
+  communicationSyncCheckpoints CommunicationSyncCheckpoint[]
+  productStockMovements        ProductStockMovement[]
 
   @@index([createdAt])
 }
@@ -2066,4 +2078,33 @@ model WhatsAppMessageStatus {
   @@index([organizationId, messageId, createdAt])
   @@index([organizationId, externalMessageId])
   @@index([createdAt])
+}
+
+model CommunicationSyncCheckpoint {
+  id                    String                   @id @default(uuid()) @db.Uuid
+  organizationId        String                   @db.Uuid
+  channel               CommunicationSyncChannel
+  status                CommunicationSyncStatus  @default(IDLE)
+  cursorAt              DateTime?
+  cursorId              String?                  @db.Uuid
+  lastSynchronizedAt    DateTime?
+  lastSuccessfulAt      DateTime?
+  messagesImported      Int                      @default(0)
+  conversationsImported Int                      @default(0)
+  contactsImported      Int                      @default(0)
+  duplicatesAvoided     Int                      @default(0)
+  errorCount            Int                      @default(0)
+  attemptCount          Int                      @default(0)
+  nextRetryAt           DateTime?
+  lastError             String?
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, channel])
+  @@index([organizationId, status, lastSynchronizedAt])
+  @@index([organizationId, cursorAt, cursorId])
+  @@index([nextRetryAt])
 }

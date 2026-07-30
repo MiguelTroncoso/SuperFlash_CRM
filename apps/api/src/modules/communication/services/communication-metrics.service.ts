@@ -10,7 +10,18 @@ export type CommunicationMetricName =
   | 'messages_delivered'
   | 'messages_read'
   | 'message_failures'
-  | 'authentication_errors';
+  | 'authentication_errors'
+  | 'readonly_source_reads'
+  | 'readonly_snapshot_reads'
+  | 'readonly_sync_runs'
+  | 'readonly_reindex_runs'
+  | 'readonly_sync_failures'
+  | 'readonly_messages_imported'
+  | 'readonly_conversations_imported'
+  | 'readonly_contacts_imported'
+  | 'readonly_contacts_updated'
+  | 'readonly_duplicates_avoided'
+  | 'readonly_sync_duration_ms';
 
 export interface CommunicationMetricsSnapshot {
   counters: Readonly<Record<CommunicationMetricName, number>>;
@@ -29,6 +40,17 @@ const METRIC_NAMES: readonly CommunicationMetricName[] = [
   'messages_read',
   'message_failures',
   'authentication_errors',
+  'readonly_source_reads',
+  'readonly_snapshot_reads',
+  'readonly_sync_runs',
+  'readonly_reindex_runs',
+  'readonly_sync_failures',
+  'readonly_messages_imported',
+  'readonly_conversations_imported',
+  'readonly_contacts_imported',
+  'readonly_contacts_updated',
+  'readonly_duplicates_avoided',
+  'readonly_sync_duration_ms',
 ];
 
 @Injectable()
@@ -42,8 +64,16 @@ export class CommunicationMetricsService {
   private updatedAt = new Date();
 
   increment(name: CommunicationMetricName): void {
-    this.counters.set(name, (this.counters.get(name) ?? 0) + 1);
+    this.add(name, 1);
+  }
+
+  add(name: CommunicationMetricName, value: number): void {
+    this.counters.set(name, (this.counters.get(name) ?? 0) + value);
     this.updatedAt = new Date();
+  }
+
+  recordDuration(name: CommunicationMetricName, milliseconds: number): void {
+    this.add(name, Math.max(0, Math.round(milliseconds)));
   }
 
   registerSseClient(): () => void {

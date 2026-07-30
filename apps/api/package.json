@@ -13,7 +13,7 @@
     "prisma:refresh-revenue-views": "tsx prisma/refresh-revenue-views.ts",
     "prisma:validate": "prisma validate --schema prisma/schema.prisma",
     "test": "jest --runInBand",
-    "test:unit": "jest --runInBand test/auth.security.spec.ts test/contacts.unit.spec.ts test/opportunities.unit.spec.ts test/followups.unit.spec.ts test/catalog.unit.spec.ts test/commercial.unit.spec.ts test/operations.unit.spec.ts test/automation.unit.spec.ts test/revenue-intelligence.unit.spec.ts test/whatsapp.unit.spec.ts test/communication.unit.spec.ts test/smart-inbox.unit.spec.ts",
+    "test:unit": "jest --runInBand test/auth.security.spec.ts test/contacts.unit.spec.ts test/opportunities.unit.spec.ts test/followups.unit.spec.ts test/catalog.unit.spec.ts test/commercial.unit.spec.ts test/operations.unit.spec.ts test/automation.unit.spec.ts test/revenue-intelligence.unit.spec.ts test/whatsapp.unit.spec.ts test/communication.unit.spec.ts test/whatsapp-readonly.unit.spec.ts test/smart-inbox.unit.spec.ts",
     "test:integration": "jest --runInBand test/auth.e2e-spec.ts test/contacts.e2e-spec.ts test/opportunities.e2e-spec.ts test/followups.e2e-spec.ts test/catalog.e2e-spec.ts test/commercial.e2e-spec.ts test/operations.e2e-spec.ts test/automation.e2e-spec.ts test/revenue-intelligence.e2e-spec.ts test/whatsapp.e2e-spec.ts test/smart-inbox.e2e-spec.ts",
     "start": "nest start",
     "start:prod": "node dist/main.js",

@@ -4,6 +4,7 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
   await prisma.$transaction(async (transaction: Prisma.TransactionClient) => {
     await transaction.$executeRaw`SELECT set_config('superflash.allow_integrity_cleanup', 'on', true)`;
     await transaction.notification.deleteMany();
+    await transaction.communicationSyncCheckpoint.deleteMany();
     await transaction.whatsAppMessageStatus.deleteMany();
     await transaction.whatsAppMessage.deleteMany();
     await transaction.whatsAppWebhookEvent.deleteMany();

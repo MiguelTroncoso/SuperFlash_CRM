@@ -3,6 +3,10 @@ import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { AuthenticatedUser } from '../auth/auth.types';
+import {
+  WhatsAppReadOnlyAnalyticsService,
+  WhatsAppReadOnlyMetrics,
+} from '../communication/services/whatsapp-readonly-analytics.service';
 import { RevenueQueryDto } from './dto/revenue-query.dto';
 import { buildHistoricalTrendForecast } from './forecast';
 import {
@@ -115,15 +119,19 @@ function percentage(numerator: number, denominator: number): number {
 
 @Injectable()
 export class RevenueIntelligenceService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly whatsappReadOnlyAnalytics: WhatsAppReadOnlyAnalyticsService,
+  ) {}
 
   async getDashboard(query: RevenueQueryDto, user: AuthenticatedUser): Promise<RevenueDashboard> {
     const filters = this.filters(query, user);
-    const [kpis, trends, funnel, forecast] = await Promise.all([
+    const [kpis, trends, funnel, forecast, communication] = await Promise.all([
       this.getKpisForFilters(filters),
       this.trendsForFilters(filters),
       this.funnelForFilters(filters, query),
       this.forecastForFilters(filters, query.horizon),
+      this.whatsappReadOnlyAnalytics.get(user.organizationId, filters.from, filters.to),
     ]);
     return {
       generatedAt: new Date().toISOString(),
@@ -132,6 +140,7 @@ export class RevenueIntelligenceService {
       trends,
       funnel,
       forecast,
+      communication,
     };
   }
 
@@ -190,6 +199,14 @@ export class RevenueIntelligenceService {
       filters: this.publicFilters(filters),
       data: await this.forecastForFilters(filters, query.horizon),
     };
+  }
+
+  async getCommunicationMetrics(
+    query: RevenueQueryDto,
+    user: AuthenticatedUser,
+  ): Promise<WhatsAppReadOnlyMetrics> {
+    const filters = this.filters(query, user);
+    return this.whatsappReadOnlyAnalytics.get(user.organizationId, filters.from, filters.to);
   }
 
   async getMaterializedViewStatus(user: AuthenticatedUser): Promise<Record<string, unknown>> {

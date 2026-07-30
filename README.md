@@ -31,6 +31,14 @@ críticas. La configuración y el checklist de go-live están en
 [docs/whatsapp-go-live-checklist.md](docs/whatsapp-go-live-checklist.md).
 No se conectan números oficiales ni se envían mensajes reales en este sprint.
 
+Architecture v2.3 — WhatsApp Read Only está **IMPLEMENTED**. El conector lee el
+read model local, mantiene un checkpoint por organización y alimenta Smart
+Inbox y Revenue Intelligence. No tiene operaciones de envío, edición,
+eliminación, marcado o archivado de conversaciones; el operador continúa
+trabajando en WhatsApp Business. Consulta [docs/whatsapp-readonly.md](docs/whatsapp-readonly.md),
+[docs/synchronization.md](docs/synchronization.md) y
+[docs/read-only-architecture.md](docs/read-only-architecture.md).
+
 La implementación v1.1 agrega exclusivamente la capa operativa posterior a la
 venta. La integración oficial de WhatsApp Cloud API se mantiene como boundary
 externo aislado y no agrega bots ni automatizaciones externas.
@@ -123,6 +131,11 @@ npm run db:refresh-revenue-views
 Consulta [docs/revenue-intelligence.md](docs/revenue-intelligence.md),
 [docs/kpis.md](docs/kpis.md) y [docs/funnels.md](docs/funnels.md) para las
 definiciones, filtros y limitaciones de Phase 1.
+
+Las métricas de comunicación entrante están disponibles en
+`GET /api/v1/revenue-intelligence/communication` y dentro del dashboard
+ejecutivo. Son consultas de lectura: no mueven pipeline ni crean acciones
+comerciales.
 
 ## Calidad y verificación
 
@@ -249,17 +262,19 @@ La API expone la autenticación bajo `/api/v1/auth`:
 
 Configura las variables de autenticación en `.env`. En producción `JWT_ACCESS_SECRET` debe existir, ser único y tener al menos 32 caracteres. Swagger está disponible en `/api/docs` cuando `SWAGGER_ENABLED=true`.
 
-## WhatsApp Cloud API
+## WhatsApp Cloud API y Read Only
 
-La integración oficial se configura desde `/settings/integrations/whatsapp` y
-expone la bandeja en `/whatsapp`. El backend implementa verificación pública,
-firma HMAC, contactos inbound idempotentes, oportunidades iniciales,
-conversaciones, mensajes, plantillas aprobadas y sincronización de estados.
+La infraestructura Cloud API conserva el webhook firmado y el read model
+inbound. La bandeja actual se presenta como Read Only: lee conversaciones y
+mensajes, crea contactos nuevos cuando corresponde y actualiza únicamente
+actividad derivada. No crea oportunidades automáticamente ni modifica el
+canal externo.
 Los endpoints autenticados están bajo `/api/v1/integrations/whatsapp`; el
 webhook público es únicamente `GET/POST
-/api/v1/integrations/whatsapp/webhook`. Los permisos independientes son
-`whatsapp.read`, `whatsapp.send`, `whatsapp.manage`,
-`whatsapp.templates.read` y `whatsapp.conversations.assign`.
+/api/v1/integrations/whatsapp/webhook`. El conector Read Only expone estado,
+sincronización y reindexación bajo
+`/api/v1/communication/channels/whatsapp-read-only`. Sus permisos son
+`whatsapp.read`, `whatsapp.manage` y `reports.read` para el conector Read Only.
 
 Configura `WHATSAPP_GRAPH_API_VERSION` y
 `WHATSAPP_WEBHOOK_PUBLIC_URL` en el entorno. WABA ID, Phone Number ID, Access

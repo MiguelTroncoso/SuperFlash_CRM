@@ -214,13 +214,13 @@ export class SmartInboxService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly events: SmartInboxEventsService,
-    private readonly whatsapp: WhatsAppService,
+    _whatsapp: WhatsAppService,
     private readonly opportunities: OpportunitiesService,
     private readonly sales: SalesService,
     private readonly followUps: FollowUpsService,
     private readonly fulfillments: FulfillmentService,
     private readonly trials: TrialsService,
-    private readonly outbox: OutboxService,
+    _outbox: OutboxService,
   ) {}
 
   async list(
@@ -514,31 +514,23 @@ export class SmartInboxService {
   }
 
   async markRead(id: string, context: Context): Promise<Record<string, unknown>> {
-    await this.requireConversation(id, context.user.organizationId);
-    const updated = await this.prisma.whatsAppConversation.update({
-      where: { organizationId_id: { organizationId: context.user.organizationId, id } },
-      data: { unreadCount: 0 },
-    });
-    this.publish('ConversationRead', context, id);
-    return { id: updated.id, unreadCount: updated.unreadCount };
+    void id;
+    void context;
+    return this.readOnlyMutation();
   }
 
   async assign(id: string, dto: AssignWhatsAppConversationDto, context: Context) {
-    const result = await this.whatsapp.assignConversation(id, dto, {
-      user: context.user,
-      metadata: context.metadata,
-    });
-    this.publish('ConversationAssigned', context, id);
-    return result;
+    void id;
+    void dto;
+    void context;
+    return this.readOnlyMutation();
   }
 
   async sendMessage(id: string, dto: SendWhatsAppMessageDto, context: Context) {
-    const result = await this.whatsapp.sendMessage(id, dto, {
-      user: context.user,
-      metadata: context.metadata,
-    });
-    this.publish('MessageQueued', context, id);
-    return result;
+    void id;
+    void dto;
+    void context;
+    return this.readOnlyMutation();
   }
 
   async addNote(id: string, dto: AddInboxNoteDto, context: Context) {
@@ -693,55 +685,10 @@ export class SmartInboxService {
   }
 
   async changeStatus(id: string, status: WhatsAppConversationStatus, context: Context) {
-    const current = await this.requireConversation(id, context.user.organizationId);
-    const result = await this.prisma.$transaction(async (transaction) => {
-      const updated = await transaction.whatsAppConversation.update({
-        where: { organizationId_id: { organizationId: context.user.organizationId, id } },
-        data: {
-          status,
-          ...(status === WhatsAppConversationStatus.OPEN ? { deletedAt: null } : {}),
-        },
-      });
-      await transaction.activity.create({
-        data: {
-          organizationId: context.user.organizationId,
-          userId: context.user.userId,
-          contactId: current.contactId,
-          type: ActivityType.STATUS_CHANGE,
-          title: `Conversación ${status.toLowerCase()}`,
-          metadata: { status, previousStatus: current.status },
-          requestId: context.metadata.requestId ?? null,
-        },
-      });
-      await this.audit.recordWithClient(transaction, {
-        organizationId: context.user.organizationId,
-        userId: context.user.userId,
-        action: `SMART_INBOX_CONVERSATION_${status}`,
-        tableName: 'WhatsAppConversation',
-        recordId: id,
-        previousValue: { status: current.status },
-        newValue: { status },
-        requestId: context.metadata.requestId,
-      });
-      const eventType =
-        status === WhatsAppConversationStatus.CLOSED
-          ? 'ConversationClosed'
-          : status === WhatsAppConversationStatus.ARCHIVED
-            ? 'ConversationArchived'
-            : 'ConversationUpdated';
-      await this.outbox.enqueueWithClient(transaction, {
-        eventType,
-        organizationId: context.user.organizationId,
-        aggregateType: 'WhatsAppConversation',
-        aggregateId: id,
-        actorId: context.user.userId,
-        requestId: context.metadata.requestId ?? id,
-        payload: { conversationId: id, status, previousStatus: current.status },
-      });
-      return updated;
-    });
-    this.publish(`Conversation${status}`, context, id);
-    return { id: result.id, status: result.status };
+    void id;
+    void status;
+    void context;
+    return this.readOnlyMutation();
   }
 
   private buildWhere(
@@ -1059,6 +1006,17 @@ export class SmartInboxService {
     throw new HttpException(
       { statusCode: HttpStatus.CONFLICT, code, message },
       HttpStatus.CONFLICT,
+    );
+  }
+
+  private readOnlyMutation(): never {
+    throw new HttpException(
+      {
+        statusCode: HttpStatus.METHOD_NOT_ALLOWED,
+        code: 'WHATSAPP_READ_ONLY',
+        message: 'El workspace WhatsApp es exclusivamente de lectura.',
+      },
+      HttpStatus.METHOD_NOT_ALLOWED,
     );
   }
 }
