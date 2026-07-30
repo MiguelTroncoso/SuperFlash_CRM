@@ -83,6 +83,17 @@ const sections: { label: string; items: NavItem[] }[] = [
       },
     ],
   },
+  {
+    label: 'Configuración',
+    items: [
+      {
+        label: 'Canales',
+        href: '/settings/integrations/whatsapp',
+        icon: '⚑',
+        permission: 'whatsapp.manage',
+      },
+    ],
+  },
 ];
 
 export function Sidebar(): React.ReactElement {

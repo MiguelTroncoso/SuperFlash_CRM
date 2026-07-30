@@ -10,6 +10,7 @@ import {
 } from '@prisma/client';
 
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import { OutboxService } from '../../infrastructure/outbox/outbox.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser, RequestMetadata } from '../auth/auth.types';
 import { CommercialRequestContext } from '../commercial/commercial.types';
@@ -219,6 +220,7 @@ export class SmartInboxService {
     private readonly followUps: FollowUpsService,
     private readonly fulfillments: FulfillmentService,
     private readonly trials: TrialsService,
+    private readonly outbox: OutboxService,
   ) {}
 
   async list(
@@ -720,6 +722,21 @@ export class SmartInboxService {
         previousValue: { status: current.status },
         newValue: { status },
         requestId: context.metadata.requestId,
+      });
+      const eventType =
+        status === WhatsAppConversationStatus.CLOSED
+          ? 'ConversationClosed'
+          : status === WhatsAppConversationStatus.ARCHIVED
+            ? 'ConversationArchived'
+            : 'ConversationUpdated';
+      await this.outbox.enqueueWithClient(transaction, {
+        eventType,
+        organizationId: context.user.organizationId,
+        aggregateType: 'WhatsAppConversation',
+        aggregateId: id,
+        actorId: context.user.userId,
+        requestId: context.metadata.requestId ?? id,
+        payload: { conversationId: id, status, previousStatus: current.status },
       });
       return updated;
     });

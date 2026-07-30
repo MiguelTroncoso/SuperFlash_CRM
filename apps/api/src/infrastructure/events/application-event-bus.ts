@@ -47,7 +47,17 @@ export type CommercialEventName =
   | 'WhatsAppMessageQueued'
   | 'WhatsAppMessageSent'
   | 'WhatsAppMessageFailed'
-  | 'WhatsAppMessageStatusUpdated';
+  | 'WhatsAppMessageStatusUpdated'
+  | 'ConversationCreated'
+  | 'ConversationUpdated'
+  | 'MessageReceived'
+  | 'MessageSent'
+  | 'MessageDelivered'
+  | 'MessageRead'
+  | 'MessageFailed'
+  | 'ConversationClosed'
+  | 'ConversationAssigned'
+  | 'ConversationArchived';
 
 export interface CommercialEvent {
   eventId: string;

@@ -522,6 +522,31 @@ export interface WhatsAppConnection {
   lastWebhookReceivedAt: string | null;
 }
 
+export interface CommunicationChannelHealth {
+  channel: 'WHATSAPP';
+  provider: string;
+  status: string;
+  configured: boolean;
+  graphVersion: string;
+  webhookPath: string;
+  phoneNumber: string | null;
+  lastSynchronizedAt: string | null;
+  lastMessageReceivedAt: string | null;
+  lastMessageSentAt: string | null;
+  lastError: string | null;
+  missingConfiguration: string[];
+}
+
+export interface CommunicationConfigurationCheck {
+  channel: 'WHATSAPP';
+  provider: string;
+  enabled: boolean;
+  graphVersion: string;
+  missingConfiguration: string[];
+  webhookPath: string;
+  externalRequestMade: boolean;
+}
+
 export interface WhatsAppConversation {
   id: string;
   externalContactPhone: string;

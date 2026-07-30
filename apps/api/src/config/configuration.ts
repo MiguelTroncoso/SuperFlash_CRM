@@ -17,6 +17,15 @@ export interface AppConfiguration {
   credentialEncryptionKey: string;
   whatsappGraphApiVersion: string;
   whatsappWebhookPublicUrl: string;
+  whatsappProvider: WhatsAppProviderConfiguration;
+}
+
+export interface WhatsAppProviderConfiguration {
+  phoneNumberId: string | null;
+  businessAccountId: string | null;
+  graphVersion: string;
+  enabled: boolean;
+  missing: readonly string[];
 }
 
 type Environment = Readonly<Record<string, string | undefined>>;
@@ -79,6 +88,27 @@ export function buildConfiguration(environment: Environment): AppConfiguration {
     throw new Error(`DEFAULT_TIMEZONE no es una zona IANA válida: ${defaultTimezone}.`);
   }
 
+  const whatsappGraphVersion =
+    environment.WHATSAPP_GRAPH_VERSION?.trim() ||
+    environment.WHATSAPP_GRAPH_API_VERSION?.trim() ||
+    'v23.0';
+  const whatsappEnvironment = {
+    phoneNumberId: environment.WHATSAPP_PHONE_NUMBER_ID?.trim() || null,
+    businessAccountId: environment.WHATSAPP_BUSINESS_ACCOUNT_ID?.trim() || null,
+    accessTokenPresent: Boolean(environment.WHATSAPP_ACCESS_TOKEN?.trim()),
+    appSecretPresent: Boolean(environment.WHATSAPP_APP_SECRET?.trim()),
+    verifyTokenPresent: Boolean(environment.WHATSAPP_VERIFY_TOKEN?.trim()),
+  };
+  const whatsappMissing = Object.entries({
+    WHATSAPP_PHONE_NUMBER_ID: whatsappEnvironment.phoneNumberId,
+    WHATSAPP_BUSINESS_ACCOUNT_ID: whatsappEnvironment.businessAccountId,
+    WHATSAPP_ACCESS_TOKEN: whatsappEnvironment.accessTokenPresent ? 'configured' : null,
+    WHATSAPP_APP_SECRET: whatsappEnvironment.appSecretPresent ? 'configured' : null,
+    WHATSAPP_VERIFY_TOKEN: whatsappEnvironment.verifyTokenPresent ? 'configured' : null,
+  })
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
+
   return {
     nodeEnv,
     apiPort: parsePositiveInteger(environment.API_PORT, 3001, 'API_PORT'),
@@ -103,6 +133,13 @@ export function buildConfiguration(environment: Environment): AppConfiguration {
     credentialEncryptionKey,
     whatsappGraphApiVersion: environment.WHATSAPP_GRAPH_API_VERSION?.trim() || 'v23.0',
     whatsappWebhookPublicUrl: environment.WHATSAPP_WEBHOOK_PUBLIC_URL?.trim() || '',
+    whatsappProvider: {
+      phoneNumberId: whatsappEnvironment.phoneNumberId,
+      businessAccountId: whatsappEnvironment.businessAccountId,
+      graphVersion: whatsappGraphVersion,
+      enabled: whatsappMissing.length === 0,
+      missing: whatsappMissing,
+    },
   };
 }
 

@@ -33,6 +33,7 @@ import { TrialsModule } from './modules/trials/trials.module';
 import { AutomationModule } from './modules/automation/automation.module';
 import { RevenueIntelligenceModule } from './modules/revenue-intelligence/revenue-intelligence.module';
 import { SmartInboxModule } from './modules/smart-inbox/smart-inbox.module';
+import { CommunicationModule } from './modules/communication/communication.module';
 
 @Module({
   imports: [
@@ -83,6 +84,7 @@ import { SmartInboxModule } from './modules/smart-inbox/smart-inbox.module';
     AutomationModule,
     RevenueIntelligenceModule,
     SmartInboxModule,
+    CommunicationModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

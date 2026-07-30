@@ -15,7 +15,12 @@ import { PermissionGate } from '@/components/ui/permission-gate';
 import { StatusBadge } from '@/components/ui/badge';
 import { useToastStore } from '@/components/ui/toast';
 import { api, queryString } from '@/lib/api-client';
-import type { WhatsAppConnection, WhatsAppConversation, WhatsAppMessage } from '@/lib/types';
+import type {
+  CommunicationChannelHealth,
+  WhatsAppConnection,
+  WhatsAppConversation,
+  WhatsAppMessage,
+} from '@/lib/types';
 
 interface ConnectionForm {
   wabaId: string;
@@ -178,6 +183,70 @@ function ConnectionSettings({
             .
           </p>
         ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ChannelHealthCard({
+  health,
+  isVerifying,
+  onVerify,
+}: {
+  readonly health: CommunicationChannelHealth | undefined;
+  readonly isVerifying: boolean;
+  readonly onVerify: () => void;
+}): React.ReactElement {
+  const missingConfiguration = health?.missingConfiguration ?? [];
+
+  return (
+    <Card>
+      <CardHeader>
+        <div>
+          <CardTitle>Estado del canal</CardTitle>
+          <CardDescription>
+            Foundation de canales: WhatsApp está aislado del resto del CRM y no expone secretos.
+          </CardDescription>
+        </div>
+        <StatusBadge status={health?.status ?? 'PENDING_CONFIGURATION'} />
+      </CardHeader>
+      <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <p className="text-xs text-content-muted">Proveedor</p>
+          <p className="font-semibold text-content-primary">{health?.provider ?? '—'}</p>
+        </div>
+        <div>
+          <p className="text-xs text-content-muted">Número conectado</p>
+          <p className="font-semibold text-content-primary">{health?.phoneNumber ?? '—'}</p>
+        </div>
+        <div>
+          <p className="text-xs text-content-muted">Graph API</p>
+          <p className="font-semibold text-content-primary">{health?.graphVersion ?? '—'}</p>
+        </div>
+        <div>
+          <p className="text-xs text-content-muted">Último mensaje recibido</p>
+          <p className="font-semibold text-content-primary">
+            {health?.lastMessageReceivedAt
+              ? new Date(health.lastMessageReceivedAt).toLocaleString()
+              : 'Sin eventos'}
+          </p>
+        </div>
+        <div className="sm:col-span-2 lg:col-span-4">
+          <p className="text-xs text-content-muted">Webhook</p>
+          <code className="mt-1 block break-all rounded-lg bg-surface-muted px-2 py-1 text-xs text-content-secondary">
+            {health?.webhookPath ?? '/api/v1/integrations/communication/whatsapp/webhook'}
+          </code>
+        </div>
+        {missingConfiguration.length ? (
+          <p className="sm:col-span-2 lg:col-span-4 text-xs text-amber-600 dark:text-amber-300">
+            Provider deshabilitado hasta configurar: {missingConfiguration.join(', ')}
+          </p>
+        ) : null}
+        <div className="sm:col-span-2 lg:col-span-4">
+          <Button disabled={isVerifying} onClick={onVerify} variant="outline">
+            {isVerifying ? 'Verificando…' : 'Verificar configuración'}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
@@ -369,11 +438,16 @@ function MessageThread({
 export function WhatsAppPage({
   settingsOnly = false,
 }: { readonly settingsOnly?: boolean } = {}): React.ReactElement {
+  const toast = useToastStore((state) => state.push);
   const [tab, setTab] = useState<'inbox' | 'settings'>('inbox');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const connection = useQuery({
     queryKey: ['whatsapp-connection'],
     queryFn: api.getWhatsAppConnection,
+  });
+  const channelHealth = useQuery({
+    queryKey: ['communication-whatsapp-health'],
+    queryFn: api.getWhatsAppChannelHealth,
   });
   const conversations = useQuery({
     queryKey: ['whatsapp-conversations'],
@@ -409,14 +483,29 @@ export function WhatsAppPage({
     mutationFn: api.syncWhatsAppTemplates,
     onSuccess: () => void templates.refetch(),
   });
-  const isLoading = connection.isLoading || (!settingsOnly && conversations.isLoading);
-  const isError = connection.isError || (!settingsOnly && conversations.isError);
+  const verifyConfiguration = useMutation({
+    mutationFn: api.verifyWhatsAppChannelConfiguration,
+    onSuccess: (result) => {
+      toast({
+        title: result.enabled ? 'Configuración completa' : 'Provider pendiente',
+        description: result.enabled
+          ? 'La configuración local está completa; no se realizó ninguna llamada externa.'
+          : `Faltan: ${result.missingConfiguration.join(', ')}`,
+        tone: result.enabled ? 'success' : 'error',
+      });
+    },
+  });
+  const isLoading =
+    connection.isLoading || channelHealth.isLoading || (!settingsOnly && conversations.isLoading);
+  const isError =
+    connection.isError || channelHealth.isError || (!settingsOnly && conversations.isError);
   return (
     <QueryState
       isError={isError}
       isLoading={isLoading}
       onRetry={() => {
         void connection.refetch();
+        void channelHealth.refetch();
         void conversations.refetch();
       }}
     >
@@ -444,6 +533,11 @@ export function WhatsAppPage({
         />
         {settingsOnly || tab === 'settings' ? (
           <>
+            <ChannelHealthCard
+              health={channelHealth.data}
+              isVerifying={verifyConfiguration.isPending}
+              onVerify={() => verifyConfiguration.mutate()}
+            />
             <ConnectionSettings connection={connection.data ?? null} />
             <div className="flex gap-2">
               <PermissionGate permission="whatsapp.manage">

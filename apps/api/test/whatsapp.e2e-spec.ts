@@ -103,6 +103,30 @@ describe('WhatsApp Cloud API HTTP flow', () => {
     expect(persisted?.accessTokenEncrypted).not.toContain('meta-access');
   });
 
+  it('expone el health del canal y no realiza llamadas externas al verificar configuración', async () => {
+    const accessToken = await token();
+    const health = await request(app.getHttpServer())
+      .get('/api/v1/communication/channels/whatsapp/health')
+      .set('Authorization', `Bearer ${accessToken}`);
+    expect(health.status).toBe(200);
+    expect(health.body).toMatchObject({
+      channel: 'WHATSAPP',
+      provider: 'META_CLOUD_API',
+      status: 'PENDING_CONFIGURATION',
+    });
+    expect(health.body).not.toHaveProperty('accessToken');
+    expect(health.body).not.toHaveProperty('appSecret');
+
+    const verification = await request(app.getHttpServer())
+      .post('/api/v1/communication/channels/whatsapp/verify')
+      .set('Authorization', `Bearer ${accessToken}`);
+    expect(verification.status).toBe(200);
+    expect(verification.body).toMatchObject({
+      channel: 'WHATSAPP',
+      externalRequestMade: false,
+    });
+  });
+
   it('verifica el callback público y rechaza firma inválida', async () => {
     const accessToken = await token();
     await request(app.getHttpServer())
@@ -125,6 +149,15 @@ describe('WhatsApp Cloud API HTTP flow', () => {
       });
     expect(verification.status).toBe(200);
     expect(verification.text).toBe('challenge-1');
+    const foundationVerification = await request(app.getHttpServer())
+      .get('/api/v1/integrations/communication/whatsapp/webhook')
+      .query({
+        'hub.mode': 'subscribe',
+        'hub.verify_token': 'verify-token',
+        'hub.challenge': 'challenge-foundation',
+      });
+    expect(foundationVerification.status).toBe(200);
+    expect(foundationVerification.text).toBe('challenge-foundation');
     const invalid = await request(app.getHttpServer())
       .post('/api/v1/integrations/whatsapp/webhook')
       .set('x-hub-signature-256', 'sha256=bad')

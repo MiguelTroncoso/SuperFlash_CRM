@@ -22,6 +22,15 @@ cohortes, tendencias, forecast básico y dashboard ejecutivo de solo lectura.
 Las integraciones externas, atribución avanzada, IA y Analytical Event Store
 siguen en roadmap en [docs/roadmap/revenue-intelligence.md](docs/roadmap/revenue-intelligence.md).
 
+Architecture v2.2 — Communication Layer está **IMPLEMENTED**. La capa abstrae
+providers de comunicación, deja WhatsApp preparado con webhook HMAC, health,
+métricas y eventos internos, y permanece deshabilitada si faltan variables
+críticas. La configuración y el checklist de go-live están en
+[docs/communication-architecture.md](docs/communication-architecture.md),
+[docs/whatsapp-provider.md](docs/whatsapp-provider.md) y
+[docs/whatsapp-go-live-checklist.md](docs/whatsapp-go-live-checklist.md).
+No se conectan números oficiales ni se envían mensajes reales en este sprint.
+
 La implementación v1.1 agrega exclusivamente la capa operativa posterior a la
 venta. La integración oficial de WhatsApp Cloud API se mantiene como boundary
 externo aislado y no agrega bots ni automatizaciones externas.

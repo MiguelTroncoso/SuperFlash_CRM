@@ -8,6 +8,7 @@ import { OpportunitiesModule } from '../opportunities/opportunities.module';
 import { SalesModule } from '../sales/sales.module';
 import { TrialsModule } from '../trials/trials.module';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
+import { CommunicationModule } from '../communication/communication.module';
 import { SmartInboxController } from './smart-inbox.controller';
 import { SmartInboxEventsService } from './smart-inbox.events';
 import { SmartInboxService } from './smart-inbox.service';
@@ -22,6 +23,7 @@ import { SmartInboxService } from './smart-inbox.service';
     SalesModule,
     TrialsModule,
     WhatsAppModule,
+    CommunicationModule,
   ],
   controllers: [SmartInboxController],
   providers: [SmartInboxEventsService, SmartInboxService],

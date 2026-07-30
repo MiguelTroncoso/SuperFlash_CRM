@@ -8,6 +8,8 @@ import type {
   Contact,
   ContactCreateResult,
   Category,
+  CommunicationChannelHealth,
+  CommunicationConfigurationCheck,
   CredentialRecord,
   Fulfillment,
   JsonRecord,
@@ -311,6 +313,14 @@ export const api = {
     request<{ data: RevenueForecast[] }>(`/revenue-intelligence/forecast${query}`),
   getWhatsAppConnection: () =>
     request<WhatsAppConnection | null>('/integrations/whatsapp/connection'),
+  getCommunicationChannels: () =>
+    request<{ data: CommunicationChannelHealth[] }>('/communication/channels'),
+  getWhatsAppChannelHealth: () =>
+    request<CommunicationChannelHealth>('/communication/channels/whatsapp/health'),
+  verifyWhatsAppChannelConfiguration: () =>
+    request<CommunicationConfigurationCheck>('/communication/channels/whatsapp/verify', {
+      method: 'POST',
+    }),
   saveWhatsAppConnection: (body: JsonRecord) =>
     request<WhatsAppConnection>('/integrations/whatsapp/connection', {
       method: 'PUT',

@@ -487,6 +487,18 @@ export class WhatsAppService {
         ip: context.metadata.ipAddress,
         requestId: context.metadata.requestId,
       });
+      await this.outbox.enqueueWithClient(transaction, {
+        eventType: 'ConversationAssigned',
+        organizationId,
+        aggregateType: 'WhatsAppConversation',
+        aggregateId: conversationId,
+        actorId: context.user.userId,
+        requestId: context.metadata.requestId ?? conversationId,
+        payload: {
+          conversationId,
+          assignedUserId: dto.assignedUserId ?? null,
+        },
+      });
       return row;
     });
     return this.mapConversation(conversation);

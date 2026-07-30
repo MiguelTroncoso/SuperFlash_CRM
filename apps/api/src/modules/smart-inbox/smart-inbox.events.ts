@@ -1,6 +1,8 @@
-import { Injectable, MessageEvent } from '@nestjs/common';
+import { Injectable, MessageEvent, Optional } from '@nestjs/common';
 import { interval, merge, Observable, Subject } from 'rxjs';
 import { filter, map } from 'rxjs/operators';
+
+import { CommunicationMetricsService } from '../communication/services/communication-metrics.service';
 
 export interface SmartInboxEvent {
   type: string;
@@ -15,6 +17,12 @@ export interface SmartInboxEvent {
 export class SmartInboxEventsService {
   private readonly channels = new Map<string, Subject<SmartInboxEvent>>();
 
+  private readonly metrics: CommunicationMetricsService;
+
+  constructor(@Optional() metrics?: CommunicationMetricsService) {
+    this.metrics = metrics ?? new CommunicationMetricsService();
+  }
+
   publish(event: SmartInboxEvent): void {
     this.channel(event.organizationId).next(event);
   }
@@ -26,7 +34,14 @@ export class SmartInboxEventsService {
     const heartbeat = interval(25_000).pipe(
       map(() => ({ data: { type: 'heartbeat', occurredAt: new Date().toISOString() } })),
     );
-    return merge(updates, heartbeat).pipe(filter(Boolean));
+    return new Observable<MessageEvent>((subscriber) => {
+      const release = this.metrics.registerSseClient();
+      const subscription = merge(updates, heartbeat).pipe(filter(Boolean)).subscribe(subscriber);
+      return () => {
+        release();
+        subscription.unsubscribe();
+      };
+    });
   }
 
   private channel(organizationId: string): Subject<SmartInboxEvent> {

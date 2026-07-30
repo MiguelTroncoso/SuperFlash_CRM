@@ -270,6 +270,7 @@ export class WhatsAppProcessor implements OnModuleInit, OnModuleDestroy {
           deletedAt: null,
         },
       });
+      const conversationCreated = conversation === null;
       const windowExpiresAt = new Date(timestamp.getTime() + 24 * 60 * 60 * 1000);
       const currentConversation = conversation
         ? await transaction.whatsAppConversation.update({
@@ -348,7 +349,7 @@ export class WhatsAppProcessor implements OnModuleInit, OnModuleDestroy {
           });
         }
       }
-      await transaction.whatsAppMessage.create({
+      const createdMessage = await transaction.whatsAppMessage.create({
         data: {
           organizationId,
           conversationId: currentConversation.id,
@@ -402,6 +403,32 @@ export class WhatsAppProcessor implements OnModuleInit, OnModuleDestroy {
         recordId: externalMessageId,
         newValue: toInputJson({ type, conversationId: currentConversation.id }),
         requestId,
+      });
+      await this.outbox.enqueueWithClient(transaction, {
+        eventType: conversationCreated ? 'ConversationCreated' : 'ConversationUpdated',
+        organizationId,
+        aggregateType: 'WhatsAppConversation',
+        aggregateId: currentConversation.id,
+        requestId,
+        deduplicationKey: `${conversationCreated ? 'ConversationCreated' : 'ConversationUpdated'}:${currentConversation.id}:${createdMessage.id}`,
+        payload: {
+          conversationId: currentConversation.id,
+          contactId: contact.id,
+          messageId: createdMessage.id,
+        },
+      });
+      await this.outbox.enqueueWithClient(transaction, {
+        eventType: 'MessageReceived',
+        organizationId,
+        aggregateType: 'WhatsAppMessage',
+        aggregateId: createdMessage.id,
+        requestId,
+        deduplicationKey: `MessageReceived:${createdMessage.id}`,
+        payload: {
+          messageId: createdMessage.id,
+          conversationId: currentConversation.id,
+          contactId: contact.id,
+        },
       });
     });
   }
