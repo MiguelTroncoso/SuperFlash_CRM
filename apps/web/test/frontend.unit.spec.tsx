@@ -11,6 +11,8 @@ import { useUiStore } from '@/lib/ui-store';
 import { api } from '@/lib/api-client';
 import { ExecutiveDashboardPage } from '@/features/revenue-intelligence/revenue-pages';
 import { WhatsAppPage } from '@/features/whatsapp/whatsapp-page';
+import { CountryPhoneField } from '@/components/shared/country-phone-field';
+import { COUNTRIES, phoneMatchesCountry } from '@superflash/utils';
 import type { AuthUser, RevenueDashboard } from '@/lib/types';
 import type { ColumnDef } from '@tanstack/react-table';
 
@@ -29,6 +31,8 @@ const user: AuthUser = {
   email: 'owner@example.com',
   firstName: 'Miguel',
   lastName: 'Owner',
+  phone: null,
+  timezone: 'America/Santiago',
   organization: { id: 'org-1', name: 'Demo', slug: 'demo' },
   role: { id: 'role-1', name: 'Owner' },
   permissions: ['credentials.read', 'credentials.reveal'],
@@ -46,8 +50,10 @@ describe('frontend foundation', () => {
 
   it('renders the main navigation header and user workspace', () => {
     render(<Header />);
-    expect(screen.getByText('Dashboard')).toBeInTheDocument();
+    expect(screen.getByText('SuperFlash Workspace')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir menú de usuario' }));
     expect(screen.getByText('Demo')).toBeInTheDocument();
+    expect(screen.getByText('Mi perfil')).toBeInTheDocument();
   });
 
   it('renders DataTable rows and its empty state', () => {
@@ -119,6 +125,31 @@ describe('frontend foundation', () => {
     useUiStore.getState().toggleTheme();
     expect(document.documentElement).toHaveClass('dark');
     expect(useAuthStore.getState().accessToken).toBe('memory-token');
+  });
+
+  it('uses the shared ten-country catalog and detects prefix mismatch', () => {
+    expect(COUNTRIES).toHaveLength(10);
+    expect(COUNTRIES.find((country) => country.code === 'CL')?.dialCode).toBe('+56');
+    expect(phoneMatchesCountry('+56912345678', 'CL')).toBe(true);
+    expect(phoneMatchesCountry('+573001234567', 'CL')).toBe(false);
+  });
+
+  it('renders the country selector and preserves the visible phone input', () => {
+    const onCountryChange = jest.fn();
+    const onPhoneChange = jest.fn();
+    render(
+      <CountryPhoneField
+        country="CL"
+        onCountryChange={onCountryChange}
+        onPhoneChange={onPhoneChange}
+        phone="9 1234 5678"
+      />,
+    );
+    expect(screen.getByText(/Chile/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('País'), { target: { value: 'MX' } });
+    fireEvent.change(screen.getByLabelText(/Teléfono/), { target: { value: '55 1234 5678' } });
+    expect(onCountryChange).toHaveBeenCalledWith('MX');
+    expect(onPhoneChange).toHaveBeenCalledWith('55 1234 5678');
   });
 
   it('sends credential reveal through the authorized backend path', async () => {

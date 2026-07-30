@@ -69,6 +69,15 @@ export class ContactsController {
     return this.contactsService.list(query, user);
   }
 
+  @Get('assignees')
+  @Permissions('contacts.read')
+  @ApiOperation({ summary: 'Lista responsables activos de la organización' })
+  async listAssignees(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<Array<{ id: string; firstName: string; lastName: string | null }>> {
+    return this.contactsService.listAssignees(user);
+  }
+
   @Get(':id')
   @Permissions('contacts.read')
   @ApiOperation({ summary: 'Obtiene el detalle acotado de un contacto' })

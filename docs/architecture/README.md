@@ -86,6 +86,10 @@ navegación está en [docs/frontend.md](../frontend.md),
 [docs/design-system.md](../design-system.md) y
 [docs/navigation.md](../navigation.md).
 
+El canal de commerce público permanece fuera de las arquitecturas implementadas
+y está registrado como roadmap no implementado en
+[docs/public-commerce-roadmap.md](../public-commerce-roadmap.md).
+
 ## Reglas de versionado
 
 - Una versión de arquitectura se identifica como `vMAJOR.MINOR`.

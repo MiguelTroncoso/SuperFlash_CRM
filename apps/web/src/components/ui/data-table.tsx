@@ -14,6 +14,7 @@ interface DataTableProps<TData> {
   readonly isLoading?: boolean;
   readonly emptyTitle?: string;
   readonly emptyDescription?: string;
+  readonly emptyAction?: React.ReactNode;
   readonly virtualize?: boolean;
 }
 
@@ -23,6 +24,7 @@ export function DataTable<TData>({
   isLoading,
   emptyTitle = 'Sin resultados',
   emptyDescription = 'Aún no hay información para mostrar.',
+  emptyAction,
   virtualize = false,
 }: DataTableProps<TData>): React.ReactElement {
   const table = useReactTable({ data, columns, getCoreRowModel: getCoreRowModel() });
@@ -44,7 +46,8 @@ export function DataTable<TData>({
         ))}
       </div>
     );
-  if (data.length === 0) return <EmptyState title={emptyTitle} description={emptyDescription} />;
+  if (data.length === 0)
+    return <EmptyState action={emptyAction} title={emptyTitle} description={emptyDescription} />;
   return (
     <div
       className={cn('overflow-x-auto', shouldVirtualize && 'max-h-[620px] overflow-y-auto')}

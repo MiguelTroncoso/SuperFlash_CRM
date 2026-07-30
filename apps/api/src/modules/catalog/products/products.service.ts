@@ -14,7 +14,13 @@ import {
   normalizeSlug,
   toSafeJson,
 } from '../catalog.types';
-import { CreateProductDto, ProductListQueryDto, UpdateProductDto } from '../dto/catalog.dto';
+import {
+  AdjustStockDto,
+  CreateProductDto,
+  ProductListQueryDto,
+  StockMovementListQueryDto,
+  UpdateProductDto,
+} from '../dto/catalog.dto';
 
 const productInclude = Prisma.validator<Prisma.ProductInclude>()({
   productCategory: { select: { id: true, name: true, slug: true, active: true } },
@@ -86,6 +92,8 @@ export class ProductsService {
             slug,
             sku,
             description: dto.description?.trim() || null,
+            currency: dto.currency?.trim().toUpperCase() ?? 'USD',
+            imageUrl: dto.imageUrl?.trim() || null,
             type: dto.type,
             fulfillmentMode: dto.fulfillmentMode,
             status,
@@ -96,6 +104,11 @@ export class ProductsService {
             requiresCustomerEmail: dto.requiresCustomerEmail ?? false,
             requiresCustomerPhone: dto.requiresCustomerPhone ?? false,
             requiresManualReview: dto.requiresManualReview ?? false,
+            publicVisible: dto.publicVisible ?? false,
+            displayOrder: dto.displayOrder ?? 0,
+            stockTrackingEnabled: dto.stockTrackingEnabled ?? false,
+            stockQuantity: dto.stockQuantity ?? 0,
+            stockMinimum: dto.stockMinimum ?? 0,
             ...(dto.metadata !== undefined ? { metadata: toSafeJson(dto.metadata) } : {}),
           },
           include: productInclude,
@@ -230,6 +243,8 @@ export class ProductsService {
             ...(dto.description !== undefined
               ? { description: dto.description.trim() || null }
               : {}),
+            ...(dto.currency !== undefined ? { currency: dto.currency.trim().toUpperCase() } : {}),
+            ...(dto.imageUrl !== undefined ? { imageUrl: dto.imageUrl?.trim() || null } : {}),
             ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
             ...(dto.type !== undefined ? { type: dto.type } : {}),
             ...(dto.fulfillmentMode !== undefined ? { fulfillmentMode: dto.fulfillmentMode } : {}),
@@ -258,6 +273,12 @@ export class ProductsService {
             ...(dto.requiresManualReview !== undefined
               ? { requiresManualReview: dto.requiresManualReview }
               : {}),
+            ...(dto.publicVisible !== undefined ? { publicVisible: dto.publicVisible } : {}),
+            ...(dto.displayOrder !== undefined ? { displayOrder: dto.displayOrder } : {}),
+            ...(dto.stockTrackingEnabled !== undefined
+              ? { stockTrackingEnabled: dto.stockTrackingEnabled }
+              : {}),
+            ...(dto.stockMinimum !== undefined ? { stockMinimum: dto.stockMinimum } : {}),
             ...(dto.metadata !== undefined ? { metadata: toSafeJson(dto.metadata) } : {}),
           },
           include: productInclude,
@@ -315,6 +336,119 @@ export class ProductsService {
   restore(id: string, context: CatalogRequestContext): Promise<Record<string, unknown>> {
     this.access.assertDelete(context.user);
     return this.setArchived(id, false, context);
+  }
+
+  async getStock(id: string, user: AuthenticatedUser): Promise<Record<string, unknown>> {
+    this.access.assertRead(user);
+    const product = await this.prisma.product.findFirst({
+      where: { id, organizationId: user.organizationId, deletedAt: null },
+      select: {
+        id: true,
+        stockTrackingEnabled: true,
+        stockQuantity: true,
+        stockReserved: true,
+        stockMinimum: true,
+      },
+    });
+    if (!product) this.notFound();
+    return this.stockMap(product);
+  }
+
+  async adjustStock(
+    id: string,
+    dto: AdjustStockDto,
+    context: CatalogRequestContext,
+  ): Promise<Record<string, unknown>> {
+    this.access.assertUpdate(context.user);
+    const organizationId = context.user.organizationId;
+    const stock = await this.prisma.$transaction(async (transaction) => {
+      await transaction.$executeRaw`
+        SELECT id FROM "Product"
+        WHERE "organizationId" = ${organizationId}::uuid AND id = ${id}::uuid
+        FOR UPDATE
+      `;
+      const current = await transaction.product.findFirst({
+        where: { id, organizationId, deletedAt: null },
+        select: { id: true, stockQuantity: true, stockReserved: true },
+      });
+      if (!current) this.notFound();
+      const quantityAfter = current.stockQuantity + dto.delta;
+      if (quantityAfter < current.stockReserved) {
+        throw catalogException(
+          HttpStatus.CONFLICT,
+          CATALOG_ERROR_CODES.STOCK_INVALID_ADJUSTMENT,
+          'El stock disponible no puede quedar por debajo del stock reservado.',
+        );
+      }
+      const updated = await transaction.product.update({
+        where: { organizationId_id: { organizationId, id } },
+        data: { stockQuantity: quantityAfter },
+        select: {
+          id: true,
+          stockTrackingEnabled: true,
+          stockQuantity: true,
+          stockReserved: true,
+          stockMinimum: true,
+        },
+      });
+      await transaction.productStockMovement.create({
+        data: {
+          organizationId,
+          productId: id,
+          userId: context.user.userId,
+          quantityBefore: current.stockQuantity,
+          quantityDelta: dto.delta,
+          quantityAfter,
+          reason: dto.reason.trim(),
+        },
+      });
+      await this.audit.recordWithClient(transaction, {
+        organizationId,
+        userId: context.user.userId,
+        action: 'CATALOG_STOCK_ADJUSTED',
+        tableName: 'Product',
+        recordId: id,
+        previousValue: { stockQuantity: current.stockQuantity },
+        newValue: { stockQuantity: quantityAfter, delta: dto.delta, reason: dto.reason.trim() },
+        ip: context.metadata.ipAddress,
+        requestId: context.metadata.requestId,
+      });
+      return updated;
+    });
+    return this.stockMap(stock);
+  }
+
+  async listStockMovements(
+    id: string,
+    query: StockMovementListQueryDto,
+    user: AuthenticatedUser,
+  ): Promise<Record<string, unknown>> {
+    this.access.assertRead(user);
+    const product = await this.prisma.product.findFirst({
+      where: { id, organizationId: user.organizationId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!product) this.notFound();
+    const where = { organizationId: user.organizationId, productId: id };
+    const [data, total] = await Promise.all([
+      this.prisma.productStockMovement.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+        include: { changedBy: { select: { id: true, firstName: true, lastName: true } } },
+      }),
+      this.prisma.productStockMovement.count({ where }),
+    ]);
+    return {
+      data,
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
+    };
   }
 
   private async changeStatus(
@@ -473,6 +607,7 @@ export class ProductsService {
       slug: record.slug,
       sku: record.sku,
       description: record.description,
+      currency: record.currency ?? 'USD',
       category: record.productCategory ?? null,
       type: record.type,
       fulfillmentMode: record.fulfillmentMode,
@@ -484,6 +619,10 @@ export class ProductsService {
       requiresCustomerEmail: record.requiresCustomerEmail,
       requiresCustomerPhone: record.requiresCustomerPhone,
       requiresManualReview: record.requiresManualReview,
+      imageUrl: record.imageUrl,
+      publicVisible: record.publicVisible,
+      displayOrder: record.displayOrder,
+      stock: this.stockMap(record),
       plans:
         'plans' in record
           ? record.plans.map((plan) => ({
@@ -505,5 +644,22 @@ export class ProductsService {
       CATALOG_ERROR_CODES.PRODUCT_NOT_FOUND,
       'El producto no existe.',
     );
+  }
+
+  private stockMap(product: {
+    id: string;
+    stockTrackingEnabled: boolean;
+    stockQuantity: number;
+    stockReserved: number;
+    stockMinimum: number;
+  }): Record<string, unknown> {
+    return {
+      productId: product.id,
+      trackingEnabled: product.stockTrackingEnabled,
+      quantity: product.stockQuantity,
+      reserved: product.stockReserved,
+      available: product.stockQuantity - product.stockReserved,
+      minimum: product.stockMinimum,
+    };
   }
 }

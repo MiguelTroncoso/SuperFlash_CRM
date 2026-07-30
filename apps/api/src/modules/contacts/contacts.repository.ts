@@ -213,6 +213,21 @@ export class ContactsRepository {
     });
   }
 
+  async findAssignees(
+    organizationId: string,
+  ): Promise<Array<{ id: string; firstName: string; lastName: string | null }>> {
+    return this.prisma.user.findMany({
+      where: {
+        organizationId,
+        status: 'ACTIVE',
+        deletedAt: null,
+        role: { deletedAt: null },
+      },
+      orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
+      select: { id: true, firstName: true, lastName: true },
+    });
+  }
+
   async findTag(
     organizationId: string,
     id: string,

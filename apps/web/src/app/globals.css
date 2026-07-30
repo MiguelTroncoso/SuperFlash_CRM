@@ -16,6 +16,12 @@
   --shadow-card: 0 1px 2px 0 rgb(15 23 42 / 0.03), 0 8px 28px -12px rgb(15 23 42 / 0.14);
 }
 
+@layer components {
+  .menu-item {
+    @apply block rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white;
+  }
+}
+
 * {
   box-sizing: border-box;
 }

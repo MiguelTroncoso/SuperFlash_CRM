@@ -29,6 +29,7 @@ import {
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 export const REFRESH_COOKIE_NAME = 'superflash_refresh_token';
 
@@ -274,6 +275,75 @@ export class AuthService {
     return this.toPublicUser(session.user);
   }
 
+  async updateProfile(
+    authenticatedUser: AuthenticatedUser,
+    dto: UpdateProfileDto,
+    metadata: RequestMetadata,
+  ): Promise<PublicAuthenticatedUser> {
+    if (dto.firstName !== undefined && dto.firstName.length === 0) {
+      throw authException(
+        HttpStatus.BAD_REQUEST,
+        AUTH_ERROR_CODES.INVALID_REQUEST,
+        'El nombre es obligatorio.',
+      );
+    }
+    if (dto.timezone !== undefined) {
+      try {
+        Intl.DateTimeFormat('en-US', { timeZone: dto.timezone }).format();
+      } catch {
+        throw authException(
+          HttpStatus.BAD_REQUEST,
+          AUTH_ERROR_CODES.INVALID_REQUEST,
+          'La zona horaria no es válida.',
+        );
+      }
+    }
+    await this.prisma.$transaction(async (transaction) => {
+      const current = await transaction.user.findFirst({
+        where: {
+          id: authenticatedUser.userId,
+          organizationId: authenticatedUser.organizationId,
+          deletedAt: null,
+        },
+        select: { firstName: true, lastName: true, phone: true, timezone: true },
+      });
+      if (!current) {
+        throw authException(
+          HttpStatus.UNAUTHORIZED,
+          AUTH_ERROR_CODES.UNAUTHORIZED,
+          'La sesión ya no está activa.',
+        );
+      }
+      const updated = await transaction.user.update({
+        where: {
+          organizationId_id: {
+            organizationId: authenticatedUser.organizationId,
+            id: authenticatedUser.userId,
+          },
+        },
+        data: {
+          ...(dto.firstName !== undefined ? { firstName: dto.firstName } : {}),
+          ...(dto.lastName !== undefined ? { lastName: dto.lastName || null } : {}),
+          ...(dto.phone !== undefined ? { phone: dto.phone || null } : {}),
+          ...(dto.timezone !== undefined ? { timezone: dto.timezone } : {}),
+        },
+        select: { firstName: true, lastName: true, phone: true, timezone: true },
+      });
+      await this.audit.recordWithClient(transaction, {
+        organizationId: authenticatedUser.organizationId,
+        userId: authenticatedUser.userId,
+        action: 'USER_PROFILE_UPDATED',
+        tableName: 'User',
+        recordId: authenticatedUser.userId,
+        previousValue: current,
+        newValue: updated,
+        requestId: metadata.requestId,
+        ip: metadata.ipAddress,
+      });
+    });
+    return this.getMe(authenticatedUser);
+  }
+
   async forgotPassword(
     dto: ForgotPasswordDto,
     metadata: RequestMetadata,
@@ -505,6 +575,8 @@ export class AuthService {
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
+      phone: user.phone,
+      timezone: user.timezone ?? 'America/Santiago',
       organization: {
         id: user.organization.id,
         name: user.organization.name,

@@ -23,7 +23,9 @@ protege todas las rutas del workspace y redirige a `/login` si no existe una
 sesión válida. El login no modifica el backend: consume `POST /auth/login`,
 mantiene el access token en memoria y usa la cookie HttpOnly para renovar.
 
-El Header muestra contexto de página, organización, modo oscuro y logout. El
-Sidebar puede colapsarse en escritorio; en móvil el contenido conserva una
-salida rápida al workspace y las vistas priorizan scroll horizontal para tablas
-y Kanban.
+El Header muestra contexto compacto, búsqueda, organización y menú de usuario.
+El menú separa perfil, preferencias, organización, apariencia, seguridad y
+logout confirmado. El perfil permite editar nombre, teléfono y zona horaria;
+el correo queda readonly. El Sidebar puede colapsarse en escritorio y abrirse
+como drawer en móvil; sus rutas se filtran por permisos y su estado se persiste
+como preferencia visual.

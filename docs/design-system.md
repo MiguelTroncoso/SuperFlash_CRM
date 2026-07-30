@@ -29,9 +29,10 @@ diálogos, foco visible, botones reales y estados disabled durante mutaciones.
 ## Dark mode y responsive
 
 El tema se controla desde Zustand como estado visual y aplica la clase `dark`
-al documento. No se persiste información sensible. El layout tiene sidebar fijo
-en desktop, navegación de retorno compacta en móvil y tablas/kanban con scroll
-horizontal controlado.
+al documento. Soporta `light`, `dark` y `system`, persiste únicamente la
+preferencia de apariencia y aplica el tema antes del primer render para evitar
+flash. El layout tiene sidebar colapsable persistente en desktop, drawer móvil,
+tooltips en modo compacto y tablas/kanban con scroll horizontal controlado.
 
 ## Regla de composición
 

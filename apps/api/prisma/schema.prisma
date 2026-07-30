@@ -395,6 +395,7 @@ model Organization {
   whatsappMessages          WhatsAppMessage[]
   whatsappWebhookEvents     WhatsAppWebhookEvent[]
   whatsappMessageStatuses   WhatsAppMessageStatus[]
+  productStockMovements     ProductStockMovement[]
 
   @@index([createdAt])
 }
@@ -439,6 +440,7 @@ model User {
   firstName      String
   lastName       String?
   phone          String?
+  timezone       String     @default("America/Santiago")
   passwordHash   String?
   status         UserStatus @default(INVITED)
   createdAt      DateTime   @default(now())
@@ -473,6 +475,7 @@ model User {
   automationExecutions          AutomationExecution[]     @relation("AutomationExecutionActor")
   notifications                 Notification[]
   assignedWhatsAppConversations WhatsAppConversation[]    @relation("WhatsAppConversationAssignee")
+  productStockMovements         ProductStockMovement[]    @relation("ProductStockMovementActor")
 
   @@unique([organizationId, id])
   @@unique([organizationId, email])
@@ -852,6 +855,13 @@ model Product {
   requiresCustomerEmail Boolean         @default(false)
   requiresCustomerPhone Boolean         @default(false)
   requiresManualReview  Boolean         @default(false)
+  imageUrl              String?
+  publicVisible         Boolean         @default(false)
+  displayOrder          Int             @default(0)
+  stockTrackingEnabled  Boolean         @default(false)
+  stockQuantity         Int             @default(0)
+  stockReserved         Int             @default(0)
+  stockMinimum          Int             @default(0)
   metadata              Json?
 
   // Deprecated compatibility fields retained for existing opportunity/sale fixtures.
@@ -874,6 +884,7 @@ model Product {
   priceEntries     PriceBookEntry[]
   providerMappings ProviderProductMapping[]
   trials           Trial[]
+  stockMovements   ProductStockMovement[]
 
   @@unique([organizationId, id])
   @@index([organizationId])
@@ -1049,6 +1060,26 @@ model PriceBookEntry {
   @@index([active])
   @@index([validFrom, validUntil])
   @@index([createdAt])
+}
+
+model ProductStockMovement {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  productId      String   @db.Uuid
+  userId         String?  @db.Uuid
+  quantityBefore Int
+  quantityDelta  Int
+  quantityAfter  Int
+  reason         String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  product      Product      @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
+  changedBy    User?        @relation("ProductStockMovementActor", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@index([organizationId, productId, createdAt])
+  @@index([organizationId, userId])
 }
 
 model PriceHistory {

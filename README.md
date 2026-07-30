@@ -205,6 +205,14 @@ Los tokens no se persisten en el navegador y las credenciales se mantienen
 enmascaradas salvo reveal autorizado. Consulta [docs/frontend.md](docs/frontend.md),
 [docs/design-system.md](docs/design-system.md) y [docs/navigation.md](docs/navigation.md).
 
+La remediación de UX agrega el catálogo compartido de países para contactos y
+WhatsApp, filtros de contactos sin recarga, modo claro/oscuro/sistema, menú de
+usuario y perfil básico, además de operaciones de catálogo para productos,
+categorías, planes, price books, precios y stock. Providers y Fulfillment
+exponen operaciones válidas del backend; Fulfillment no se crea manualmente.
+La tienda pública, carrito, checkout y compras públicas permanecen únicamente
+en [docs/public-commerce-roadmap.md](docs/public-commerce-roadmap.md).
+
 Comandos frontend:
 
 ```bash

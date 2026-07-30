@@ -15,7 +15,15 @@ interface RootLayoutProps {
 
 export default function RootLayout({ children }: RootLayoutProps): React.ReactElement {
   return (
-    <html lang="es">
+    <html lang="es" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){try{var t=localStorage.getItem('superflash-theme')||'system';var d=t==='dark'||(t==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d)}catch(e){}})()",
+          }}
+        />
+      </head>
       <body>
         <Providers>{children}</Providers>
       </body>

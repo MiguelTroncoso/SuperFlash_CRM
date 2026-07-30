@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { PageGrid, PageHeader } from '@/components/shared/page-header';
+import { CountryPhoneField } from '@/components/shared/country-phone-field';
 import { QueryState } from '@/components/shared/query-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,6 +21,7 @@ interface ConnectionForm {
   wabaId: string;
   phoneNumberId: string;
   businessPhoneNumber: string;
+  businessPhoneCountry: string;
   graphApiVersion: string;
   accessToken: string;
   appSecret: string;
@@ -45,6 +47,7 @@ function ConnectionSettings({
       wabaId: '',
       phoneNumberId: '',
       businessPhoneNumber: '',
+      businessPhoneCountry: 'CL',
       graphApiVersion: 'v23.0',
       accessToken: '',
       appSecret: '',
@@ -57,6 +60,7 @@ function ConnectionSettings({
       wabaId: connection.wabaId,
       phoneNumberId: connection.phoneNumberId,
       businessPhoneNumber: connection.businessPhoneNumber,
+      businessPhoneCountry: 'CL',
       graphApiVersion: connection.graphApiVersion,
       accessToken: '',
       appSecret: '',
@@ -64,7 +68,10 @@ function ConnectionSettings({
     });
   }, [connection, form]);
   const save = useMutation({
-    mutationFn: (values: ConnectionForm) => api.saveWhatsAppConnection({ ...values }),
+    mutationFn: (values: ConnectionForm) => {
+      const { businessPhoneCountry: _businessPhoneCountry, ...payload } = values;
+      return api.saveWhatsAppConnection(payload);
+    },
     onSuccess: () => {
       form.reset({ ...form.getValues(), accessToken: '', appSecret: '', webhookVerifyToken: '' });
       void queryClient.invalidateQueries({ queryKey: ['whatsapp-connection'] });
@@ -104,13 +111,15 @@ function ConnectionSettings({
               placeholder="987654321"
             />
           </label>
-          <label className="space-y-1 text-sm font-semibold">
+          <div className="space-y-1 text-sm font-semibold">
             Número comercial
-            <Input
-              {...form.register('businessPhoneNumber', { required: true })}
-              placeholder="+569..."
+            <CountryPhoneField
+              country={form.watch('businessPhoneCountry')}
+              onCountryChange={(value) => form.setValue('businessPhoneCountry', value)}
+              onPhoneChange={(value) => form.setValue('businessPhoneNumber', value)}
+              phone={form.watch('businessPhoneNumber')}
             />
-          </label>
+          </div>
           <label className="space-y-1 text-sm font-semibold">
             Graph API version
             <Input {...form.register('graphApiVersion', { required: true })} />

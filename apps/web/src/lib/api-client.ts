@@ -6,6 +6,8 @@ import type {
   AutomationExecution,
   AutomationRule,
   Contact,
+  ContactCreateResult,
+  Category,
   CredentialRecord,
   Fulfillment,
   JsonRecord,
@@ -16,9 +18,16 @@ import type {
   Opportunity,
   Pagination,
   Paginated,
+  Person,
   PipelineResponse,
+  PriceBook,
+  PriceEntry,
+  Product,
   ProductOffer,
+  ProductPlan,
+  ProductStock,
   Provider,
+  ProviderMapping,
   RevenueCohortRow,
   RevenueDashboard,
   RevenueFunnel,
@@ -26,6 +35,7 @@ import type {
   RevenueForecast,
   RevenueTrendPoint,
   Sale,
+  StockMovement,
   Tag,
   Trial,
   WhatsAppConnection,
@@ -121,11 +131,15 @@ export const api = {
   refresh: refreshSession,
   logout: () => request<void>('/auth/logout', { method: 'POST' }),
   getMe: () => request<AuthUser>('/auth/me'),
+  getProfile: () => request<AuthUser>('/auth/profile'),
+  updateProfile: (body: JsonRecord) =>
+    request<AuthUser>('/auth/profile', { method: 'PATCH', ...jsonBody(body) }),
   getMyDay: (query = '') => request<MyDayResponse>(`/my-day${query}`),
   getMyDaySummary: (query = '') => request<MyDaySummary>(`/my-day/summary${query}`),
   getContacts: (query = '') => request<Paginated<Contact>>(`/contacts${query}`),
+  getContactAssignees: () => request<Person[]>('/contacts/assignees'),
   createContact: (body: JsonRecord) =>
-    request<Contact>('/contacts', { method: 'POST', ...jsonBody(body) }),
+    request<ContactCreateResult>('/contacts', { method: 'POST', ...jsonBody(body) }),
   getContact: (id: string) => request<Contact>(`/contacts/${id}`),
   updateContact: (id: string, body: JsonRecord) =>
     request<Contact>(`/contacts/${id}`, { method: 'PATCH', ...jsonBody(body) }),
@@ -134,7 +148,7 @@ export const api = {
       method: 'POST',
       ...jsonBody(reason ? { reason } : {}),
     }),
-  getTags: () => request<{ data: Tag[] }>('/tags'),
+  getTags: () => request<Tag[]>('/tags'),
   getPipeline: (query = '') => request<PipelineResponse>(`/pipeline${query}`),
   getPipelineSummary: (query = '') => request<JsonRecord>(`/pipeline/summary${query}`),
   moveOpportunity: (id: string, body: { pipelineStageId: string; reason?: string }) =>
@@ -142,8 +156,107 @@ export const api = {
   getSales: (query = '') => request<Paginated<Sale>>(`/sales${query}`),
   getSale: (id: string) => request<Sale>(`/sales/${id}`),
   getOffers: (query = '') => request<{ data: ProductOffer[] }>(`/catalog/offers${query}`),
+  getProducts: (query = '') => request<Paginated<Product>>(`/catalog/products${query}`),
+  createProduct: (body: JsonRecord) =>
+    request<Product>('/catalog/products', { method: 'POST', ...jsonBody(body) }),
+  updateProduct: (id: string, body: JsonRecord) =>
+    request<Product>(`/catalog/products/${id}`, { method: 'PATCH', ...jsonBody(body) }),
+  activateProduct: (id: string) =>
+    request<Product>(`/catalog/products/${id}/activate`, { method: 'POST' }),
+  deactivateProduct: (id: string) =>
+    request<Product>(`/catalog/products/${id}/deactivate`, { method: 'POST' }),
+  archiveProduct: (id: string) =>
+    request<Product>(`/catalog/products/${id}/archive`, { method: 'POST' }),
+  getCategories: () => request<Category[]>('/catalog/categories'),
+  createCategory: (body: JsonRecord) =>
+    request<Category>('/catalog/categories', { method: 'POST', ...jsonBody(body) }),
+  updateCategory: (id: string, body: JsonRecord) =>
+    request<Category>(`/catalog/categories/${id}`, { method: 'PATCH', ...jsonBody(body) }),
+  archiveCategory: (id: string) =>
+    request<Category>(`/catalog/categories/${id}/archive`, { method: 'POST' }),
+  restoreCategory: (id: string) =>
+    request<Category>(`/catalog/categories/${id}/restore`, { method: 'POST' }),
+  getPlans: (productId: string) => request<ProductPlan[]>(`/catalog/products/${productId}/plans`),
+  createPlan: (productId: string, body: JsonRecord) =>
+    request<ProductPlan>(`/catalog/products/${productId}/plans`, {
+      method: 'POST',
+      ...jsonBody(body),
+    }),
+  updatePlan: (productId: string, id: string, body: JsonRecord) =>
+    request<ProductPlan>(`/catalog/products/${productId}/plans/${id}`, {
+      method: 'PATCH',
+      ...jsonBody(body),
+    }),
+  archivePlan: (productId: string, id: string) =>
+    request<ProductPlan>(`/catalog/products/${productId}/plans/${id}/archive`, { method: 'POST' }),
+  getPriceBooks: () => request<PriceBook[]>('/catalog/price-books'),
+  createPriceBook: (body: JsonRecord) =>
+    request<PriceBook>('/catalog/price-books', { method: 'POST', ...jsonBody(body) }),
+  updatePriceBook: (id: string, body: JsonRecord) =>
+    request<PriceBook>(`/catalog/price-books/${id}`, { method: 'PATCH', ...jsonBody(body) }),
+  activatePriceBook: (id: string) =>
+    request<PriceBook>(`/catalog/price-books/${id}/activate`, { method: 'POST' }),
+  deactivatePriceBook: (id: string) =>
+    request<PriceBook>(`/catalog/price-books/${id}/deactivate`, { method: 'POST' }),
+  archivePriceBook: (id: string) =>
+    request<PriceBook>(`/catalog/price-books/${id}/archive`, { method: 'POST' }),
+  getPriceEntries: (priceBookId: string, query = '') =>
+    request<PriceEntry[]>(`/catalog/price-books/${priceBookId}/entries${query}`),
+  createPriceEntry: (priceBookId: string, body: JsonRecord) =>
+    request<PriceEntry>(`/catalog/price-books/${priceBookId}/entries`, {
+      method: 'POST',
+      ...jsonBody(body),
+    }),
+  updatePriceEntry: (priceBookId: string, id: string, body: JsonRecord) =>
+    request<PriceEntry>(`/catalog/price-books/${priceBookId}/entries/${id}`, {
+      method: 'PATCH',
+      ...jsonBody(body),
+    }),
+  archivePriceEntry: (priceBookId: string, id: string) =>
+    request<PriceEntry>(`/catalog/price-books/${priceBookId}/entries/${id}/archive`, {
+      method: 'POST',
+    }),
+  getProductStock: (id: string) => request<ProductStock>(`/catalog/products/${id}/stock`),
+  adjustProductStock: (id: string, body: JsonRecord) =>
+    request<ProductStock>(`/catalog/products/${id}/stock/adjust`, {
+      method: 'POST',
+      ...jsonBody(body),
+    }),
+  getStockMovements: (id: string, query = '') =>
+    request<Paginated<StockMovement>>(`/catalog/products/${id}/stock/movements${query}`),
   getProviders: (query = '') => request<Paginated<Provider>>(`/providers${query}`),
+  createProvider: (body: JsonRecord) =>
+    request<Provider>('/providers', { method: 'POST', ...jsonBody(body) }),
+  updateProvider: (id: string, body: JsonRecord) =>
+    request<Provider>(`/providers/${id}`, { method: 'PATCH', ...jsonBody(body) }),
+  changeProviderStatus: (id: string, status: string, reason?: string) =>
+    request<Provider>(`/providers/${id}/status`, {
+      method: 'POST',
+      ...jsonBody({ status, reason }),
+    }),
+  archiveProvider: (id: string) => request<void>(`/providers/${id}/archive`, { method: 'POST' }),
+  getProviderMappings: (query = '') =>
+    request<{ data: ProviderMapping[] }>(`/provider-mappings${query}`),
+  createProviderMapping: (body: JsonRecord) =>
+    request<ProviderMapping>('/provider-mappings', { method: 'POST', ...jsonBody(body) }),
+  updateProviderMapping: (id: string, body: JsonRecord) =>
+    request<ProviderMapping>(`/provider-mappings/${id}`, { method: 'PATCH', ...jsonBody(body) }),
+  archiveProviderMapping: (id: string) =>
+    request<void>(`/provider-mappings/${id}/archive`, { method: 'POST' }),
   getFulfillments: (query = '') => request<Paginated<Fulfillment>>(`/fulfillments${query}`),
+  getFulfillment: (id: string) => request<Fulfillment>(`/fulfillments/${id}`),
+  assignFulfillment: (id: string, body: JsonRecord) =>
+    request<Fulfillment>(`/fulfillments/${id}/assign`, { method: 'PATCH', ...jsonBody(body) }),
+  startFulfillment: (id: string) =>
+    request<Fulfillment>(`/fulfillments/${id}/start`, { method: 'POST' }),
+  completeFulfillment: (id: string, body: JsonRecord = {}) =>
+    request<Fulfillment>(`/fulfillments/${id}/complete`, { method: 'POST', ...jsonBody(body) }),
+  failFulfillment: (id: string, body: JsonRecord) =>
+    request<Fulfillment>(`/fulfillments/${id}/fail`, { method: 'POST', ...jsonBody(body) }),
+  cancelFulfillment: (id: string) =>
+    request<Fulfillment>(`/fulfillments/${id}/cancel`, { method: 'POST' }),
+  getProvisioningAttempts: (query = '') =>
+    request<{ data: JsonRecord[] }>(`/provisioning-attempts${query}`),
   getCredentials: (query = '') => request<{ data: CredentialRecord[] }>(`/credentials${query}`),
   revealCredential: (id: string) =>
     request<CredentialRecord>(`/credentials/${id}/reveal`, { method: 'POST' }),

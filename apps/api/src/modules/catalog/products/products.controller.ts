@@ -20,7 +20,13 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
 import { CatalogRequestContext } from '../catalog.types';
 import { requestMetadata } from '../catalog.http';
-import { CreateProductDto, ProductListQueryDto, UpdateProductDto } from '../dto/catalog.dto';
+import {
+  AdjustStockDto,
+  CreateProductDto,
+  ProductListQueryDto,
+  StockMovementListQueryDto,
+  UpdateProductDto,
+} from '../dto/catalog.dto';
 import { ProductsService } from './products.service';
 
 @ApiTags('catalog-products')
@@ -64,6 +70,36 @@ export class ProductsController {
     @Req() request: Request,
   ): Promise<Record<string, unknown>> {
     return this.service.update(id, dto, this.context(user, request));
+  }
+
+  @Get(':id/stock')
+  @Permissions('catalog.read')
+  stock(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<Record<string, unknown>> {
+    return this.service.getStock(id, user);
+  }
+
+  @Post(':id/stock/adjust')
+  @Permissions('catalog.update')
+  adjustStock(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AdjustStockDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ): Promise<Record<string, unknown>> {
+    return this.service.adjustStock(id, dto, this.context(user, request));
+  }
+
+  @Get(':id/stock/movements')
+  @Permissions('catalog.read')
+  stockMovements(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: StockMovementListQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<Record<string, unknown>> {
+    return this.service.listStockMovements(id, query, user);
   }
   @Post(':id/activate')
   @Permissions('catalog.update')

@@ -17,6 +17,8 @@ export interface AuthUser {
   email: string;
   firstName: string;
   lastName: string | null;
+  phone: string | null;
+  timezone: string;
   organization: { id: string; name: string; slug: string };
   role: { id: string; name: string };
   permissions: string[];
@@ -45,6 +47,10 @@ export interface Contact {
   activeOpportunity: Opportunity | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ContactCreateResult extends Contact {
+  warnings?: Array<{ code: string; existingContactId: string }>;
 }
 
 export interface Person {
@@ -131,6 +137,104 @@ export interface ProductOffer {
   plans: JsonRecord[];
 }
 
+export interface Product {
+  id: string;
+  name: string;
+  slug: string;
+  sku: string | null;
+  description: string | null;
+  currency: string;
+  imageUrl: string | null;
+  category: Category | null;
+  type: string;
+  fulfillmentMode: string;
+  status: string;
+  active: boolean;
+  publicVisible: boolean;
+  displayOrder: number;
+  requiresSubscription: boolean;
+  allowsDemo: boolean;
+  plans: ProductPlan[];
+  variants: JsonRecord[];
+  stock: ProductStock;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  active: boolean;
+  order: number;
+  archivedAt: string | null;
+}
+
+export interface ProductPlan {
+  id: string;
+  productId?: string;
+  name: string;
+  code: string | null;
+  customerSegment: string;
+  billingPeriodUnit: string;
+  billingPeriodCount: number;
+  active: boolean;
+  order: number;
+  quantity?: string | null;
+  creditAmount?: string | null;
+}
+
+export interface PriceBook {
+  id: string;
+  name: string;
+  description: string | null;
+  status: string;
+  customerSegment: string;
+  countryCode: string | null;
+  currency: string;
+  validFrom: string | null;
+  validUntil: string | null;
+  isDefault: boolean;
+  priority: number;
+  archivedAt: string | null;
+}
+
+export interface PriceEntry {
+  id: string;
+  priceBookId: string;
+  productId: string;
+  planId: string | null;
+  variantId: string | null;
+  salePrice: string;
+  costPrice?: string | null;
+  minimumPrice?: string | null;
+  taxIncluded: boolean;
+  active: boolean;
+  validFrom: string | null;
+  validUntil: string | null;
+}
+
+export interface ProductStock {
+  productId: string;
+  trackingEnabled: boolean;
+  quantity: number;
+  reserved: number;
+  available: number;
+  minimum: number;
+}
+
+export interface StockMovement {
+  id: string;
+  quantityBefore: number;
+  quantityDelta: number;
+  quantityAfter: number;
+  reason: string;
+  createdAt: string;
+  changedBy: Person | null;
+}
+
 export interface Provider {
   id: string;
   name: string;
@@ -141,8 +245,22 @@ export interface Provider {
   apiBaseUrl: string | null;
   metadata: JsonRecord | null;
   notes: string | null;
+  mappings?: ProviderMapping[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ProviderMapping {
+  id: string;
+  providerId: string;
+  productId: string;
+  planId: string | null;
+  variantId: string | null;
+  externalProductId: string | null;
+  externalPlanId: string | null;
+  externalVariantId: string | null;
+  priority: number;
+  active: boolean;
 }
 
 export interface Fulfillment {

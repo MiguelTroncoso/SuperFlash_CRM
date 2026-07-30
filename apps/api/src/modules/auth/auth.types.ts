@@ -27,6 +27,8 @@ export interface PublicAuthenticatedUser {
   email: string;
   firstName: string;
   lastName: string | null;
+  phone: string | null;
+  timezone: string;
   organization: {
     id: string;
     name: string;

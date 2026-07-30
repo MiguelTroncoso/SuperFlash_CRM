@@ -38,6 +38,12 @@ apps/web/src
   por `JwtAuthGuard` y `PermissionsGuard` en la API.
 - Credenciales permanecen enmascaradas; la vista de reveal solo aparece con
   `credentials.reveal` y el backend audita la operación.
+- El catálogo permite operar productos, categorías, planes, price books,
+  entradas de precio y ajustes de stock; el costo sigue oculto por el permiso
+  backend correspondiente.
+- Contactos y WhatsApp comparten un catálogo de diez países para selector,
+  prefijo y validación; el backend conserva la normalización E.164 y la
+  unicidad del teléfono.
 
 ## Rendimiento y UX
 
@@ -46,6 +52,15 @@ prefetcha y conserva respuestas recientes; TanStack Table resuelve el modelo de
 tablas; dnd-kit resuelve el movimiento del Kanban; Recharts se carga dentro del
 Dashboard. Las vistas tienen skeleton, empty state y error state. Los drawers
 mantienen edición contextual sin abandonar el workspace.
+
+La búsqueda general de contactos usa debounce; el filtro de país es un selector
+independiente, conserva los query params y resetea la página sin recargar el
+navegador. El tema soporta claro, oscuro y sistema, evita el flash inicial,
+persiste la preferencia visual y responde a cambios del sistema.
+
+Providers y Fulfillment consumen exclusivamente endpoints operativos
+existentes. Fulfillment no ofrece creación manual: nace desde una venta y la
+interfaz solo expone transiciones válidas, intentos y errores.
 
 ## Desarrollo
 

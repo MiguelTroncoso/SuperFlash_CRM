@@ -1,4 +1,4 @@
-import { FulfillmentPage } from '@/features/operations/operations-pages';
+import { FulfillmentPage } from '@/features/operations/fulfillment-page';
 
 export default function Page(): React.ReactElement {
   return <FulfillmentPage />;

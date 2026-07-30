@@ -90,6 +90,12 @@ export class ContactsService {
     private readonly accessPolicy: ContactAccessPolicy,
   ) {}
 
+  async listAssignees(
+    user: AuthenticatedUser,
+  ): Promise<Array<{ id: string; firstName: string; lastName: string | null }>> {
+    return this.repository.findAssignees(user.organizationId);
+  }
+
   async create(
     dto: CreateContactDto,
     context: ContactRequestContext,

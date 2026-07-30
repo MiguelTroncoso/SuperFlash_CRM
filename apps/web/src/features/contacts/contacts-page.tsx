@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 
@@ -10,7 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
 import { Drawer } from '@/components/ui/drawer';
-import { Input } from '@/components/ui/input';
+import { CountrySelect } from '@/components/shared/country-phone-field';
+import { Select } from '@/components/ui/input';
 import { Pagination } from '@/components/ui/pagination';
 import { SearchBar } from '@/components/ui/search-bar';
 import { StatusBadge } from '@/components/ui/badge';
@@ -65,25 +66,99 @@ function ContactWhatsAppTab({ contact }: { readonly contact: Contact }): React.R
 
 export function ContactsPage(): React.ReactElement {
   const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
+  const [country, setCountry] = useState('');
+  const [tagId, setTagId] = useState('');
+  const [assignedUserId, setAssignedUserId] = useState('');
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortOrder, setSortOrder] = useState('desc');
   const [drawer, setDrawer] = useState<'create' | 'edit' | null>(null);
   const [drawerTab, setDrawerTab] = useState<'details' | 'whatsapp'>('details');
   const [selected, setSelected] = useState<Contact | null>(null);
   const queryClient = useQueryClient();
   const toast = useToastStore((state) => state.push);
   const contacts = useQuery({
-    queryKey: ['contacts', page, search],
-    queryFn: () => api.getContacts(queryString({ page, limit: 25, search })),
+    queryKey: ['contacts', { page, search, country, tagId, assignedUserId, sortBy, sortOrder }],
+    queryFn: () =>
+      api.getContacts(
+        queryString({
+          page,
+          limit: 25,
+          search,
+          country,
+          tagId,
+          assignedUserId,
+          sortBy,
+          sortOrder,
+        }),
+      ),
   });
+  const tags = useQuery({ queryKey: ['tags'], queryFn: api.getTags });
+  const assignees = useQuery({
+    queryKey: ['contact-assignees'],
+    queryFn: api.getContactAssignees,
+  });
+  useEffect(() => {
+    const raw = window.sessionStorage.getItem('superflash-contact-filters');
+    if (!raw) return;
+    try {
+      const saved = JSON.parse(raw) as {
+        page?: number;
+        searchInput?: string;
+        search?: string;
+        country?: string;
+        tagId?: string;
+        assignedUserId?: string;
+        sortBy?: string;
+        sortOrder?: string;
+      };
+      if (saved.page && saved.page > 0) setPage(saved.page);
+      if (saved.searchInput !== undefined) setSearchInput(saved.searchInput);
+      if (saved.search !== undefined) setSearch(saved.search);
+      if (saved.country !== undefined) setCountry(saved.country);
+      if (saved.tagId !== undefined) setTagId(saved.tagId);
+      if (saved.assignedUserId !== undefined) setAssignedUserId(saved.assignedUserId);
+      if (saved.sortBy !== undefined) setSortBy(saved.sortBy);
+      if (saved.sortOrder !== undefined) setSortOrder(saved.sortOrder);
+    } catch {
+      window.sessionStorage.removeItem('superflash-contact-filters');
+    }
+  }, []);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setPage(1);
+      setSearch(searchInput);
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [searchInput]);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.sessionStorage.setItem(
+      'superflash-contact-filters',
+      JSON.stringify({
+        page,
+        searchInput,
+        search,
+        country,
+        tagId,
+        assignedUserId,
+        sortBy,
+        sortOrder,
+      }),
+    );
+  }, [assignedUserId, country, page, search, searchInput, sortBy, sortOrder, tagId]);
   const create = useMutation({
     mutationFn: (values: ContactFormValues) =>
       api.createContact({ ...values, createOpportunity: true }),
-    onSuccess: () => {
+    onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: ['contacts'] });
       setDrawer(null);
       toast({
         title: 'Contacto creado',
-        description: 'El lead fue registrado correctamente.',
+        description: result.warnings?.length
+          ? 'El lead fue registrado. El correo coincide con otro contacto activo.'
+          : 'El lead fue registrado correctamente.',
         tone: 'success',
       });
     },
@@ -91,10 +166,12 @@ export function ContactsPage(): React.ReactElement {
       toast({ title: 'No fue posible guardar', description: error.message, tone: 'error' }),
   });
   const update = useMutation({
-    mutationFn: (values: ContactFormValues) =>
-      selected
-        ? api.updateContact(selected.id, values)
-        : Promise.reject(new Error('Contacto no seleccionado.')),
+    mutationFn: (values: ContactFormValues) => {
+      const { tagIds: _tagIds, ...editable } = values;
+      return selected
+        ? api.updateContact(selected.id, editable)
+        : Promise.reject(new Error('Contacto no seleccionado.'));
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['contacts'] });
       setDrawer(null);
@@ -188,18 +265,73 @@ export function ContactsPage(): React.ReactElement {
         <div className="flex flex-col gap-3 sm:flex-row">
           <SearchBar
             className="sm:max-w-sm"
+            onChange={(event) => setSearchInput(event.target.value)}
+            placeholder="Buscar por nombre, correo o teléfono"
+            value={searchInput}
+          />
+          <CountrySelect
+            className="w-full sm:w-56"
+            onChange={(value) => {
+              setPage(1);
+              setCountry(value);
+            }}
+            value={country}
+          />
+          <Select
+            className="w-full sm:w-56"
             onChange={(event) => {
               setPage(1);
-              setSearch(event.target.value);
+              setTagId(event.target.value);
             }}
-            placeholder="Buscar por nombre, correo o teléfono"
-            value={search}
-          />
-          <Input
+            value={tagId}
+          >
+            <option value="">Todas las etiquetas</option>
+            {(tags.data ?? []).map((tag) => (
+              <option key={tag.id} value={tag.id}>
+                {tag.name}
+              </option>
+            ))}
+          </Select>
+          <Select
+            className="w-full sm:w-56"
+            onChange={(event) => {
+              setPage(1);
+              setAssignedUserId(event.target.value);
+            }}
+            value={assignedUserId}
+          >
+            <option value="">Todos los responsables</option>
+            {(assignees.data ?? []).map((assignee) => (
+              <option key={assignee.id} value={assignee.id}>
+                {assignee.firstName} {assignee.lastName ?? ''}
+              </option>
+            ))}
+          </Select>
+          <Select
+            className="w-full sm:w-48"
+            onChange={(event) => {
+              setPage(1);
+              setSortBy(event.target.value);
+            }}
+            value={sortBy}
+          >
+            <option value="createdAt">Más recientes</option>
+            <option value="updatedAt">Última actualización</option>
+            <option value="lastActivityAt">Última actividad</option>
+            <option value="firstName">Nombre</option>
+            <option value="country">País</option>
+          </Select>
+          <Select
             className="w-full sm:w-36"
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="País"
-          />
+            onChange={(event) => {
+              setPage(1);
+              setSortOrder(event.target.value);
+            }}
+            value={sortOrder}
+          >
+            <option value="desc">Descendente</option>
+            <option value="asc">Ascendente</option>
+          </Select>
         </div>
         <Card>
           <DataTable
@@ -207,6 +339,18 @@ export function ContactsPage(): React.ReactElement {
             data={data}
             emptyDescription="Crea tu primer contacto para comenzar a construir relaciones comerciales."
             emptyTitle="No hay contactos"
+            emptyAction={
+              <Button
+                onClick={() => {
+                  setSelected(null);
+                  setDrawer('create');
+                  setDrawerTab('details');
+                }}
+                size="sm"
+              >
+                Crear primer contacto
+              </Button>
+            }
             virtualize
           />
           <Pagination
@@ -253,6 +397,7 @@ export function ContactsPage(): React.ReactElement {
                 if (drawer === 'create') create.mutate(values);
                 else update.mutate(values);
               }}
+              tags={tags.data ?? []}
               submitting={create.isPending || update.isPending}
             />
           )}

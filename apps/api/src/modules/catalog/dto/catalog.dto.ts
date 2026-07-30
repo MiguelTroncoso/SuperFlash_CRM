@@ -17,6 +17,7 @@ import {
   IsISO4217CurrencyCode,
   IsOptional,
   IsObject,
+  IsUrl,
   IsString,
   IsUUID,
   Length,
@@ -110,6 +111,17 @@ export class CreateProductDto {
   @Length(0, 2000)
   description?: string;
 
+  @Transform(upper)
+  @IsOptional()
+  @IsISO4217CurrencyCode()
+  currency?: string;
+
+  @Transform(trim)
+  @IsOptional()
+  @IsUrl({ require_tld: false })
+  @Length(1, 500)
+  imageUrl?: string;
+
   @IsOptional()
   @IsUUID()
   categoryId?: string;
@@ -155,6 +167,32 @@ export class CreateProductDto {
   requiresManualReview?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  publicVisible?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1000000000)
+  displayOrder?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  stockTrackingEnabled?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1000000000)
+  stockQuantity?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1000000000)
+  stockMinimum?: number;
+
+  @IsOptional()
   @IsObject()
   metadata?: Record<string, unknown>;
 }
@@ -184,6 +222,17 @@ export class UpdateProductDto {
   @IsString()
   @Length(0, 2000)
   description?: string;
+
+  @Transform(upper)
+  @IsOptional()
+  @IsISO4217CurrencyCode()
+  currency?: string;
+
+  @Transform(trim)
+  @IsOptional()
+  @IsUrl({ require_tld: false })
+  @Length(1, 500)
+  imageUrl?: string | null;
 
   @IsOptional()
   @IsUUID()
@@ -230,6 +279,26 @@ export class UpdateProductDto {
   @IsOptional()
   @IsBoolean()
   requiresManualReview?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  publicVisible?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1000000000)
+  displayOrder?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  stockTrackingEnabled?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1000000000)
+  stockMinimum?: number;
 
   @IsOptional()
   @IsObject()
@@ -303,6 +372,33 @@ export class ProductListQueryDto {
   @IsOptional()
   @IsIn(['asc', 'desc'])
   sortOrder: 'asc' | 'desc' = 'desc';
+}
+
+export class AdjustStockDto {
+  @IsInt()
+  @Min(-1000000000)
+  @Max(1000000000)
+  delta!: number;
+
+  @Transform(trim)
+  @IsString()
+  @Length(3, 500)
+  reason!: string;
+}
+
+export class StockMovementListQueryDto {
+  @IsOptional()
+  @Transform(({ value }) => Number(value))
+  @IsInt()
+  @Min(1)
+  page = 1;
+
+  @IsOptional()
+  @Transform(({ value }) => Number(value))
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit = 25;
 }
 
 export class CreatePlanDto {

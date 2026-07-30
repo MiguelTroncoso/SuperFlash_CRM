@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Patch,
   Post,
   Req,
   Res,
@@ -36,6 +37,7 @@ import { PermissionsGuard } from './guards/permissions.guard';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 interface AuthenticatedResponse {
   accessToken: string;
@@ -45,6 +47,8 @@ interface AuthenticatedResponse {
     email: string;
     firstName: string;
     lastName: string | null;
+    phone: string | null;
+    timezone: string;
     organization: {
       id: string;
       name: string;
@@ -157,6 +161,26 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Usuario, organización, rol y permisos efectivos.' })
   async me(@CurrentUser() user: AuthenticatedUser): Promise<AuthenticatedResponse['user']> {
     return this.authService.getMe(user);
+  }
+
+  @Get('profile')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Retorna el perfil editable del usuario actual' })
+  async profile(@CurrentUser() user: AuthenticatedUser): Promise<AuthenticatedResponse['user']> {
+    return this.authService.getMe(user);
+  }
+
+  @Patch('profile')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Actualiza el perfil del usuario actual' })
+  async updateProfile(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateProfileDto,
+    @Req() request: Request,
+  ): Promise<AuthenticatedResponse['user']> {
+    return this.authService.updateProfile(user, dto, requestMetadata(request));
   }
 
   @Post('forgot-password')

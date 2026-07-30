@@ -1,5 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { CountryCode, isSupportedCountry, parsePhoneNumberFromString } from 'libphonenumber-js';
+import { CountryCode, parsePhoneNumberFromString } from 'libphonenumber-js';
+import { isKnownCountry } from '@superflash/utils';
 
 import { CONTACT_ERROR_CODES, contactException } from '../contacts.errors';
 
@@ -45,10 +46,7 @@ export class PhoneNormalizerService {
     }
 
     const normalizedCountry = country.trim().toUpperCase();
-    if (
-      !/^[A-Z]{2}$/.test(normalizedCountry) ||
-      !isSupportedCountry(normalizedCountry as CountryCode)
-    ) {
+    if (!/^[A-Z]{2}$/.test(normalizedCountry) || !isKnownCountry(normalizedCountry)) {
       throw contactException(
         HttpStatus.BAD_REQUEST,
         CONTACT_ERROR_CODES.INVALID_COUNTRY,
