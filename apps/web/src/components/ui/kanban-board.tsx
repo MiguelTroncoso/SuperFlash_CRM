@@ -38,7 +38,7 @@ function SortableCard({
       {...attributes}
       {...listeners}
       className={cn(
-        'cursor-grab rounded-xl border border-slate-200 bg-white p-3 shadow-sm active:cursor-grabbing dark:border-slate-700 dark:bg-slate-900',
+        'cursor-grab rounded-xl border border-border-default bg-surface-card p-3 shadow-sm active:cursor-grabbing',
         isDragging && 'opacity-50 ring-2 ring-brand-400',
       )}
     >
@@ -82,7 +82,7 @@ export function KanbanBoard({
       <div className="flex min-h-[560px] gap-4 overflow-x-auto pb-4">
         {columns.map((column) => (
           <div
-            className="w-[290px] shrink-0 rounded-2xl bg-slate-100/80 p-3 dark:bg-slate-950/60"
+            className="w-[min(290px,calc(100vw-2rem))] shrink-0 rounded-2xl bg-surface-inset p-3"
             key={column.id}
           >
             <div className="mb-3 flex items-center justify-between">
@@ -95,7 +95,7 @@ export function KanbanBoard({
                   {column.title}
                 </h3>
               </div>
-              <span className="rounded-full bg-white px-2 py-1 text-[11px] font-bold text-slate-400 dark:bg-slate-800">
+              <span className="rounded-full bg-surface-card px-2 py-1 text-[11px] font-bold text-content-muted">
                 {column.items.length}
               </span>
             </div>

@@ -9,8 +9,9 @@
   ],
   "scripts": {
     "build": "npm run build:web && npm run build:api",
-    "build:web": "npm run build --workspace=@superflash/web",
-    "build:api": "npm run build --workspace=@superflash/api",
+    "build:utils": "npm run build --workspace=@superflash/utils",
+    "build:web": "npm run build:utils && npm run build --workspace=@superflash/web",
+    "build:api": "npm run build:utils && npm run build --workspace=@superflash/api",
     "db:generate": "npm run prisma:generate --workspace=@superflash/api",
     "db:migrate": "npm run prisma:migrate --workspace=@superflash/api",
     "db:migrate:deploy": "npm run prisma:migrate:deploy --workspace=@superflash/api",
@@ -19,16 +20,16 @@
     "db:verify-integrity": "npm run prisma:verify-integrity --workspace=@superflash/api",
     "db:refresh-revenue-views": "npm run prisma:refresh-revenue-views --workspace=@superflash/api",
     "test": "npm run test --workspace=@superflash/api",
-    "test:unit": "npm run test:unit --workspace=@superflash/api",
-    "test:integration": "npm run test:integration --workspace=@superflash/api",
-    "test:web": "npm run test --workspace=@superflash/web",
-    "dev:api": "npm run start:dev --workspace=@superflash/api",
-    "dev:web": "npm run dev --workspace=@superflash/web",
+    "test:unit": "npm run build:utils && npm run test:unit --workspace=@superflash/api",
+    "test:integration": "npm run build:utils && npm run test:integration --workspace=@superflash/api",
+    "test:web": "npm run build:utils && npm run test --workspace=@superflash/web",
+    "dev:api": "npm run build:utils && npm run start:dev --workspace=@superflash/api",
+    "dev:web": "npm run build:utils && npm run dev --workspace=@superflash/web",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint \"apps/**/*.{ts,tsx}\" \"packages/**/*.{ts,tsx}\"",
     "prepare": "husky",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run build:utils && npm run typecheck --workspaces --if-present"
   },
   "lint-staged": {
     "*.{ts,tsx}": [

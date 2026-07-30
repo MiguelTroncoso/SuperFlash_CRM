@@ -8,6 +8,31 @@ import { api } from '@/lib/api-client';
 import { useAuthStore } from '@/lib/auth-store';
 import { useUiStore } from '@/lib/ui-store';
 
+const PAGE_LABELS: Record<string, string> = {
+  activations: 'Activaciones',
+  automations: 'Automatizaciones',
+  catalog: 'Catálogo',
+  contacts: 'Contactos',
+  credentials: 'Credenciales',
+  fulfillment: 'Fulfillment',
+  'my-day': 'Mi Día',
+  notifications: 'Notificaciones',
+  pipeline: 'Pipeline',
+  profile: 'Mi perfil',
+  providers: 'Providers',
+  revenue: 'Revenue Intelligence',
+  sales: 'Ventas',
+  templates: 'Plantillas',
+  trials: 'Trials',
+  whatsapp: 'WhatsApp',
+};
+
+function pageLabel(pathname: string): string {
+  if (pathname === '/') return 'Dashboard';
+  const segment = pathname.split('/').filter(Boolean).at(-1) ?? 'Dashboard';
+  return PAGE_LABELS[segment] ?? segment.replaceAll('-', ' ');
+}
+
 export function Header(): React.ReactElement {
   const pathname = usePathname();
   const router = useRouter();
@@ -23,11 +48,18 @@ export function Header(): React.ReactElement {
   const clearSession = useAuthStore((state) => state.clearSession);
 
   useEffect(() => {
-    const closeOnOutsideClick = (event: MouseEvent): void => {
+    const closeOnOutsideClick = (event: PointerEvent): void => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) setMenuOpen(false);
     };
-    document.addEventListener('mousedown', closeOnOutsideClick);
-    return () => document.removeEventListener('mousedown', closeOnOutsideClick);
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
   }, []);
 
   const logout = async (): Promise<void> => {
@@ -38,12 +70,12 @@ export function Header(): React.ReactElement {
   };
 
   return (
-    <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-slate-50/90 px-4 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90 sm:px-6 lg:px-8">
-      <div className="flex items-center justify-between gap-4">
+    <header className="safe-area-top sticky top-0 z-50 border-b border-border-default bg-surface-page/95 px-3 py-2 backdrop-blur sm:px-6 sm:py-3 lg:px-8">
+      <div className="flex min-h-9 items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <button
             aria-label="Abrir navegación"
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-lg text-slate-500 hover:bg-white dark:hover:bg-slate-900 lg:hidden"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-lg text-content-secondary hover:bg-surface-muted lg:hidden"
             onClick={() => setMobileSidebarOpen(true)}
             type="button"
           >
@@ -51,34 +83,35 @@ export function Header(): React.ReactElement {
           </button>
           <button
             aria-label="Colapsar sidebar"
-            className="hidden h-9 w-9 items-center justify-center rounded-xl text-lg text-slate-500 hover:bg-white dark:hover:bg-slate-900 lg:flex"
+            className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-xl text-lg text-content-secondary hover:bg-surface-muted lg:flex"
             onClick={toggleSidebar}
             type="button"
           >
             ☰
           </button>
-          <span className="hidden text-sm font-black tracking-tight text-slate-800 dark:text-slate-100 sm:inline">
-            SuperFlash Workspace
+          <span className="truncate text-sm font-bold text-content-primary sm:hidden">
+            {pageLabel(pathname)}
           </span>
-          <span className="text-xs text-slate-400">
-            {pathname === '/' ? 'Inicio' : pathname.slice(1).replaceAll('/', ' / ')}
-          </span>
+          <div className="hidden min-w-0 items-center gap-2 sm:flex">
+            <span className="text-sm font-black tracking-tight text-content-primary">
+              SuperFlash
+            </span>
+            <span className="text-xs text-content-muted">/ {pageLabel(pathname)}</span>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button
             aria-label="Abrir comandos"
-            className="hidden items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-400 shadow-sm hover:border-brand-300 sm:flex dark:border-slate-800 dark:bg-slate-900"
+            className="hidden items-center gap-3 rounded-xl border border-border-default bg-surface-card px-3 py-2 text-xs text-content-muted shadow-sm hover:border-brand-300 sm:flex"
             onClick={() => setCommandOpen(true)}
             type="button"
           >
             <span>⌕ Buscar</span>
-            <kbd className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] dark:bg-slate-800">
-              ⌘K
-            </kbd>
+            <kbd className="rounded bg-surface-muted px-1.5 py-0.5 font-mono text-[10px]">⌘K</kbd>
           </button>
           <button
             aria-label="Cambiar tema"
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-lg text-slate-500 hover:bg-white dark:hover:bg-slate-900"
+            className="flex h-9 w-9 items-center justify-center rounded-xl text-lg text-content-secondary hover:bg-surface-muted"
             onClick={toggleTheme}
             type="button"
           >
@@ -97,15 +130,16 @@ export function Header(): React.ReactElement {
             </button>
             {menuOpen ? (
               <div
-                className="absolute right-0 top-12 z-50 w-72 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-800 dark:bg-slate-900"
+                className="user-menu-panel absolute right-0 top-[calc(100%+0.5rem)] z-[70] w-72 rounded-2xl border border-border-default bg-surface-card p-2 shadow-xl"
                 role="menu"
+                aria-label="Menú de usuario"
               >
-                <div className="border-b border-slate-100 px-3 py-3 dark:border-slate-800">
-                  <p className="text-sm font-bold text-slate-900 dark:text-white">
+                <div className="border-b border-border-subtle px-3 py-3">
+                  <p className="text-sm font-bold text-content-primary">
                     {user?.firstName} {user?.lastName ?? ''}
                   </p>
-                  <p className="truncate text-xs text-slate-400">{user?.email}</p>
-                  <p className="mt-1 text-[11px] text-slate-400">{user?.organization.name}</p>
+                  <p className="truncate text-xs text-content-muted">{user?.email}</p>
+                  <p className="mt-1 text-[11px] text-content-muted">{user?.organization.name}</p>
                 </div>
                 <Link
                   className="menu-item"
@@ -131,14 +165,14 @@ export function Header(): React.ReactElement {
                 >
                   Organización
                 </Link>
-                <div className="my-1 border-t border-slate-100 pt-1 dark:border-slate-800">
-                  <p className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                <div className="my-1 border-t border-border-subtle pt-1">
+                  <p className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.14em] text-content-muted">
                     Apariencia
                   </p>
                   <div className="grid grid-cols-3 gap-1 px-2">
                     {(['light', 'system', 'dark'] as const).map((option) => (
                       <button
-                        className={`rounded-lg px-2 py-2 text-xs ${theme === option ? 'bg-brand-50 font-bold text-brand-700 dark:bg-brand-500/10 dark:text-brand-300' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                        className={`rounded-lg px-2 py-2 text-xs ${theme === option ? 'bg-brand-50 font-bold text-brand-700 dark:bg-brand-500/10 dark:text-brand-300' : 'text-content-secondary hover:bg-surface-muted'}`}
                         key={option}
                         onClick={() => setTheme(option)}
                         type="button"
@@ -157,7 +191,7 @@ export function Header(): React.ReactElement {
                   Seguridad
                 </Link>
                 <button
-                  className="menu-item w-full text-left text-rose-600"
+                  className="menu-item w-full text-left text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10"
                   onClick={() => void logout()}
                   role="menuitem"
                   type="button"

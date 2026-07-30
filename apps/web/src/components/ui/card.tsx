@@ -6,7 +6,7 @@ export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>): R
   return (
     <div
       className={cn(
-        'rounded-2xl border border-slate-200 bg-white shadow-card dark:border-slate-800 dark:bg-slate-900',
+        'rounded-2xl border border-border-default bg-surface-card shadow-card',
         className,
       )}
       {...props}
@@ -21,7 +21,7 @@ export function CardHeader({
   return (
     <div
       className={cn(
-        'flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4 dark:border-slate-800',
+        'flex items-start justify-between gap-4 border-b border-border-subtle px-5 py-4',
         className,
       )}
       {...props}
@@ -33,18 +33,14 @@ export function CardTitle({
   className,
   ...props
 }: HTMLAttributes<HTMLHeadingElement>): React.ReactElement {
-  return (
-    <h2 className={cn('text-sm font-bold text-slate-950 dark:text-white', className)} {...props} />
-  );
+  return <h2 className={cn('text-sm font-bold text-content-primary', className)} {...props} />;
 }
 
 export function CardDescription({
   className,
   ...props
 }: HTMLAttributes<HTMLParagraphElement>): React.ReactElement {
-  return (
-    <p className={cn('mt-1 text-xs text-slate-500 dark:text-slate-400', className)} {...props} />
-  );
+  return <p className={cn('mt-1 text-xs text-content-secondary', className)} {...props} />;
 }
 
 export function CardContent({
@@ -65,11 +61,11 @@ export function CardStat({
 }): React.ReactElement {
   return (
     <Card className="p-5">
-      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">{label}</p>
-      <p className="mt-3 text-2xl font-bold tracking-tight text-slate-950 dark:text-white">
-        {value}
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-content-muted">
+        {label}
       </p>
-      {detail ? <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{detail}</p> : null}
+      <p className="mt-3 text-2xl font-bold tracking-tight text-content-primary">{value}</p>
+      {detail ? <p className="mt-1 text-xs text-content-secondary">{detail}</p> : null}
     </Card>
   );
 }

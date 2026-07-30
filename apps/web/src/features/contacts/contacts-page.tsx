@@ -29,7 +29,7 @@ function ContactWhatsAppTab({ contact }: { readonly contact: Contact }): React.R
   const rows = conversations.data?.data ?? [];
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-950">
+      <div className="rounded-2xl bg-surface-inset p-4">
         <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">WhatsApp</p>
         <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
           {contact.phone

@@ -43,16 +43,16 @@ export function CommandPalette(): React.ReactElement | null {
       onClick={() => setOpen(false)}
     >
       <div
-        className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+        className="w-full max-w-lg overflow-hidden rounded-2xl border border-border-default bg-surface-card shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="border-b border-slate-100 p-3 dark:border-slate-800">
+        <div className="border-b border-border-subtle p-3">
           <Input autoFocus placeholder="Ir a..." />
         </div>
         <div className="max-h-80 overflow-y-auto p-2">
           {commands.map((command) => (
             <button
-              className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+              className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left text-sm text-content-secondary hover:bg-surface-muted"
               key={command.href}
               onClick={() => {
                 setOpen(false);

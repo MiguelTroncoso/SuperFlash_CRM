@@ -160,7 +160,7 @@ export function AutomationPage(): React.ReactElement {
                 </CardHeader>
                 <CardContent>
                   <div className="flex flex-wrap gap-2 text-xs">
-                    <span className="rounded-lg bg-slate-100 px-2.5 py-1.5 font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                    <span className="rounded-lg bg-surface-muted px-2.5 py-1.5 font-semibold text-content-secondary">
                       {rule.actions.length} {rule.actions.length === 1 ? 'acción' : 'acciones'}
                     </span>
                     {rule.template ? (

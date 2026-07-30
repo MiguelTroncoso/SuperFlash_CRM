@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect } from 'react';
 
 import { useAuthStore } from '@/lib/auth-store';
 import { useUiStore } from '@/lib/ui-store';
@@ -74,12 +75,20 @@ export function Sidebar(): React.ReactElement {
   const mobileOpen = useUiStore((state) => state.mobileSidebarOpen);
   const setMobileOpen = useUiStore((state) => state.setMobileSidebarOpen);
   const user = useAuthStore((state) => state.user);
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [mobileOpen]);
   const canSee = (item: NavItem) => !item.permission || user?.permissions.includes(item.permission);
   return (
     <>
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 hidden w-[260px] border-r border-slate-200 bg-white/95 px-3 py-4 backdrop-blur transition-[width] dark:border-slate-800 dark:bg-slate-950/95 lg:flex',
+          'fixed inset-y-0 left-0 z-40 hidden h-dvh w-[min(86vw,280px)] flex-col overflow-y-auto border-r border-border-default bg-surface-card/95 px-3 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] backdrop-blur transition-[width] lg:flex',
           mobileOpen && 'flex',
           collapsed ? 'lg:w-[78px]' : 'lg:w-[260px]',
         )}
@@ -87,7 +96,7 @@ export function Sidebar(): React.ReactElement {
       >
         <button
           aria-label="Cerrar navegación"
-          className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 lg:hidden dark:hover:bg-slate-900"
+          className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-lg text-content-secondary hover:bg-surface-muted lg:hidden"
           onClick={() => setMobileOpen(false)}
           type="button"
         >
@@ -97,7 +106,7 @@ export function Sidebar(): React.ReactElement {
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand-600 font-black text-white shadow-lg shadow-brand-600/20">
             S
           </div>
-          {collapsed ? null : (
+          {collapsed && !mobileOpen ? null : (
             <div className="min-w-0">
               <p className="truncate text-sm font-black tracking-tight text-slate-950 dark:text-white">
                 SuperFlash
@@ -114,10 +123,10 @@ export function Sidebar(): React.ReactElement {
               <p
                 className={cn(
                   'mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400',
-                  collapsed && 'text-center',
+                  collapsed && !mobileOpen && 'text-center',
                 )}
               >
-                {collapsed ? '•••' : section.label}
+                {collapsed && !mobileOpen ? '•••' : section.label}
               </p>
               <div className="space-y-1">
                 {section.items.filter(canSee).map((item) => {
@@ -130,8 +139,8 @@ export function Sidebar(): React.ReactElement {
                         'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition',
                         active
                           ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300'
-                          : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-white',
-                        collapsed && 'justify-center px-2',
+                          : 'text-content-secondary hover:bg-surface-muted hover:text-content-primary',
+                        collapsed && !mobileOpen && 'justify-center px-2',
                       )}
                       href={item.href}
                       key={item.href}
@@ -142,13 +151,13 @@ export function Sidebar(): React.ReactElement {
                         className={cn(
                           'flex h-7 w-7 items-center justify-center rounded-lg text-base',
                           active
-                            ? 'bg-white/80 dark:bg-slate-900'
-                            : 'bg-slate-50 group-hover:bg-white dark:bg-slate-900 dark:group-hover:bg-slate-800',
+                            ? 'bg-surface-card/80'
+                            : 'bg-surface-muted group-hover:bg-surface-card',
                         )}
                       >
                         {item.icon}
                       </span>
-                      {collapsed ? null : <span>{item.label}</span>}
+                      {collapsed && !mobileOpen ? null : <span>{item.label}</span>}
                     </Link>
                   );
                 })}
@@ -158,15 +167,17 @@ export function Sidebar(): React.ReactElement {
         </nav>
         <div
           className={cn(
-            'absolute bottom-4 left-3 right-3 rounded-2xl bg-slate-50 p-3 dark:bg-slate-900',
-            collapsed && 'p-2',
+            'absolute bottom-4 left-3 right-3 rounded-2xl bg-surface-muted p-3',
+            collapsed && !mobileOpen && 'p-2',
           )}
         >
-          <div className={cn('flex items-center gap-2', collapsed && 'justify-center')}>
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white dark:bg-white dark:text-slate-900">
+          <div
+            className={cn('flex items-center gap-2', collapsed && !mobileOpen && 'justify-center')}
+          >
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-content-primary text-xs font-bold text-surface-page">
               {user?.firstName.slice(0, 1).toUpperCase() ?? '?'}
             </div>
-            {collapsed ? null : (
+            {collapsed && !mobileOpen ? null : (
               <div className="min-w-0">
                 <p className="truncate text-xs font-bold text-slate-800 dark:text-slate-100">
                   {user?.firstName} {user?.lastName ?? ''}

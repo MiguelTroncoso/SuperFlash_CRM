@@ -118,13 +118,13 @@ export function SalesPage(): React.ReactElement {
           {selected ? (
             <div className="space-y-5">
               <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-xl bg-slate-50 p-4 dark:bg-slate-950">
+                <div className="rounded-xl bg-surface-inset p-4">
                   <p className="text-xs text-slate-400">Estado</p>
                   <div className="mt-2">
                     <StatusBadge status={selected.status} />
                   </div>
                 </div>
-                <div className="rounded-xl bg-slate-50 p-4 dark:bg-slate-950">
+                <div className="rounded-xl bg-surface-inset p-4">
                   <p className="text-xs text-slate-400">Total</p>
                   <p className="mt-2 text-lg font-bold">
                     {selected.currency} {selected.total}

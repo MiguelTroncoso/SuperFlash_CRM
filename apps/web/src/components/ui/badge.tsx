@@ -24,26 +24,22 @@ const statusStyles: Record<string, string> = {
   WON: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
   PENDING: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300',
   REQUESTED: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300',
-  DRAFT: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+  DRAFT: 'bg-surface-muted text-content-secondary',
   ASSIGNED: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300',
   PROCESSING: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300',
   APPROVED: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300',
   OPEN: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300',
   FAILED: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300',
   CANCELLED: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300',
-  ARCHIVED: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+  ARCHIVED: 'bg-surface-muted text-content-secondary',
   SUSPENDED: 'bg-orange-50 text-orange-700 dark:bg-orange-500/10 dark:text-orange-300',
   EXPIRED: 'bg-orange-50 text-orange-700 dark:bg-orange-500/10 dark:text-orange-300',
-  REVOKED: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+  REVOKED: 'bg-surface-muted text-content-secondary',
 };
 
 export function StatusBadge({ status }: { readonly status: string }): React.ReactElement {
   return (
-    <Badge
-      className={
-        statusStyles[status] ?? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
-      }
-    >
+    <Badge className={statusStyles[status] ?? 'bg-surface-muted text-content-secondary'}>
       {status.replaceAll('_', ' ')}
     </Badge>
   );

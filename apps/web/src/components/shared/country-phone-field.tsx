@@ -72,7 +72,7 @@ export function CountryPhoneField({
         <div className="flex items-center gap-2">
           <span
             className={cn(
-              'flex h-10 min-w-16 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 px-2 text-xs font-bold text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300',
+              'flex h-10 min-w-16 items-center justify-center rounded-xl border border-border-default bg-surface-muted px-2 text-xs font-bold text-content-secondary',
               incompatible && 'border-rose-300 text-rose-600',
             )}
           >

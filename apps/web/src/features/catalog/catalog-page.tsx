@@ -718,11 +718,11 @@ export function CatalogPage(): React.ReactElement {
                       {item.description ?? 'Sin descripción.'}
                     </p>
                     <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-                      <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-950">
+                      <div className="rounded-xl bg-surface-inset p-3">
                         <p className="text-slate-400">Planes</p>
                         <p className="mt-1 font-bold">{item.plans.length}</p>
                       </div>
-                      <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-950">
+                      <div className="rounded-xl bg-surface-inset p-3">
                         <p className="text-slate-400">Stock disponible</p>
                         <p className="mt-1 font-bold">{item.stock.available}</p>
                       </div>
@@ -963,7 +963,7 @@ export function CatalogPage(): React.ReactElement {
                         <p>{entries.data?.length ?? 0} precios cargados.</p>
                         {(entries.data ?? []).map((price) => (
                           <div
-                            className="flex items-center justify-between rounded-xl bg-slate-50 p-3 dark:bg-slate-950"
+                            className="flex items-center justify-between rounded-xl bg-surface-inset p-3"
                             key={price.id}
                           >
                             <span>
@@ -1124,15 +1124,15 @@ export function CatalogPage(): React.ReactElement {
       <Drawer onClose={close} open={drawer === 'stock'} title="Existencias">
         <div className="space-y-5">
           <div className="grid grid-cols-3 gap-2 text-center text-xs">
-            <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-950">
+            <div className="rounded-xl bg-surface-inset p-3">
               <p className="text-slate-400">Actual</p>
               <p className="mt-1 text-lg font-bold">{stock.data?.quantity ?? 0}</p>
             </div>
-            <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-950">
+            <div className="rounded-xl bg-surface-inset p-3">
               <p className="text-slate-400">Reservado</p>
               <p className="mt-1 text-lg font-bold">{stock.data?.reserved ?? 0}</p>
             </div>
-            <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-950">
+            <div className="rounded-xl bg-surface-inset p-3">
               <p className="text-slate-400">Disponible</p>
               <p className="mt-1 text-lg font-bold">{stock.data?.available ?? 0}</p>
             </div>

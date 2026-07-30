@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { usePathname } from 'next/navigation';
 import {
   Area,
   AreaChart,
@@ -17,10 +18,12 @@ import {
 import type { ColumnDef } from '@tanstack/react-table';
 
 import { PageGrid, PageHeader } from '@/components/shared/page-header';
+import { CountrySelect } from '@/components/shared/country-phone-field';
 import { QueryState } from '@/components/shared/query-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
+import { Input, Select } from '@/components/ui/input';
 import { MetricCard } from '@/components/ui/metric-card';
 import { api, queryString } from '@/lib/api-client';
 import type {
@@ -30,6 +33,15 @@ import type {
   RevenueMoneyMetric,
   RevenueTrendPoint,
 } from '@/lib/types';
+
+const CURRENCIES = ['USD', 'CLP', 'COP', 'MXN', 'PEN', 'BOB', 'EUR'] as const;
+
+const chartTooltipStyle = {
+  backgroundColor: 'var(--surface-card)',
+  border: '1px solid var(--border-default)',
+  borderRadius: 12,
+  color: 'var(--content-primary)',
+};
 
 function money(metric: RevenueMoneyMetric | undefined): string {
   return metric
@@ -53,34 +65,72 @@ function FilterBar({
   readonly filters: RevenueFilters;
   readonly onChange: (filters: RevenueFilters) => void;
 }): React.ReactElement {
-  const field = (
-    key: keyof RevenueFilters,
-    label: string,
-    type: 'date' | 'text',
-    placeholder?: string,
-  ): React.ReactElement => (
-    <label className="text-xs font-semibold text-slate-500" key={key}>
-      {label}
-      <input
-        className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm uppercase dark:border-slate-700 dark:bg-slate-900"
-        maxLength={
-          type === 'date' ? undefined : key === 'country' ? 2 : key === 'currency' ? 3 : undefined
-        }
-        onChange={(event) => onChange({ ...filters, [key]: event.target.value || undefined })}
-        placeholder={placeholder}
-        type={type}
-        value={filters[key] ?? ''}
-      />
-    </label>
-  );
+  const sellers = useQuery({
+    queryKey: ['revenue-sellers'],
+    queryFn: api.getContactAssignees,
+  });
+  const sellerOptions = Array.isArray(sellers.data) ? sellers.data : [];
+  const update = (key: keyof RevenueFilters, value: string): void =>
+    onChange({ ...filters, [key]: value || undefined });
   return (
     <Card>
-      <CardContent className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-5">
-        {field('from', 'Desde', 'date')}
-        {field('to', 'Hasta', 'date')}
-        {field('country', 'País', 'text', 'CL')}
-        {field('currency', 'Moneda', 'text', 'USD')}
-        {field('sellerId', 'Vendedor UUID', 'text')}
+      <CardContent className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 sm:p-4 lg:grid-cols-5">
+        <label className="text-xs font-semibold text-content-secondary">
+          Desde
+          <Input
+            className="mt-1 uppercase"
+            onChange={(event) => update('from', event.target.value)}
+            type="date"
+            value={filters.from ?? ''}
+          />
+        </label>
+        <label className="text-xs font-semibold text-content-secondary">
+          Hasta
+          <Input
+            className="mt-1 uppercase"
+            onChange={(event) => update('to', event.target.value)}
+            type="date"
+            value={filters.to ?? ''}
+          />
+        </label>
+        <label className="text-xs font-semibold text-content-secondary">
+          País
+          <CountrySelect
+            className="mt-1"
+            onChange={(value) => update('country', value)}
+            value={filters.country ?? ''}
+          />
+        </label>
+        <label className="text-xs font-semibold text-content-secondary">
+          Moneda
+          <Select
+            className="mt-1"
+            onChange={(event) => update('currency', event.target.value)}
+            value={filters.currency ?? ''}
+          >
+            <option value="">Todas las monedas</option>
+            {CURRENCIES.map((currency) => (
+              <option key={currency} value={currency}>
+                {currency}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <label className="text-xs font-semibold text-content-secondary">
+          Vendedor
+          <Select
+            className="mt-1"
+            onChange={(event) => update('sellerId', event.target.value)}
+            value={filters.sellerId ?? ''}
+          >
+            <option value="">Todos los vendedores</option>
+            {sellerOptions.map((seller) => (
+              <option key={seller.id} value={seller.id}>
+                {seller.firstName} {seller.lastName ?? ''}
+              </option>
+            ))}
+          </Select>
+        </label>
       </CardContent>
     </Card>
   );
@@ -99,29 +149,38 @@ function Layout({
   readonly onFilters: (filters: RevenueFilters) => void;
   readonly children: React.ReactNode;
 }): React.ReactElement {
+  const pathname = usePathname();
+  const tabs = [
+    { href: '/revenue', label: 'Dashboard' },
+    { href: '/revenue/kpis', label: 'KPIs' },
+    { href: '/revenue/funnels', label: 'Funnels' },
+    { href: '/revenue/cohorts', label: 'Cohortes' },
+    { href: '/revenue/forecast', label: 'Forecast' },
+  ];
   return (
     <PageGrid>
       <PageHeader
         eyebrow="Revenue Intelligence · Phase 1"
         title={title}
         description={description}
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <Link href="/revenue/kpis">
-              <Button variant="outline">KPIs</Button>
-            </Link>
-            <Link href="/revenue/funnels">
-              <Button variant="outline">Funnels</Button>
-            </Link>
-            <Link href="/revenue/cohorts">
-              <Button variant="outline">Cohortes</Button>
-            </Link>
-            <Link href="/revenue/forecast">
-              <Button>Forecast</Button>
-            </Link>
-          </div>
-        }
       />
+      <nav
+        aria-label="Revenue Intelligence"
+        className="-mx-3 overflow-x-auto px-3 pb-1 sm:mx-0 sm:px-0"
+      >
+        <div className="flex min-w-max gap-2">
+          {tabs.map((tab) => {
+            const active = pathname === tab.href;
+            return (
+              <Link href={tab.href} key={tab.href}>
+                <Button className="shrink-0" variant={active ? 'primary' : 'outline'}>
+                  {tab.label}
+                </Button>
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
       <FilterBar filters={filters} onChange={onFilters} />
       {children}
     </PageGrid>
@@ -184,17 +243,24 @@ export function ExecutiveDashboardPage(): React.ReactElement {
                   <CardTitle>Tendencia de revenue</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-72">
+                  <div className="h-56 sm:h-72">
                     {chart.length ? (
                       <ResponsiveContainer height="100%" width="100%">
                         <AreaChart data={chart}>
-                          <CartesianGrid stroke="#e2e8f0" strokeDasharray="4 4" vertical={false} />
-                          <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-                          <YAxis tick={{ fontSize: 10 }} />
-                          <Tooltip />
+                          <CartesianGrid
+                            stroke="var(--border-default)"
+                            strokeDasharray="4 4"
+                            vertical={false}
+                          />
+                          <XAxis
+                            dataKey="date"
+                            tick={{ fill: 'var(--content-muted)', fontSize: 10 }}
+                          />
+                          <YAxis tick={{ fill: 'var(--content-muted)', fontSize: 10 }} />
+                          <Tooltip contentStyle={chartTooltipStyle} />
                           <Area
                             dataKey="revenue"
-                            fill="#c7d2fe"
+                            fill="var(--brand-50)"
                             stroke="#6366f1"
                             strokeWidth={3}
                             type="monotone"
@@ -223,7 +289,7 @@ export function ExecutiveDashboardPage(): React.ReactElement {
                             {stage.count} · {stage.conversionRate.toFixed(1)}%
                           </span>
                         </div>
-                        <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800">
+                        <div className="h-2 rounded-full bg-surface-muted">
                           <div
                             className="h-full rounded-full bg-brand-500"
                             style={{ width: `${Math.min(stage.conversionRate, 100)}%` }}
@@ -313,7 +379,7 @@ export function RevenueKpisPage(): React.ReactElement {
                       <div className="space-y-2">
                         {rows.map((row) => (
                           <div
-                            className="flex items-center justify-between rounded-xl bg-slate-50 p-3 text-xs dark:bg-slate-950"
+                            className="flex items-center justify-between rounded-xl bg-surface-inset p-3 text-xs"
                             key={row.key}
                           >
                             <span className="font-semibold">{row.label}</span>
@@ -372,7 +438,7 @@ export function RevenueFunnelsPage(): React.ReactElement {
                         {stage.count} · {stage.conversionRate.toFixed(1)}%
                       </span>
                     </div>
-                    <div className="h-4 rounded-full bg-slate-100 dark:bg-slate-800">
+                    <div className="h-4 rounded-full bg-surface-muted">
                       <div
                         className="h-4 rounded-full bg-brand-500"
                         style={{
@@ -470,15 +536,19 @@ export function RevenueTrendsPage(): React.ReactElement {
         {result.data ? (
           <Card>
             <CardContent>
-              <div className="h-[420px]">
+              <div className="h-64 sm:h-[420px]">
                 {chart.length ? (
                   <ResponsiveContainer height="100%" width="100%">
                     <BarChart data={chart}>
-                      <CartesianGrid stroke="#e2e8f0" strokeDasharray="4 4" vertical={false} />
-                      <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-                      <YAxis tick={{ fontSize: 10 }} />
-                      <Tooltip />
-                      <Bar dataKey="revenue" fill="#6366f1" radius={[6, 6, 0, 0]} />
+                      <CartesianGrid
+                        stroke="var(--border-default)"
+                        strokeDasharray="4 4"
+                        vertical={false}
+                      />
+                      <XAxis dataKey="date" tick={{ fill: 'var(--content-muted)', fontSize: 10 }} />
+                      <YAxis tick={{ fill: 'var(--content-muted)', fontSize: 10 }} />
+                      <Tooltip contentStyle={chartTooltipStyle} />
+                      <Bar dataKey="revenue" fill="var(--brand-500)" radius={[6, 6, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
@@ -526,7 +596,7 @@ export function RevenueForecastPage(): React.ReactElement {
                   <div className="space-y-2">
                     {forecast.forecast.map((point) => (
                       <div
-                        className="flex items-center justify-between rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-950"
+                        className="flex items-center justify-between rounded-xl bg-surface-inset p-3 text-sm"
                         key={point.month}
                       >
                         <span className="font-semibold">{point.month}</span>

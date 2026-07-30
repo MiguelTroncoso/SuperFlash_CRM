@@ -27,16 +27,18 @@ export function LayoutShell({ children }: LayoutShellProps): React.ReactElement 
   }, [pathname, router, status]);
   if (status !== 'authenticated')
     return (
-      <div className="min-h-screen bg-slate-50 p-6 dark:bg-slate-950">
+      <div className="min-h-screen bg-surface-page p-4 sm:p-6">
         <PageSkeleton />
       </div>
     );
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+    <div className="min-h-screen min-w-0 bg-surface-page">
       <Sidebar />
       <div className={collapsed ? 'lg:pl-[78px]' : 'lg:pl-[260px]'}>
         <Header />
-        <main className="px-4 py-6 sm:px-6 lg:px-8">{children}</main>
+        <main className="min-w-0 px-3 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-6 lg:px-8">
+          {children}
+        </main>
       </div>
       <CommandPalette />
       <ToastViewport />

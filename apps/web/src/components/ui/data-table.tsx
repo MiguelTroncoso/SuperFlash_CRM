@@ -53,8 +53,8 @@ export function DataTable<TData>({
       className={cn('overflow-x-auto', shouldVirtualize && 'max-h-[620px] overflow-y-auto')}
       onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
     >
-      <table className="w-full text-left text-sm">
-        <thead className="border-b border-slate-100 bg-slate-50/70 text-[11px] uppercase tracking-[0.1em] text-slate-400 dark:border-slate-800 dark:bg-slate-950/60">
+      <table className="w-full min-w-[640px] text-left text-sm">
+        <thead className="border-b border-border-subtle bg-surface-inset text-[11px] uppercase tracking-[0.1em] text-content-muted">
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id}>
               {headerGroup.headers.map((header) => (
@@ -67,19 +67,16 @@ export function DataTable<TData>({
             </tr>
           ))}
         </thead>
-        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+        <tbody className="divide-y divide-border-subtle">
           {shouldVirtualize && windowStart > 0 ? (
             <tr aria-hidden="true" style={{ height: windowStart * rowHeight }}>
               <td colSpan={columns.length} />
             </tr>
           ) : null}
           {visibleRows.map((row) => (
-            <tr className="transition hover:bg-slate-50/70 dark:hover:bg-slate-800/40" key={row.id}>
+            <tr className="transition hover:bg-surface-muted" key={row.id}>
               {row.getVisibleCells().map((cell) => (
-                <td
-                  className={cn('px-5 py-4 align-middle text-slate-600 dark:text-slate-300')}
-                  key={cell.id}
-                >
+                <td className={cn('px-5 py-4 align-middle text-content-secondary')} key={cell.id}>
                   {flexRender(cell.column.columnDef.cell, cell.getContext())}
                 </td>
               ))}

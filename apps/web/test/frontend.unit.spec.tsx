@@ -6,6 +6,7 @@ import { Drawer } from '@/components/ui/drawer';
 import { KanbanBoard } from '@/components/ui/kanban-board';
 import { PermissionGate } from '@/components/ui/permission-gate';
 import { Header } from '@/components/layout/header';
+import { Sidebar } from '@/components/layout/sidebar';
 import { useAuthStore } from '@/lib/auth-store';
 import { useUiStore } from '@/lib/ui-store';
 import { api } from '@/lib/api-client';
@@ -50,10 +51,24 @@ describe('frontend foundation', () => {
 
   it('renders the main navigation header and user workspace', () => {
     render(<Header />);
-    expect(screen.getByText('SuperFlash Workspace')).toBeInTheDocument();
+    expect(screen.getByText('SuperFlash')).toBeInTheDocument();
+    expect(screen.getByText('Dashboard')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Abrir menú de usuario' }));
     expect(screen.getByText('Demo')).toBeInTheDocument();
     expect(screen.getByText('Mi perfil')).toBeInTheDocument();
+    expect(screen.getByText('Cerrar sesión')).toBeInTheDocument();
+  });
+
+  it('keeps the avatar menu interactive for touch and keyboard dismissal', () => {
+    render(<Header />);
+    const avatar = screen.getByRole('button', { name: 'Abrir menú de usuario' });
+    fireEvent.click(avatar);
+    expect(screen.getByRole('menu', { name: 'Menú de usuario' })).toBeInTheDocument();
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole('menu', { name: 'Menú de usuario' })).not.toBeInTheDocument();
+    fireEvent.click(avatar);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('menu', { name: 'Menú de usuario' })).not.toBeInTheDocument();
   });
 
   it('renders DataTable rows and its empty state', () => {
@@ -82,6 +97,14 @@ describe('frontend foundation', () => {
     expect(screen.getByRole('dialog', { name: 'Editar lead' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([360, 390, 412, 768])('keeps compact shell controls available at %ipx', (width) => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
+    render(<Header />);
+    expect(screen.getByRole('banner')).toHaveClass('safe-area-top');
+    expect(screen.getByRole('button', { name: 'Abrir menú de usuario' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cambiar tema' })).toBeInTheDocument();
   });
 
   it('enforces PermissionGate for credential reveal', () => {
@@ -125,6 +148,28 @@ describe('frontend foundation', () => {
     useUiStore.getState().toggleTheme();
     expect(document.documentElement).toHaveClass('dark');
     expect(useAuthStore.getState().accessToken).toBe('memory-token');
+  });
+
+  it('persists light, dark and system theme preferences', () => {
+    useUiStore.getState().setTheme('system');
+    expect(window.localStorage.getItem('superflash-theme')).toBe('system');
+    expect(document.documentElement).not.toHaveClass('dark');
+    useUiStore.getState().setTheme('dark');
+    expect(document.documentElement).toHaveClass('dark');
+    useUiStore.getState().setTheme('light');
+    expect(document.documentElement).not.toHaveClass('dark');
+  });
+
+  it('opens the mobile sidebar as a drawer and closes it through the overlay', () => {
+    render(<Sidebar />);
+    act(() => useUiStore.getState().setMobileSidebarOpen(true));
+    expect(document.body.style.overflow).toBe('hidden');
+    expect(screen.getByRole('complementary', { name: 'Barra lateral de navegación' })).toHaveClass(
+      'flex',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar menú de navegación' }));
+    expect(useUiStore.getState().mobileSidebarOpen).toBe(false);
+    expect(document.body.style.overflow).toBe('');
   });
 
   it('uses the shared ten-country catalog and detects prefix mismatch', () => {
@@ -201,6 +246,7 @@ describe('frontend foundation', () => {
       forecast: [],
     };
     jest.spyOn(api, 'getRevenueDashboard').mockResolvedValue(dashboard);
+    jest.spyOn(api, 'getContactAssignees').mockResolvedValue([]);
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={queryClient}>
@@ -210,6 +256,9 @@ describe('frontend foundation', () => {
     expect(await screen.findByText('Dashboard ejecutivo')).toBeInTheDocument();
     expect((await screen.findAllByText('USD 100')).length).toBeGreaterThan(0);
     expect(screen.getByText('Venta')).toBeInTheDocument();
+    expect(screen.getByLabelText('País')).toBeInTheDocument();
+    expect(screen.getByLabelText('Moneda')).toBeInTheDocument();
+    expect(screen.getByLabelText('Vendedor')).toBeInTheDocument();
   });
 
   it('renders WhatsApp configuration without exposing secrets', async () => {

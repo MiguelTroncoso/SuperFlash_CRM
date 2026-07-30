@@ -5,6 +5,7 @@ WORKDIR /app
 COPY . .
 
 RUN HUSKY=0 npm ci
+RUN npm run build:utils
 RUN npm run db:generate
 
 EXPOSE 3001

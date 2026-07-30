@@ -40,8 +40,7 @@ export function ToastViewport(): React.ReactElement {
             'rounded-2xl border p-4 text-left shadow-xl transition hover:-translate-y-0.5',
             item.tone === 'error' && 'border-rose-200 bg-rose-50 text-rose-900',
             item.tone === 'success' && 'border-emerald-200 bg-emerald-50 text-emerald-900',
-            item.tone === 'info' && 'border-slate-200 bg-white text-slate-900',
-            'dark:border-slate-700 dark:bg-slate-900 dark:text-white',
+            item.tone === 'info' && 'border-border-default bg-surface-card text-content-primary',
           )}
           key={item.id}
           onClick={() => dismiss(item.id)}

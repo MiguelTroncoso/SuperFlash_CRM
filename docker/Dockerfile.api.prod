@@ -24,7 +24,7 @@ FROM dependencies AS builder
 
 COPY . .
 
-RUN npm run db:generate && npm run build:api
+RUN npm run build:utils && npm run db:generate && npm run build:api
 
 FROM base AS production-dependencies
 
@@ -59,6 +59,7 @@ COPY --from=production-dependencies --chown=app:app /app/package-lock.json ./pac
 COPY --from=production-dependencies --chown=app:app /app/apps ./apps
 COPY --from=production-dependencies --chown=app:app /app/packages ./packages
 COPY --from=builder --chown=app:app /app/apps/api/dist ./apps/api/dist
+COPY --from=builder --chown=app:app /app/packages/utils/dist ./packages/utils/dist
 
 USER app
 

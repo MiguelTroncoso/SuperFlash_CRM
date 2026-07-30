@@ -168,7 +168,7 @@ function ConnectionSettings({
         {connection ? (
           <p className="mt-4 text-xs text-slate-500">
             Webhook público:{' '}
-            <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">
+            <code className="rounded bg-surface-muted px-1">
               /api/v1/integrations/whatsapp/webhook
             </code>
             . Último webhook:{' '}
@@ -203,7 +203,7 @@ function ConversationList({
     <div className="space-y-2">
       {conversations.map((conversation) => (
         <button
-          className={`w-full rounded-2xl border p-4 text-left transition ${selectedId === conversation.id ? 'border-brand-400 bg-brand-50 dark:border-brand-500/50 dark:bg-brand-500/10' : 'border-slate-200 bg-white hover:border-brand-200 dark:border-slate-800 dark:bg-slate-900'}`}
+          className={`w-full rounded-2xl border p-4 text-left transition ${selectedId === conversation.id ? 'border-brand-400 bg-brand-50 dark:border-brand-500/50 dark:bg-brand-500/10' : 'border-border-default bg-surface-card hover:border-brand-200'}`}
           key={conversation.id}
           onClick={() => onSelect(conversation.id)}
           type="button"
@@ -295,7 +295,7 @@ function MessageThread({
         <StatusBadge status={conversation.status} />
       </CardHeader>
       <CardContent className="flex flex-1 flex-col gap-4">
-        <div className="flex-1 space-y-3 overflow-y-auto rounded-2xl bg-slate-50 p-4 dark:bg-slate-950">
+        <div className="flex-1 space-y-3 overflow-y-auto rounded-2xl bg-surface-inset p-4">
           {messages.length === 0 ? (
             <p className="py-12 text-center text-sm text-slate-400">Aún no hay mensajes.</p>
           ) : (
@@ -305,7 +305,7 @@ function MessageThread({
                 key={message.id}
               >
                 <div
-                  className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${message.direction === 'OUTBOUND' ? 'bg-brand-600 text-white' : 'bg-white text-slate-800 shadow-sm dark:bg-slate-900 dark:text-slate-100'}`}
+                  className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${message.direction === 'OUTBOUND' ? 'bg-brand-600 text-white' : 'bg-surface-card text-content-primary shadow-sm'}`}
                 >
                   <p>{message.text || `[${message.type}]`}</p>
                   <p
