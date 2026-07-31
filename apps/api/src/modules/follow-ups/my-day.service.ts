@@ -1,7 +1,14 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DateTime, IANAZone } from 'luxon';
-import { FollowUpPriority, FollowUpStatus, PipelineStageCategory, Prisma } from '@prisma/client';
+import {
+  FollowUpPriority,
+  FollowUpStatus,
+  PipelineStageCategory,
+  Prisma,
+  RenewalStatus,
+  RenewalWorkflowStatus,
+} from '@prisma/client';
 
 import { AppConfiguration } from '../../config/configuration';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
@@ -242,90 +249,195 @@ export class MyDayService {
       deletedAt: null,
       ...(targetUserId ? { ownerId: targetUserId } : {}),
     };
+    const renewalBase = {
+      organizationId: user.organizationId,
+      deletedAt: null,
+      ...(targetUserId ? { userId: targetUserId } : {}),
+    };
     const now = new Date();
     const next48Hours = new Date(now.getTime() + 48 * 60 * 60 * 1000);
-    const [pending, failed, activations, expiringTrials, expiredTrials, credentials, retries] =
-      await Promise.all([
-        this.prisma.fulfillment.findMany({
-          where: { ...base, status: { in: ['PENDING', 'ASSIGNED'] } },
-          orderBy: { createdAt: 'asc' },
-          take: limit,
-          select: { id: true, status: true, providerId: true, saleId: true, createdAt: true },
-        }),
-        this.prisma.fulfillment.findMany({
-          where: { ...base, status: 'FAILED' },
-          orderBy: { failedAt: 'asc' },
-          take: limit,
-          select: {
-            id: true,
-            status: true,
-            providerId: true,
-            saleId: true,
-            failedAt: true,
-            failureReason: true,
+    const [
+      pending,
+      failed,
+      activations,
+      expiringTrials,
+      expiredTrials,
+      credentials,
+      retries,
+      renewalsToday,
+      urgentRenewals,
+      paymentPromises,
+      overdueRenewals,
+      vipRenewals,
+    ] = await Promise.all([
+      this.prisma.fulfillment.findMany({
+        where: { ...base, status: { in: ['PENDING', 'ASSIGNED'] } },
+        orderBy: { createdAt: 'asc' },
+        take: limit,
+        select: { id: true, status: true, providerId: true, saleId: true, createdAt: true },
+      }),
+      this.prisma.fulfillment.findMany({
+        where: { ...base, status: 'FAILED' },
+        orderBy: { failedAt: 'asc' },
+        take: limit,
+        select: {
+          id: true,
+          status: true,
+          providerId: true,
+          saleId: true,
+          failedAt: true,
+          failureReason: true,
+        },
+      }),
+      this.prisma.activation.findMany({
+        where: { organizationId: user.organizationId, deletedAt: null, status: 'PENDING' },
+        orderBy: { createdAt: 'asc' },
+        take: limit,
+        select: {
+          id: true,
+          status: true,
+          fulfillmentId: true,
+          providerId: true,
+          createdAt: true,
+        },
+      }),
+      this.prisma.trial.findMany({
+        where: { ...trialBase, status: 'ACTIVE', endsAt: { gte: now, lte: next48Hours } },
+        orderBy: { endsAt: 'asc' },
+        take: limit,
+        select: { id: true, status: true, contactId: true, productId: true, endsAt: true },
+      }),
+      this.prisma.trial.findMany({
+        where: {
+          ...trialBase,
+          OR: [{ status: 'EXPIRED' }, { status: 'ACTIVE', endsAt: { lt: now } }],
+        },
+        orderBy: { endsAt: 'asc' },
+        take: limit,
+        select: { id: true, status: true, contactId: true, productId: true, endsAt: true },
+      }),
+      this.prisma.credentialRecord.findMany({
+        where: {
+          organizationId: user.organizationId,
+          deletedAt: null,
+          status: 'ACTIVE',
+          fulfillment: { status: 'COMPLETED', deletedAt: null },
+        },
+        orderBy: { createdAt: 'asc' },
+        take: limit,
+        select: {
+          id: true,
+          status: true,
+          fulfillmentId: true,
+          activationId: true,
+          expiration: true,
+        },
+      }),
+      this.prisma.provisioningAttempt.findMany({
+        where: {
+          organizationId: user.organizationId,
+          status: 'RETRYABLE',
+          ...(targetUserId ? { fulfillment: { assignedUserId: targetUserId } } : {}),
+        },
+        orderBy: { createdAt: 'asc' },
+        take: limit,
+        select: {
+          id: true,
+          status: true,
+          fulfillmentId: true,
+          attemptNumber: true,
+          createdAt: true,
+        },
+      }),
+      this.prisma.renewal.findMany({
+        where: {
+          ...renewalBase,
+          dueAt: {
+            gte: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+            lt: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1),
           },
-        }),
-        this.prisma.activation.findMany({
-          where: { organizationId: user.organizationId, deletedAt: null, status: 'PENDING' },
-          orderBy: { createdAt: 'asc' },
-          take: limit,
-          select: {
-            id: true,
-            status: true,
-            fulfillmentId: true,
-            providerId: true,
-            createdAt: true,
-          },
-        }),
-        this.prisma.trial.findMany({
-          where: { ...trialBase, status: 'ACTIVE', endsAt: { gte: now, lte: next48Hours } },
-          orderBy: { endsAt: 'asc' },
-          take: limit,
-          select: { id: true, status: true, contactId: true, productId: true, endsAt: true },
-        }),
-        this.prisma.trial.findMany({
-          where: {
-            ...trialBase,
-            OR: [{ status: 'EXPIRED' }, { status: 'ACTIVE', endsAt: { lt: now } }],
-          },
-          orderBy: { endsAt: 'asc' },
-          take: limit,
-          select: { id: true, status: true, contactId: true, productId: true, endsAt: true },
-        }),
-        this.prisma.credentialRecord.findMany({
-          where: {
-            organizationId: user.organizationId,
-            deletedAt: null,
-            status: 'ACTIVE',
-            fulfillment: { status: 'COMPLETED', deletedAt: null },
-          },
-          orderBy: { createdAt: 'asc' },
-          take: limit,
-          select: {
-            id: true,
-            status: true,
-            fulfillmentId: true,
-            activationId: true,
-            expiration: true,
-          },
-        }),
-        this.prisma.provisioningAttempt.findMany({
-          where: {
-            organizationId: user.organizationId,
-            status: 'RETRYABLE',
-            ...(targetUserId ? { fulfillment: { assignedUserId: targetUserId } } : {}),
-          },
-          orderBy: { createdAt: 'asc' },
-          take: limit,
-          select: {
-            id: true,
-            status: true,
-            fulfillmentId: true,
-            attemptNumber: true,
-            createdAt: true,
-          },
-        }),
-      ]);
+          status: { notIn: [RenewalStatus.PAID, RenewalStatus.CANCELLED] },
+        },
+        orderBy: { dueAt: 'asc' },
+        take: limit,
+        select: {
+          id: true,
+          status: true,
+          dueAt: true,
+          amount: true,
+          currency: true,
+          subscription: { select: { contact: { select: { firstName: true, lastName: true } } } },
+        },
+      }),
+      this.prisma.renewal.findMany({
+        where: {
+          ...renewalBase,
+          dueAt: { gte: now, lt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000) },
+          status: { notIn: [RenewalStatus.PAID, RenewalStatus.CANCELLED] },
+        },
+        orderBy: { dueAt: 'asc' },
+        take: limit,
+        select: {
+          id: true,
+          status: true,
+          dueAt: true,
+          amount: true,
+          currency: true,
+          subscription: { select: { contact: { select: { firstName: true, lastName: true } } } },
+        },
+      }),
+      this.prisma.renewal.findMany({
+        where: {
+          ...renewalBase,
+          workflowStatus: RenewalWorkflowStatus.PAYMENT_PROMISE,
+          status: { notIn: [RenewalStatus.PAID, RenewalStatus.CANCELLED] },
+        },
+        orderBy: { dueAt: 'asc' },
+        take: limit,
+        select: {
+          id: true,
+          status: true,
+          dueAt: true,
+          amount: true,
+          currency: true,
+          subscription: { select: { contact: { select: { firstName: true, lastName: true } } } },
+        },
+      }),
+      this.prisma.renewal.findMany({
+        where: {
+          ...renewalBase,
+          dueAt: { lt: now },
+          status: { notIn: [RenewalStatus.PAID, RenewalStatus.CANCELLED] },
+        },
+        orderBy: { dueAt: 'asc' },
+        take: limit,
+        select: {
+          id: true,
+          status: true,
+          dueAt: true,
+          amount: true,
+          currency: true,
+          subscription: { select: { contact: { select: { firstName: true, lastName: true } } } },
+        },
+      }),
+      this.prisma.renewal.findMany({
+        where: {
+          ...renewalBase,
+          dueAt: { gte: now, lt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000) },
+          status: { notIn: [RenewalStatus.PAID, RenewalStatus.CANCELLED] },
+        },
+        orderBy: { amount: 'desc' },
+        take: limit,
+        select: {
+          id: true,
+          status: true,
+          dueAt: true,
+          amount: true,
+          currency: true,
+          subscription: { select: { contact: { select: { firstName: true, lastName: true } } } },
+        },
+      }),
+    ]);
     return {
       pendingFulfillments: this.operationSection(
         pending.map((item) => ({
@@ -406,7 +518,37 @@ export class MyDayService {
         retries.length,
         limit,
       ),
+      renewalsToday: this.renewalSection(renewalsToday, limit),
+      urgentRenewals: this.renewalSection(urgentRenewals, limit),
+      paymentPromises: this.renewalSection(paymentPromises, limit),
+      overdueRenewals: this.renewalSection(overdueRenewals, limit),
+      vipRenewals: this.renewalSection(vipRenewals, limit),
     };
+  }
+
+  private renewalSection(
+    records: Array<{
+      id: string;
+      status: RenewalStatus;
+      dueAt: Date;
+      amount: Prisma.Decimal;
+      currency: string;
+      subscription: { contact: { firstName: string | null; lastName: string | null } };
+    }>,
+    limit: number,
+  ): MyDaySection<PublicOperationalItem> {
+    return this.operationSection(
+      records.map((record) => ({
+        id: record.id,
+        status: record.status,
+        reference: record.subscription.contact.firstName ?? 'Cliente',
+        providerId: null,
+        dueAt: record.dueAt,
+        detail: `${record.currency} ${record.amount.toFixed(2)}`,
+      })),
+      records.length,
+      limit,
+    );
   }
 
   private async operationalSummary(
@@ -423,6 +565,11 @@ export class MyDayService {
       deletedAt: null,
       ...(targetUserId ? { ownerId: targetUserId } : {}),
     };
+    const renewalBase = {
+      organizationId: user.organizationId,
+      deletedAt: null,
+      ...(targetUserId ? { userId: targetUserId } : {}),
+    };
     const now = new Date();
     const [
       pendingFulfillments,
@@ -432,6 +579,11 @@ export class MyDayService {
       expiredTrials,
       credentialsToDeliver,
       provisioningRetries,
+      renewalsToday,
+      urgentRenewals,
+      paymentPromises,
+      overdueRenewals,
+      vipRenewals,
     ] = await Promise.all([
       this.prisma.fulfillment.count({
         where: { ...fulfillmentBase, status: { in: ['PENDING', 'ASSIGNED'] } },
@@ -464,6 +616,44 @@ export class MyDayService {
       this.prisma.provisioningAttempt.count({
         where: { organizationId: user.organizationId, status: 'RETRYABLE' },
       }),
+      this.prisma.renewal.count({
+        where: {
+          ...renewalBase,
+          dueAt: {
+            gte: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+            lt: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1),
+          },
+          status: { notIn: [RenewalStatus.PAID, RenewalStatus.CANCELLED] },
+        },
+      }),
+      this.prisma.renewal.count({
+        where: {
+          ...renewalBase,
+          dueAt: { gte: now, lt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000) },
+          status: { notIn: [RenewalStatus.PAID, RenewalStatus.CANCELLED] },
+        },
+      }),
+      this.prisma.renewal.count({
+        where: {
+          ...renewalBase,
+          workflowStatus: RenewalWorkflowStatus.PAYMENT_PROMISE,
+          status: { notIn: [RenewalStatus.PAID, RenewalStatus.CANCELLED] },
+        },
+      }),
+      this.prisma.renewal.count({
+        where: {
+          ...renewalBase,
+          dueAt: { lt: now },
+          status: { notIn: [RenewalStatus.PAID, RenewalStatus.CANCELLED] },
+        },
+      }),
+      this.prisma.renewal.count({
+        where: {
+          ...renewalBase,
+          dueAt: { gte: now, lt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000) },
+          status: { notIn: [RenewalStatus.PAID, RenewalStatus.CANCELLED] },
+        },
+      }),
     ]);
     return {
       pendingFulfillments,
@@ -473,6 +663,11 @@ export class MyDayService {
       expiredTrials,
       credentialsToDeliver,
       provisioningRetries,
+      renewalsToday,
+      urgentRenewals,
+      paymentPromises,
+      overdueRenewals,
+      vipRenewals,
     };
   }
 
@@ -689,6 +884,11 @@ export type OperationalSections = {
   expiredTrials: MyDaySection<PublicOperationalItem>;
   credentialsToDeliver: MyDaySection<PublicOperationalItem>;
   provisioningRetries: MyDaySection<PublicOperationalItem>;
+  renewalsToday: MyDaySection<PublicOperationalItem>;
+  urgentRenewals: MyDaySection<PublicOperationalItem>;
+  paymentPromises: MyDaySection<PublicOperationalItem>;
+  overdueRenewals: MyDaySection<PublicOperationalItem>;
+  vipRenewals: MyDaySection<PublicOperationalItem>;
 };
 
 export type OperationalSummary = {
@@ -699,4 +899,9 @@ export type OperationalSummary = {
   expiredTrials: number;
   credentialsToDeliver: number;
   provisioningRetries: number;
+  renewalsToday: number;
+  urgentRenewals: number;
+  paymentPromises: number;
+  overdueRenewals: number;
+  vipRenewals: number;
 };

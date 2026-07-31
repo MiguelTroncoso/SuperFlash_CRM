@@ -484,3 +484,18 @@ El módulo `financial/` ofrece dashboard, gastos, categorías y gastos recurrent
 `financial.read` para lectura y `financial.manage` para mutaciones. Los detalles están en
 [docs/financial-intelligence.md](docs/financial-intelligence.md), [docs/expenses.md](docs/expenses.md) y
 [docs/recurring-expenses.md](docs/recurring-expenses.md).
+
+## Renewal Intelligence & Customer Lifecycle
+
+Architecture v2.6 incorpora el Centro de Renovaciones con dashboard, listas rápidas, calendario,
+workflow operativo, recordatorios internos, reportes, exportación e importación CSV con vista previa.
+El pago manual crea la siguiente renovación de forma transaccional e idempotente y los dashboards
+existentes de Revenue y Financial la reflejan desde sus fuentes persistidas.
+
+Permisos: `renewals.read`, `renewals.create`, `renewals.update`, `renewals.delete` y `renewals.export`.
+La documentación está en [docs/renewal-center.md](docs/renewal-center.md),
+[docs/customer-lifecycle.md](docs/customer-lifecycle.md), [docs/renewal-dashboard.md](docs/renewal-dashboard.md)
+y [docs/renewal-import.md](docs/renewal-import.md).
+
+El sprint no envía WhatsApp, no ejecuta respuestas automáticas, no usa IA y no modifica automáticamente
+el Pipeline.

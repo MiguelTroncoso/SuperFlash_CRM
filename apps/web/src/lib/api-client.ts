@@ -16,6 +16,9 @@ import type {
   FinancialCategory,
   FinancialDashboard,
   FinancialExpense,
+  RenewalCenterDashboard,
+  RenewalCenterItem,
+  RenewalCenterReport,
   CredentialRecord,
   Fulfillment,
   JsonRecord,
@@ -481,6 +484,38 @@ export const api = {
   },
   getFinancialDashboard: (query = '') =>
     request<FinancialDashboard>(`/financial/dashboard${query}`),
+  getRenewalDashboard: (query = '') =>
+    request<RenewalCenterDashboard>(`/renewal-center/dashboard${query}`),
+  getRenewals: (query = '') =>
+    request<Paginated<RenewalCenterItem>>(`/renewal-center/upcoming${query}`),
+  getRenewalsToday: (query = '') =>
+    request<Paginated<RenewalCenterItem>>(`/renewal-center/today${query}`),
+  getRenewalsOverdue: (query = '') =>
+    request<Paginated<RenewalCenterItem>>(`/renewal-center/overdue${query}`),
+  getRenewalCalendar: (query = '') =>
+    request<{ data: Array<{ date: string; items: RenewalCenterItem[] }> }>(
+      `/renewal-center/calendar${query}`,
+    ),
+  getRenewalHistory: (query = '') =>
+    request<Paginated<RenewalCenterItem>>(`/renewal-center/history${query}`),
+  updateRenewalWorkflow: (id: string, body: JsonRecord) =>
+    request<RenewalCenterItem>(`/renewal-center/${id}/workflow-status`, {
+      method: 'PATCH',
+      ...jsonBody(body),
+    }),
+  payRenewal: (id: string) => request<RenewalCenterItem>(`/renewals/${id}/pay`, { method: 'POST' }),
+  generateRenewalReminders: () =>
+    request<{ created: number; delivered: number }>('/renewal-center/reminders/generate', {
+      method: 'POST',
+    }),
+  getRenewalReminders: () => request<JsonRecord[]>('/renewal-center/reminders'),
+  getRenewalReport: (query = '') => request<RenewalCenterReport>(`/renewal-center/reports${query}`),
+  previewRenewalImport: (csv: string) =>
+    request<JsonRecord>('/renewal-center/import/preview', { method: 'POST', ...jsonBody({ csv }) }),
+  importRenewals: (csv: string) =>
+    request<JsonRecord>('/renewal-center/import', { method: 'POST', ...jsonBody({ csv }) }),
+  getCustomerLifecycle: (contactId: string) =>
+    request<JsonRecord>(`/renewal-center/customers/${contactId}`),
   getFinancialCategories: () => request<FinancialCategory[]>('/financial/categories'),
   createFinancialCategory: (body: JsonRecord) =>
     request<FinancialCategory>('/financial/categories', { method: 'POST', ...jsonBody(body) }),

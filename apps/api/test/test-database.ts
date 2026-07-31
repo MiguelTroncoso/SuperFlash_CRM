@@ -3,6 +3,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 export async function resetDatabase(prisma: PrismaClient): Promise<void> {
   await prisma.$transaction(async (transaction: Prisma.TransactionClient) => {
     await transaction.$executeRaw`SELECT set_config('superflash.allow_integrity_cleanup', 'on', true)`;
+    await transaction.renewalReminder.deleteMany();
     await transaction.notification.deleteMany();
     await transaction.expense.deleteMany();
     await transaction.recurringExpense.deleteMany();

@@ -188,6 +188,8 @@ erDiagram
     Subscription ||--o{ Renewal : schedules
     Renewal }o--|| Sale : source
     Renewal ||--o| Sale : generates
+    Renewal ||--o{ RenewalReminder : reminds
+    RenewalReminder }o--o| Notification : delivers
 ```
 
 `Sale` representa el acuerdo comercial y sus `SaleItem` conservan un snapshot JSON más campos tipados del catálogo. El snapshot es la fuente histórica de la venta, por lo que los cambios posteriores del catálogo no alteran el acuerdo.
@@ -195,6 +197,11 @@ erDiagram
 `Payment` guarda importes bruto, comisión, neto y reembolsado. El saldo se calcula como `Sale.total - sum(Payment.netAmount - Payment.refundedAmount)` únicamente sobre pagos confirmados o reembolsados; no existen columnas derivadas `remainingBalance` ni `paidAmount`.
 
 `Subscription` nace de un `SaleItem` y conserva su snapshot. `Renewal` pertenece a una suscripción y a la venta fuente; al pagarse crea una venta nueva con sus propios ítems y pago, sin modificar la venta anterior.
+
+`Renewal.workflowStatus` representa el proceso manual de gestión del cliente y
+no reemplaza `Renewal.status`, que conserva el estado financiero del ciclo.
+`RenewalReminder` identifica cada recordatorio por organización, ciclo y tipo;
+su enlace a `Notification` es idempotente mediante una huella de deduplicación.
 
 Las confirmaciones de ventas, confirmaciones de pagos, creación/pago de renovaciones y conversiones de oportunidades bloquean la fila agregada con `FOR UPDATE`. Las operaciones se mantienen dentro de transacciones cortas y escriben eventos durables en Outbox dentro del commit.
 

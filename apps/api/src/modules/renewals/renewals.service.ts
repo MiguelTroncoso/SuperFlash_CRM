@@ -335,6 +335,7 @@ export class RenewalsService {
         where: { organizationId_id: { organizationId: context.user.organizationId, id } },
         data: {
           status: RenewalStatus.PAID,
+          workflowStatus: 'RENEWED',
           paidAt: new Date(),
           generatedSaleId: sale.id,
           version: { increment: 1 },
@@ -354,6 +355,83 @@ export class RenewalsService {
           version: { increment: 1 },
         },
       });
+
+      const nextPeriodStart = renewal.periodEnd;
+      const nextPeriodEnd = this.addCycle(
+        nextPeriodStart,
+        subscription.billingCycle,
+        subscription.customIntervalDays,
+      );
+      if (nextPeriodEnd) {
+        const nextCycleKey = this.cycleKey(subscription.id, nextPeriodStart);
+        const nextRenewal = await transaction.renewal.upsert({
+          where: {
+            organizationId_subscriptionId_cycleKey: {
+              organizationId: context.user.organizationId,
+              subscriptionId: subscription.id,
+              cycleKey: nextCycleKey,
+            },
+          },
+          update: {},
+          create: {
+            organizationId: context.user.organizationId,
+            subscriptionId: subscription.id,
+            sourceSaleId: sale.id,
+            userId: subscription.userId ?? context.user.userId,
+            status: RenewalStatus.PENDING,
+            workflowStatus: 'PENDING',
+            billingCycle: subscription.billingCycle,
+            customIntervalDays: subscription.customIntervalDays,
+            amount: renewal.amount,
+            currency: renewal.currency,
+            dueAt: nextPeriodStart,
+            periodStart: nextPeriodStart,
+            periodEnd: nextPeriodEnd,
+            cycleKey: nextCycleKey,
+            snapshotVersion: renewal.snapshotVersion,
+            productNameSnapshot: renewal.productNameSnapshot,
+            skuSnapshot: renewal.skuSnapshot,
+            catalogSnapshot: renewal.catalogSnapshot as Prisma.InputJsonValue,
+          },
+          select: { id: true },
+        });
+        await transaction.activity.create({
+          data: {
+            organizationId: context.user.organizationId,
+            userId: context.user.userId,
+            contactId: subscription.contactId,
+            saleId: sale.id,
+            type: ActivityType.SYSTEM,
+            title: 'Siguiente renovación creada',
+            metadata: jsonObject({
+              renewalId: nextRenewal.id,
+              previousRenewalId: id,
+              cycleKey: nextCycleKey,
+            }),
+            requestId,
+          },
+        });
+        await this.audit.recordWithClient(transaction, {
+          organizationId: context.user.organizationId,
+          userId: context.user.userId,
+          action: 'RENEWAL_CREATED',
+          tableName: 'Renewal',
+          recordId: nextRenewal.id,
+          newValue: jsonObject({
+            subscriptionId: subscription.id,
+            sourceSaleId: sale.id,
+            cycleKey: nextCycleKey,
+            periodStart: nextPeriodStart.toISOString(),
+            periodEnd: nextPeriodEnd.toISOString(),
+          }),
+          ip: context.metadata.ipAddress,
+          requestId,
+        });
+        await this.enqueueEvent(transaction, 'RenewalCreated', nextRenewal.id, context, requestId, {
+          status: RenewalStatus.PENDING,
+          cycleKey: nextCycleKey,
+        });
+      }
 
       await transaction.activity.create({
         data: {
@@ -407,6 +485,7 @@ export class RenewalsService {
       });
       await this.enqueueEvent(transaction, 'RenewalPaid', id, context, requestId, {
         status: RenewalStatus.PAID,
+        workflowStatus: 'RENEWED',
         generatedSaleId: sale.id,
       });
       await this.enqueueEvent(transaction, 'SaleCreated', sale.id, context, requestId, {
@@ -616,6 +695,7 @@ export class RenewalsService {
       sourceSaleId: renewal.sourceSaleId,
       generatedSaleId: renewal.generatedSaleId,
       status: renewal.status,
+      workflowStatus: renewal.workflowStatus,
       billingCycle: renewal.billingCycle,
       customIntervalDays: renewal.customIntervalDays,
       amount: renewal.amount.toFixed(2),

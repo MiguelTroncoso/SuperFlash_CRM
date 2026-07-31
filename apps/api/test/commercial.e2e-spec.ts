@@ -362,12 +362,19 @@ describe('Commercial core HTTP flow', () => {
     expect(paid.every((response) => response.status === 201)).toBe(true);
     const stored = await prisma.renewal.findUniqueOrThrow({ where: { id: renewalId } });
     expect(stored.status).toBe('PAID');
+    expect(stored.workflowStatus).toBe('RENEWED');
     expect(stored.generatedSaleId).not.toBeNull();
     expect(
       await prisma.sale.count({
         where: { id: stored.generatedSaleId ?? undefined, organizationId: fixture.organizationA },
       }),
     ).toBe(1);
+    const nextRenewals = await prisma.renewal.findMany({
+      where: { subscriptionId: subscription.id, id: { not: renewalId }, deletedAt: null },
+    });
+    expect(nextRenewals).toHaveLength(1);
+    expect(nextRenewals[0]?.status).toBe('PENDING');
+    expect(nextRenewals[0]?.sourceSaleId).toBe(stored.generatedSaleId);
   });
 
   it('rejects marking a future Renewal as due', async () => {

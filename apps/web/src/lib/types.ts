@@ -679,6 +679,63 @@ export interface FinancialDashboard {
   monthlyTrend: Array<{ month: string; revenue: string; expenses: string; netProfit: string }>;
 }
 
+export interface RenewalCenterItem {
+  id: string;
+  subscriptionId: string;
+  sourceSaleId: string;
+  generatedSaleId: string | null;
+  status: string;
+  workflowStatus: string;
+  workflowLabel: string;
+  amount: string;
+  currency: string;
+  dueAt: string;
+  periodStart: string;
+  periodEnd: string;
+  paidAt: string | null;
+  product: { id: string | null; name: string };
+  customer: {
+    id: string;
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+    country: string | null;
+  };
+  assignedTo: Person | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RenewalCenterDashboard {
+  generatedAt: string;
+  period: { from: string; to: string };
+  cards: {
+    today: number;
+    next7Days: number;
+    next15Days: number;
+    next30Days: number;
+    upcomingAmount: RevenueMoneyMetric[];
+    renewedAmount: RevenueMoneyMetric[];
+    lostAmount: RevenueMoneyMetric[];
+    mrrRenewable: RevenueMoneyMetric[];
+    renewalRate: number;
+    atRiskCustomers: number;
+    projectedRevenue: RevenueMoneyMetric[];
+    recoveredRevenue: RevenueMoneyMetric[];
+    previousMonthRenewedAmount: RevenueMoneyMetric[];
+  };
+  financial: { currentExpenses: RevenueMoneyMetric[]; projectedProfit: RevenueMoneyMetric[] };
+  critical: RenewalCenterItem[];
+  upcoming: RenewalCenterItem[];
+  history: RenewalCenterItem[];
+}
+
+export interface RenewalCenterReport {
+  groupBy: string;
+  data: Array<{ label: string; currency: string; amount: string; count: number; paid: number }>;
+}
+
 export interface WhatsAppConversation {
   id: string;
   externalContactPhone: string;

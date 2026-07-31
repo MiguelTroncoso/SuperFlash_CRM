@@ -34,6 +34,7 @@ la arquitectura aprobada.
 | Snapshot             | Representación inmutable del catálogo y pricing aplicado en un momento comercial.   |
 | Transactional Outbox | Registro durable de un evento creado en la misma transacción del cambio de dominio. |
 | Revenue Intelligence | Capa de lectura para métricas, embudos, cohortes, tendencias y forecast comercial.  |
+| Renewal Intelligence | Capa operativa para administrar ciclos, riesgo, recuperación y lifecycle.           |
 
 ## Mapa de dominios
 
@@ -93,6 +94,10 @@ independiente de gastos, categorías, recurrencias idempotentes y dashboard
 financiero. Consume ventas existentes como lectura y no modifica Commercial
 Core ni Revenue Intelligence.
 
+Architecture v2.6 agrega `Renewal Intelligence` como módulo de operación manual
+de renovaciones. Consume los ciclos y snapshots existentes, crea recordatorios
+internos idempotentes y no ejecuta comunicaciones externas.
+
 ### Evolución y roadmap futuro
 
 Operations and Fulfillment está implementado como Architecture v1.1 y pendiente
@@ -150,6 +155,7 @@ Una versión arquitectónica solo puede aprobarse cuando:
 | Architecture v2.3 | WhatsApp Read Only             | **IMPLEMENTED**                      | Read model local, sincronización incremental, checkpoint, health, Smart Inbox y métricas. |
 | Architecture v2.4 | WhatsApp Web Read Only         | **IMPLEMENTED / PENDING PRODUCTION** | Pairing QR, sesión persistente, reader Baileys y sincronización inbound nueva.            |
 | Architecture v2.5 | Financial Intelligence Phase 1 | **IMPLEMENTED**                      | Gastos, categorías, recurrencias idempotentes y dashboard financiero.                     |
+| Architecture v2.6 | Renewal Intelligence           | **IMPLEMENTED**                      | Centro de Renovaciones, lifecycle, recordatorios, CSV, reportes y calendario.             |
 
 ### Architecture v1.0 — Commercial Core
 
@@ -252,6 +258,17 @@ un dashboard financiero de lectura. Consume ventas confirmadas y suscripciones
 activas sin duplicar reglas de Commercial Core ni modificar Revenue Intelligence.
 Los importes se analizan por moneda, sin conversión implícita.
 
+### Architecture v2.6 — Renewal Intelligence
+
+Estado: **IMPLEMENTED**
+
+Renewal Intelligence añade el Centro de Renovaciones, gestión operativa de
+ciclos, calendario, recordatorios internos idempotentes, importación histórica
+con preview, reportes y lectura de ciclo de vida del cliente. Reutiliza el
+Commercial Core y deja Revenue Intelligence y Financial Intelligence como
+consumidores de los datos persistidos. No envía WhatsApp, no automatiza
+respuestas, no usa IA y no modifica automáticamente el Pipeline.
+
 ## Índice de ADRs
 
 - [ADR-006 — Sales Snapshot](../ADR-006-sales-snapshot.md)
@@ -299,3 +316,4 @@ Las definiciones de la fase están documentadas en [revenue-intelligence.md](../
 | Architecture v2.3 WhatsApp Read Only     | `feat: implement whatsapp read-only synchronization`          | Read model, checkpoint, sincronización y métricas de lectura implementados. |
 | Architecture v2.4 WhatsApp Web Read Only | `feat: connect whatsapp web qr read-only source`              | Reader QR privado, sesión cifrada y mensajes inbound nuevos.                |
 | Architecture v2.5 Financial Intelligence | `feat: implement financial intelligence phase 1`              | Gastos, categorías, recurrencias y dashboard financiero implementados.      |
+| Architecture v2.6 Renewal Intelligence   | `feat: implement renewal intelligence and customer lifecycle` | Centro de Renovaciones, ciclo de vida, recordatorios, CSV y reportes.       |

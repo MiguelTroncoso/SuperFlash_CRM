@@ -11,6 +11,6 @@ import { RenewalsService } from './renewals.service';
   imports: [AuditModule, AuthModule],
   controllers: [RenewalsController],
   providers: [RenewalsService, RenewalsAccessPolicy, CommercialAccessPolicy],
-  exports: [RenewalsService],
+  exports: [RenewalsService, RenewalsAccessPolicy],
 })
 export class RenewalsModule {}

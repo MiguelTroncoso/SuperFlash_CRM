@@ -23,6 +23,11 @@ const sections: ReadonlyArray<readonly [string, string, string]> = [
   ['failedFulfillments', 'Fulfillments fallidos', 'rose'],
   ['pendingActivations', 'Activaciones pendientes', 'emerald'],
   ['expiringTrials', 'Trials por vencer', 'indigo'],
+  ['renewalsToday', 'Renovaciones hoy', 'blue'],
+  ['urgentRenewals', 'Renovaciones urgentes', 'amber'],
+  ['paymentPromises', 'Promesas de pago', 'violet'],
+  ['overdueRenewals', 'Clientes vencidos', 'rose'],
+  ['vipRenewals', 'Clientes prioritarios', 'emerald'],
 ];
 
 export function MyDayPage(): React.ReactElement {
@@ -31,8 +36,12 @@ export function MyDayPage(): React.ReactElement {
     queryKey: ['my-day', 'summary'],
     queryFn: () => api.getMyDaySummary(),
   });
+  const renewalDashboard = useQuery({
+    queryKey: ['renewal-dashboard', 'my-day'],
+    queryFn: () => api.getRenewalDashboard(),
+  });
   const retry = () => {
-    void Promise.all([data.refetch(), summary.refetch()]);
+    void Promise.all([data.refetch(), summary.refetch(), renewalDashboard.refetch()]);
   };
   return (
     <QueryState
@@ -55,6 +64,18 @@ export function MyDayPage(): React.ReactElement {
             label="Vencidos"
             value={numberValue(summary.data?.overdueFollowUps)}
             trend="Requieren seguimiento"
+          />
+          <MetricCard
+            icon="↻"
+            label="Renovaciones próximas"
+            value={renewalDashboard.data?.cards.next7Days ?? '—'}
+            trend="Siguientes 7 días"
+          />
+          <MetricCard
+            icon="$"
+            label="Ingresos en riesgo"
+            value={renewalDashboard.data?.cards.projectedRevenue[0]?.amount ?? '—'}
+            trend="Ciclos próximos"
           />
           <MetricCard
             icon="◷"

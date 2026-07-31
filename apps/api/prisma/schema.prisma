@@ -107,6 +107,35 @@ enum RenewalStatus {
   CANCELLED
 }
 
+enum RenewalWorkflowStatus {
+  PENDING
+  CONTACTED
+  IN_CONVERSATION
+  PAYMENT_PROMISE
+  PAID
+  RENEWED
+  NOT_RENEWED
+  CANCELLED
+  LOST
+}
+
+enum RenewalReminderKind {
+  DAYS_30
+  DAYS_15
+  DAYS_7
+  DAYS_3
+  DAYS_1
+  DUE_TODAY
+  OVERDUE_3
+  OVERDUE_7
+}
+
+enum RenewalReminderStatus {
+  PENDING
+  DELIVERED
+  CANCELLED
+}
+
 enum OutboxEventStatus {
   PENDING
   PROCESSING
@@ -398,6 +427,7 @@ model Organization {
   payments                     Payment[]
   subscriptions                Subscription[]
   renewals                     Renewal[]
+  renewalReminders             RenewalReminder[]
   campaigns                    Campaign[]
   expenses                     Expense[]
   auditLogs                    AuditLog[]
@@ -486,6 +516,7 @@ model User {
   sales                         Sale[]                    @relation("SaleSeller")
   subscriptions                 Subscription[]            @relation("SubscriptionOwner")
   renewals                      Renewal[]                 @relation("RenewalOwner")
+  renewalReminders              RenewalReminder[]
   campaigns                     Campaign[]                @relation("CampaignOwner")
   auditLogs                     AuditLog[]                @relation("AuditActor")
   outboxEvents                  OutboxEvent[]             @relation("OutboxActor")
@@ -1331,37 +1362,39 @@ model Subscription {
 }
 
 model Renewal {
-  id                  String        @id @default(uuid()) @db.Uuid
-  organizationId      String        @db.Uuid
-  subscriptionId      String        @db.Uuid
-  sourceSaleId        String        @db.Uuid
-  generatedSaleId     String?       @db.Uuid
-  userId              String?       @db.Uuid
-  status              RenewalStatus @default(PENDING)
+  id                  String                @id @default(uuid()) @db.Uuid
+  organizationId      String                @db.Uuid
+  subscriptionId      String                @db.Uuid
+  sourceSaleId        String                @db.Uuid
+  generatedSaleId     String?               @db.Uuid
+  userId              String?               @db.Uuid
+  status              RenewalStatus         @default(PENDING)
+  workflowStatus      RenewalWorkflowStatus @default(PENDING)
   billingCycle        BillingCycle
   customIntervalDays  Int?
-  amount              Decimal       @db.Decimal(18, 2)
+  amount              Decimal               @db.Decimal(18, 2)
   currency            String
   dueAt               DateTime
   periodStart         DateTime
   periodEnd           DateTime
   cycleKey            String
   paidAt              DateTime?
-  snapshotVersion     Int           @default(2)
+  snapshotVersion     Int                   @default(2)
   productNameSnapshot String
   skuSnapshot         String?
   catalogSnapshot     Json
   notes               String?
-  version             Int           @default(0)
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
+  version             Int                   @default(0)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
   deletedAt           DateTime?
 
-  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  subscription  Subscription @relation(fields: [organizationId, subscriptionId], references: [organizationId, id], onDelete: Restrict)
-  sourceSale    Sale         @relation("RenewalSourceSale", fields: [organizationId, sourceSaleId], references: [organizationId, id], onDelete: Restrict)
-  generatedSale Sale?        @relation("RenewalGeneratedSale", fields: [organizationId, generatedSaleId], references: [organizationId, id], onDelete: Restrict)
-  owner         User?        @relation("RenewalOwner", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
+  organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  subscription  Subscription      @relation(fields: [organizationId, subscriptionId], references: [organizationId, id], onDelete: Restrict)
+  sourceSale    Sale              @relation("RenewalSourceSale", fields: [organizationId, sourceSaleId], references: [organizationId, id], onDelete: Restrict)
+  generatedSale Sale?             @relation("RenewalGeneratedSale", fields: [organizationId, generatedSaleId], references: [organizationId, id], onDelete: Restrict)
+  owner         User?             @relation("RenewalOwner", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
+  reminders     RenewalReminder[]
 
   @@unique([organizationId, id])
   @@unique([organizationId, generatedSaleId])
@@ -1371,7 +1404,35 @@ model Renewal {
   @@index([organizationId, sourceSaleId])
   @@index([organizationId, userId])
   @@index([organizationId, status])
+  @@index([organizationId, workflowStatus])
   @@index([organizationId, dueAt])
+  @@index([createdAt])
+}
+
+model RenewalReminder {
+  id             String                @id @default(uuid()) @db.Uuid
+  organizationId String                @db.Uuid
+  renewalId      String                @db.Uuid
+  userId         String?               @db.Uuid
+  notificationId String?               @db.Uuid
+  kind           RenewalReminderKind
+  status         RenewalReminderStatus @default(PENDING)
+  scheduledFor   DateTime
+  deliveredAt    DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  renewal      Renewal       @relation(fields: [organizationId, renewalId], references: [organizationId, id], onDelete: Restrict)
+  user         User?         @relation(fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
+  notification Notification? @relation(fields: [organizationId, notificationId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, renewalId, kind])
+  @@unique([organizationId, notificationId])
+  @@index([organizationId, status, scheduledFor])
+  @@index([organizationId, renewalId])
+  @@index([organizationId, userId])
   @@index([createdAt])
 }
 
@@ -1946,25 +2007,28 @@ model AutomationExecutionAction {
 }
 
 model Notification {
-  id             String             @id @default(uuid()) @db.Uuid
-  organizationId String             @db.Uuid
-  userId         String             @db.Uuid
-  type           String
-  title          String
-  body           String
-  status         NotificationStatus @default(UNREAD)
-  actionUrl      String?
-  metadata       Json?
-  requestId      String?
-  readAt         DateTime?
-  archivedAt     DateTime?
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  id               String             @id @default(uuid()) @db.Uuid
+  organizationId   String             @db.Uuid
+  userId           String             @db.Uuid
+  type             String
+  title            String
+  body             String
+  status           NotificationStatus @default(UNREAD)
+  actionUrl        String?
+  metadata         Json?
+  requestId        String?
+  deduplicationKey String?
+  readAt           DateTime?
+  archivedAt       DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  user         User         @relation(fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user             User              @relation(fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
+  renewalReminders RenewalReminder[]
 
   @@unique([organizationId, id])
+  @@unique([organizationId, deduplicationKey])
   @@index([organizationId, userId, status, createdAt])
   @@index([organizationId, createdAt])
   @@index([requestId])

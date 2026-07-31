@@ -20,6 +20,7 @@ const PAGE_LABELS: Record<string, string> = {
   pipeline: 'Pipeline',
   profile: 'Mi perfil',
   providers: 'Providers',
+  renewals: 'Renovaciones',
   revenue: 'Revenue Intelligence',
   sales: 'Ventas',
   templates: 'Plantillas',
