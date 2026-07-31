@@ -77,9 +77,30 @@ services:
     networks:
       - internal
 
+  whatsapp-reader:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.whatsapp-reader.prod
+    restart: unless-stopped
+    env_file:
+      - ${PRODUCTION_ENV_FILE:-.env.production}
+    environment:
+      NODE_ENV: production
+      READER_API_URL: http://api:3001/api/v1
+      WHATSAPP_READER_AUTH_DIR: /data/auth
+      READER_PORT: 3010
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - whatsapp_reader_auth:/data/auth
+    networks:
+      - internal
+
 volumes:
   postgres_prod_data:
   redis_prod_data:
+  whatsapp_reader_auth:
 
 networks:
   internal:

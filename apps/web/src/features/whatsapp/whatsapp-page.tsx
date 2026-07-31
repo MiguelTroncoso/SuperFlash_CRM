@@ -1,6 +1,8 @@
 'use client';
 
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 
 import { PageHeader } from '@/components/shared/page-header';
 import { QueryState } from '@/components/shared/query-state';
@@ -73,6 +75,35 @@ export function WhatsAppPage({
     },
     onError: (error: Error) =>
       toast({ title: 'Reindexación fallida', description: error.message, tone: 'error' }),
+  });
+  const webStatus = useQuery({
+    queryKey: ['whatsapp-web-read-only-status'],
+    queryFn: api.getWhatsAppWebReadOnlyStatus,
+    refetchInterval: 2_000,
+  });
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!webStatus.data?.qr) {
+      setQrDataUrl(null);
+      return;
+    }
+    void QRCode.toDataURL(webStatus.data.qr, { margin: 2, width: 260 }).then(setQrDataUrl);
+  }, [webStatus.data?.qr]);
+  const pairing = useMutation({
+    mutationFn: api.requestWhatsAppWebPairing,
+    onSuccess: () => void webStatus.refetch(),
+  });
+  const reconnect = useMutation({
+    mutationFn: api.reconnectWhatsAppWeb,
+    onSuccess: () => void webStatus.refetch(),
+  });
+  const cancelPairing = useMutation({
+    mutationFn: api.cancelWhatsAppWebPairing,
+    onSuccess: () => void webStatus.refetch(),
+  });
+  const unlink = useMutation({
+    mutationFn: api.unlinkWhatsAppWeb,
+    onSuccess: () => void webStatus.refetch(),
   });
 
   return (
@@ -208,6 +239,77 @@ export function WhatsAppPage({
             </CardContent>
           </Card>
         </div>
+
+        <Card data-testid="whatsapp-web-read-only-card">
+          <CardHeader>
+            <div>
+              <CardTitle>WhatsApp Web · fuente QR</CardTitle>
+              <CardDescription>
+                Adaptador Baileys aislado, sin Meta Cloud API y sin operaciones de escritura.
+              </CardDescription>
+            </div>
+            <StatusBadge status={webStatus.data?.status ?? 'PENDING_CONFIGURATION'} />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {qrDataUrl ? (
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="rounded-2xl bg-white p-3 shadow-sm">
+                  <img alt="QR de pairing de WhatsApp Web" className="h-52 w-52" src={qrDataUrl} />
+                </div>
+                <div className="text-sm text-content-secondary">
+                  <p className="font-semibold text-content-primary">Esperando escaneo…</p>
+                  <p className="mt-1">
+                    Escanea este código desde WhatsApp Business. Solo se aceptarán mensajes nuevos
+                    después de conectar.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-content-secondary">
+                {webStatus.data?.status === 'CONNECTED'
+                  ? `Conectado ${webStatus.data.number ?? ''}`
+                  : 'No hay un pairing activo.'}
+              </p>
+            )}
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Metric
+                label="Último mensaje"
+                value={formatDate(webStatus.data?.lastMessageAt ?? null)}
+              />
+              <Metric
+                label="Históricos descartados"
+                value={webStatus.data?.historicalDiscarded ?? 0}
+              />
+              <Metric label="Duplicados evitados" value={webStatus.data?.duplicatesAvoided ?? 0} />
+              <Metric label="Reconexiones" value={webStatus.data?.reconnects ?? 0} />
+            </div>
+            {webStatus.data?.lastError ? (
+              <p className="text-sm text-rose-600">{webStatus.data.lastError}</p>
+            ) : null}
+            <div className="flex flex-wrap gap-2">
+              <Button disabled={pairing.isPending} onClick={() => pairing.mutate()}>
+                Generar QR
+              </Button>
+              <Button
+                disabled={reconnect.isPending}
+                onClick={() => reconnect.mutate()}
+                variant="outline"
+              >
+                Reconectar
+              </Button>
+              <Button
+                disabled={cancelPairing.isPending}
+                onClick={() => cancelPairing.mutate()}
+                variant="outline"
+              >
+                Cancelar pairing
+              </Button>
+              <Button disabled={unlink.isPending} onClick={() => unlink.mutate()} variant="danger">
+                Desvincular
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </QueryState>
   );

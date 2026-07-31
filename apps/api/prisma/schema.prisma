@@ -220,6 +220,7 @@ enum WhatsAppWebhookEventStatus {
 
 enum CommunicationSyncChannel {
   WHATSAPP_READ_ONLY
+  WHATSAPP_WEB_READ_ONLY
 }
 
 enum CommunicationSyncStatus {
@@ -227,6 +228,21 @@ enum CommunicationSyncStatus {
   RUNNING
   SUCCEEDED
   FAILED
+}
+
+enum ExpenseFrequency {
+  ONE_TIME
+  WEEKLY
+  MONTHLY
+  ANNUAL
+}
+
+enum ExpensePaymentMethod {
+  TRANSFER
+  CARD
+  CASH
+  DIRECT_DEBIT
+  OTHER
 }
 
 enum ProductType {
@@ -407,6 +423,8 @@ model Organization {
   whatsappWebhookEvents        WhatsAppWebhookEvent[]
   whatsappMessageStatuses      WhatsAppMessageStatus[]
   communicationSyncCheckpoints CommunicationSyncCheckpoint[]
+  expenseCategories            ExpenseCategory[]
+  recurringExpenses            RecurringExpense[]
   productStockMovements        ProductStockMovement[]
 
   @@index([createdAt])
@@ -1674,23 +1692,94 @@ model Campaign {
 }
 
 model Expense {
+  id                 String               @id @default(uuid()) @db.Uuid
+  organizationId     String               @db.Uuid
+  campaignId         String?              @db.Uuid
+  categoryId         String?              @db.Uuid
+  recurringExpenseId String?              @db.Uuid
+  occurrenceKey      String?
+  amount             Decimal              @db.Decimal(14, 2)
+  currency           String
+  expenseDate        DateTime
+  vendorName         String?
+  description        String?
+  paymentMethod      ExpensePaymentMethod @default(OTHER)
+  frequency          ExpenseFrequency     @default(ONE_TIME)
+  startDate          DateTime?
+  endDate            DateTime?
+  active             Boolean              @default(true)
+  notes              String?
+  receiptUrl         String?
+  generated          Boolean              @default(false)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  deletedAt          DateTime?
+
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  campaign         Campaign?         @relation(fields: [organizationId, campaignId], references: [organizationId, id], onDelete: Restrict)
+  category         ExpenseCategory?  @relation(fields: [organizationId, categoryId], references: [organizationId, id], onDelete: Restrict)
+  recurringExpense RecurringExpense? @relation(fields: [organizationId, recurringExpenseId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, recurringExpenseId, occurrenceKey])
+  @@index([organizationId])
+  @@index([organizationId, categoryId, expenseDate])
+  @@index([organizationId, recurringExpenseId, expenseDate])
+  @@index([campaignId])
+  @@index([createdAt])
+}
+
+model ExpenseCategory {
   id             String    @id @default(uuid()) @db.Uuid
   organizationId String    @db.Uuid
-  campaignId     String?   @db.Uuid
-  amount         Decimal   @db.Decimal(14, 2)
-  currency       String
-  expenseDate    DateTime
+  name           String
   description    String?
+  color          String?
+  active         Boolean   @default(true)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  campaign     Campaign?    @relation(fields: [organizationId, campaignId], references: [organizationId, id], onDelete: Restrict)
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  expenses          Expense[]
+  recurringExpenses RecurringExpense[]
 
   @@unique([organizationId, id])
-  @@index([organizationId])
-  @@index([campaignId])
+  @@unique([organizationId, name])
+  @@index([organizationId, active])
+  @@index([createdAt])
+}
+
+model RecurringExpense {
+  id                 String               @id @default(uuid()) @db.Uuid
+  organizationId     String               @db.Uuid
+  categoryId         String?              @db.Uuid
+  name               String
+  vendorName         String?
+  description        String?
+  amount             Decimal              @db.Decimal(14, 2)
+  currency           String
+  paymentMethod      ExpensePaymentMethod @default(OTHER)
+  frequency          ExpenseFrequency
+  startsOn           DateTime
+  endsOn             DateTime?
+  nextOccurrenceDate DateTime?
+  active             Boolean              @default(true)
+  pausedAt           DateTime?
+  finishedAt         DateTime?
+  notes              String?
+  receiptUrl         String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  deletedAt          DateTime?
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  category     ExpenseCategory? @relation(fields: [organizationId, categoryId], references: [organizationId, id], onDelete: Restrict)
+  expenses     Expense[]
+
+  @@unique([organizationId, id])
+  @@index([organizationId, active, nextOccurrenceDate])
+  @@index([organizationId, categoryId])
   @@index([createdAt])
 }
 
@@ -2081,24 +2170,36 @@ model WhatsAppMessageStatus {
 }
 
 model CommunicationSyncCheckpoint {
-  id                    String                   @id @default(uuid()) @db.Uuid
-  organizationId        String                   @db.Uuid
-  channel               CommunicationSyncChannel
-  status                CommunicationSyncStatus  @default(IDLE)
-  cursorAt              DateTime?
-  cursorId              String?                  @db.Uuid
-  lastSynchronizedAt    DateTime?
-  lastSuccessfulAt      DateTime?
-  messagesImported      Int                      @default(0)
-  conversationsImported Int                      @default(0)
-  contactsImported      Int                      @default(0)
-  duplicatesAvoided     Int                      @default(0)
-  errorCount            Int                      @default(0)
-  attemptCount          Int                      @default(0)
-  nextRetryAt           DateTime?
-  lastError             String?
-  createdAt             DateTime                 @default(now())
-  updatedAt             DateTime                 @updatedAt
+  id                       String                   @id @default(uuid()) @db.Uuid
+  organizationId           String                   @db.Uuid
+  channel                  CommunicationSyncChannel
+  status                   CommunicationSyncStatus  @default(IDLE)
+  cursorAt                 DateTime?
+  cursorId                 String?                  @db.Uuid
+  lastSynchronizedAt       DateTime?
+  lastSuccessfulAt         DateTime?
+  messagesImported         Int                      @default(0)
+  conversationsImported    Int                      @default(0)
+  contactsImported         Int                      @default(0)
+  duplicatesAvoided        Int                      @default(0)
+  errorCount               Int                      @default(0)
+  attemptCount             Int                      @default(0)
+  nextRetryAt              DateTime?
+  lastError                String?
+  readerStatus             String?
+  readerQr                 String?
+  readerQrExpiresAt        DateTime?
+  readerIngestionStartedAt DateTime?
+  readerFirstAcceptedAt    DateTime?
+  readerConnectedAt        DateTime?
+  readerDisconnectedAt     DateTime?
+  readerLastMessageAt      DateTime?
+  readerLastSyncAt         DateTime?
+  readerNumberMasked       String?
+  historicalDiscarded      Int                      @default(0)
+  readerReconnectCount     Int                      @default(0)
+  createdAt                DateTime                 @default(now())
+  updatedAt                DateTime                 @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 

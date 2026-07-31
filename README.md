@@ -470,3 +470,17 @@ JWT_ACCESS_SECRET='ci-only-auth-test-secret-change-me-1234567890' npm run test:i
 
 La suite acumulada supera 200 pruebas entre unitarias e integración. CI ejecuta migraciones, seed,
 verificación de integridad, Prettier, tests, lint, typecheck y builds de API/Web.
+
+## WhatsApp Web QR Read Only
+
+Architecture v2.4 agrega un servicio privado `whatsapp-reader` basado en Baileys. No usa Meta Cloud API,
+no envía mensajes y no importa historial. Para producción, configura las variables `WHATSAPP_READER_*`,
+levanta el servicio y ejecuta `./scripts/production/pair-whatsapp-reader.sh`; el comando permanece esperando
+el escaneo del QR. La documentación está en [docs/whatsapp-web-qr-readonly.md](docs/whatsapp-web-qr-readonly.md).
+
+## Financial Intelligence Phase 1
+
+El módulo `financial/` ofrece dashboard, gastos, categorías y gastos recurrentes idempotentes. Requiere
+`financial.read` para lectura y `financial.manage` para mutaciones. Los detalles están en
+[docs/financial-intelligence.md](docs/financial-intelligence.md), [docs/expenses.md](docs/expenses.md) y
+[docs/recurring-expenses.md](docs/recurring-expenses.md).

@@ -96,6 +96,9 @@ jobs:
       - name: Build backend
         run: npm run build:api
 
+      - name: Build WhatsApp Web reader
+        run: npm run build --workspace=@superflash/whatsapp-reader
+
       - name: Validate and start Docker Compose
         run: |
           docker compose config

@@ -30,6 +30,7 @@ export class WhatsAppProcessor implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(WhatsAppProcessor.name);
   private interval: NodeJS.Timeout | undefined;
   private running = false;
+  private webhookHandler: ((event: CommercialEvent) => void) | undefined;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -40,11 +41,16 @@ export class WhatsAppProcessor implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
-    this.events.on(
-      'WhatsAppWebhookReceived',
-      (event: CommercialEvent) =>
-        void this.processWebhookEvent(String(event.payload.webhookEventId ?? '')),
-    );
+    this.webhookHandler = (event: CommercialEvent) => {
+      void this.processWebhookEvent(String(event.payload.webhookEventId ?? '')).catch(
+        (error: unknown) => {
+          this.logger.error(
+            error instanceof Error ? error.message : 'WhatsApp webhook processing failed',
+          );
+        },
+      );
+    };
+    this.events.on('WhatsAppWebhookReceived', this.webhookHandler);
     void this.processAvailable();
     this.interval = setInterval(() => void this.processAvailable(), 1_000);
     this.interval.unref();
@@ -52,6 +58,8 @@ export class WhatsAppProcessor implements OnModuleInit, OnModuleDestroy {
 
   onModuleDestroy(): void {
     if (this.interval) clearInterval(this.interval);
+    if (this.webhookHandler) this.events.off('WhatsAppWebhookReceived', this.webhookHandler);
+    this.webhookHandler = undefined;
   }
 
   async processAvailable(): Promise<void> {

@@ -12,6 +12,10 @@ import type {
   CommunicationConfigurationCheck,
   WhatsAppReadOnlyHealth,
   WhatsAppReadOnlySyncStatus,
+  WhatsAppWebReadOnlyStatus,
+  FinancialCategory,
+  FinancialDashboard,
+  FinancialExpense,
   CredentialRecord,
   Fulfillment,
   JsonRecord,
@@ -338,6 +342,24 @@ export const api = {
     request<WhatsAppReadOnlySyncStatus>('/communication/channels/whatsapp-read-only/reindex', {
       method: 'POST',
     }),
+  getWhatsAppWebReadOnlyStatus: () =>
+    request<WhatsAppWebReadOnlyStatus>('/communication/channels/whatsapp-web-read-only/status'),
+  requestWhatsAppWebPairing: () =>
+    request<WhatsAppWebReadOnlyStatus>('/communication/channels/whatsapp-web-read-only/pairing', {
+      method: 'POST',
+    }),
+  reconnectWhatsAppWeb: () =>
+    request<JsonRecord>('/communication/channels/whatsapp-web-read-only/reconnect', {
+      method: 'POST',
+    }),
+  cancelWhatsAppWebPairing: () =>
+    request<JsonRecord>('/communication/channels/whatsapp-web-read-only/cancel', {
+      method: 'POST',
+    }),
+  unlinkWhatsAppWeb: () =>
+    request<WhatsAppWebReadOnlyStatus>('/communication/channels/whatsapp-web-read-only/unlink', {
+      method: 'POST',
+    }),
   saveWhatsAppConnection: (body: JsonRecord) =>
     request<WhatsAppConnection>('/integrations/whatsapp/connection', {
       method: 'PUT',
@@ -457,6 +479,33 @@ export const api = {
     void consume().catch(() => undefined);
     return () => controller.abort();
   },
+  getFinancialDashboard: (query = '') =>
+    request<FinancialDashboard>(`/financial/dashboard${query}`),
+  getFinancialCategories: () => request<FinancialCategory[]>('/financial/categories'),
+  createFinancialCategory: (body: JsonRecord) =>
+    request<FinancialCategory>('/financial/categories', { method: 'POST', ...jsonBody(body) }),
+  updateFinancialCategory: (id: string, body: JsonRecord) =>
+    request<FinancialCategory>(`/financial/categories/${id}`, {
+      method: 'PATCH',
+      ...jsonBody(body),
+    }),
+  archiveFinancialCategory: (id: string) =>
+    request<FinancialCategory>(`/financial/categories/${id}/archive`, { method: 'POST' }),
+  getFinancialExpenses: (query = '') =>
+    request<Paginated<FinancialExpense>>(`/financial/expenses${query}`),
+  createFinancialExpense: (body: JsonRecord) =>
+    request<FinancialExpense>('/financial/expenses', { method: 'POST', ...jsonBody(body) }),
+  updateFinancialExpense: (id: string, body: JsonRecord) =>
+    request<FinancialExpense>(`/financial/expenses/${id}`, { method: 'PATCH', ...jsonBody(body) }),
+  archiveFinancialExpense: (id: string) =>
+    request<FinancialExpense>(`/financial/expenses/${id}/archive`, { method: 'POST' }),
+  getRecurringExpenses: () => request<JsonRecord[]>('/financial/recurring'),
+  createRecurringExpense: (body: JsonRecord) =>
+    request<JsonRecord>('/financial/recurring', { method: 'POST', ...jsonBody(body) }),
+  updateRecurringExpense: (id: string, body: JsonRecord) =>
+    request<JsonRecord>(`/financial/recurring/${id}`, { method: 'PATCH', ...jsonBody(body) }),
+  generateRecurringExpenses: () =>
+    request<{ generated: number }>('/financial/recurring/generate', { method: 'POST' }),
 };
 
 export function queryString(params: Record<string, string | number | boolean | undefined>): string {

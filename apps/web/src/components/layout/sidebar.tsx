@@ -22,6 +22,17 @@ const sections: { label: string; items: NavItem[] }[] = [
       { label: 'Dashboard', href: '/', icon: '⌂' },
       { label: 'Mi Día', href: '/my-day', icon: '◷', permission: 'followups.read' },
       { label: 'Revenue Intelligence', href: '/revenue', icon: '▥', permission: 'reports.read' },
+      {
+        label: 'Finanzas',
+        href: '/financial',
+        icon: '$',
+        permission: 'financial.read',
+        children: [
+          { label: 'Dashboard', href: '/financial' },
+          { label: 'Gastos', href: '/financial/expenses' },
+          { label: 'Categorías', href: '/financial/categories' },
+        ],
+      },
     ],
   },
   {

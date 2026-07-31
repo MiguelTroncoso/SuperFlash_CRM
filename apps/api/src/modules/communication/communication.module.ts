@@ -14,15 +14,26 @@ import { WhatsAppReadOnlyAnalyticsService } from './services/whatsapp-readonly-a
 import { WhatsAppChannelProvider } from './providers/whatsapp/whatsapp-channel.provider';
 import { WhatsAppReadOnlyHealthService } from './providers/whatsapp-readonly/whatsapp-readonly.health';
 import { WhatsAppReadOnlyProvider } from './providers/whatsapp-readonly/whatsapp-readonly.provider';
+import {
+  WhatsAppWebReadOnlyController,
+  WhatsAppWebReadOnlyInternalController,
+} from './providers/whatsapp-web-readonly/whatsapp-web-readonly.controller';
+import { WhatsAppWebReadOnlyService } from './providers/whatsapp-web-readonly/whatsapp-web-readonly.service';
 
 @Global()
 @Module({
   imports: [AuthModule, AuditModule, PrismaModule, WhatsAppModule],
-  controllers: [CommunicationController, CommunicationWebhookController],
+  controllers: [
+    CommunicationController,
+    CommunicationWebhookController,
+    WhatsAppWebReadOnlyController,
+    WhatsAppWebReadOnlyInternalController,
+  ],
   providers: [
     CommunicationMetricsService,
     WhatsAppChannelProvider,
     WhatsAppReadOnlyProvider,
+    WhatsAppWebReadOnlyService,
     WhatsAppReadOnlyHealthService,
     ConversationImportService,
     WhatsAppReadOnlyAnalyticsService,

@@ -30,8 +30,12 @@ export class AutomationProcessor implements OnModuleInit, OnModuleDestroy {
       this.handlers.set(eventName, handler);
       this.events.on(eventName, handler);
     }
-    void this.service.processAvailable();
-    void this.service.enqueueScheduledTriggers();
+    void this.service.processAvailable().catch((error: unknown) => {
+      this.logger.error(error instanceof Error ? error.message : 'Automation processor failed');
+    });
+    void this.service.enqueueScheduledTriggers().catch((error: unknown) => {
+      this.logger.error(error instanceof Error ? error.message : 'Automation scheduler failed');
+    });
     this.executionInterval = setInterval(() => void this.process(), 1_000);
     this.scheduleInterval = setInterval(() => void this.schedule(), 60_000);
     this.executionInterval.unref();

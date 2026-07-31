@@ -211,3 +211,15 @@ La capa analítica agrupa monedas, nunca las convierte, y devuelve únicamente
 proyecciones autorizadas por `reports.read`. La futura atribución y el
 Analytical Event Store consumirán eventos durables del Transactional Outbox sin
 alterar estas entidades.
+
+## Financial Intelligence Phase 1
+
+`ExpenseCategory` clasifica egresos por organización. `Expense` conserva el
+histórico de cada gasto, incluyendo moneda, método de pago y categoría.
+`RecurringExpense` es la plantilla operativa; cada ocurrencia materializada
+usa `organizationId + recurringExpenseId + occurrenceKey` como identidad
+idempotente. Pausar o finalizar una plantilla no modifica ocurrencias pasadas.
+
+El dashboard financiero es una proyección de lectura: suma ventas `CONFIRMED`
+o `FULFILLED` y gastos no eliminados por período y moneda. No persiste saldos
+derivados ni modifica Sales, Payments o Revenue Intelligence.

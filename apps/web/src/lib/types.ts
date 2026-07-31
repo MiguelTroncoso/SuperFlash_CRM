@@ -605,6 +605,80 @@ export interface WhatsAppReadOnlySyncStatus {
   externalWriteEnabled: false;
 }
 
+export interface WhatsAppWebReadOnlyStatus {
+  channel: 'WHATSAPP_WEB_READ_ONLY';
+  provider: string;
+  configured: boolean;
+  missingConfiguration: string[];
+  status: string;
+  qr: string | null;
+  qrExpiresAt: string | null;
+  connectedAt: string | null;
+  disconnectedAt: string | null;
+  lastMessageAt: string | null;
+  lastSynchronizationAt: string | null;
+  number: string | null;
+  historicalDiscarded: number;
+  duplicatesAvoided: number;
+  reconnects: number;
+  ingestionStartedAt: string | null;
+  firstAcceptedAt: string | null;
+  lastError: string | null;
+  readOnly: true;
+  externalWriteEnabled: false;
+}
+
+export interface FinancialCategory {
+  id: string;
+  name: string;
+  description: string | null;
+  color: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FinancialExpense {
+  id: string;
+  amount: string;
+  currency: string;
+  expenseDate: string;
+  vendorName: string | null;
+  description: string | null;
+  paymentMethod: string;
+  frequency: string;
+  active: boolean;
+  notes: string | null;
+  receiptUrl: string | null;
+  generated: boolean;
+  category: { id: string; name: string; color: string | null } | null;
+}
+
+export interface FinancialDashboard {
+  month: string;
+  currency: string | null;
+  revenue: string;
+  expenses: string;
+  grossProfit: string;
+  netProfit: string;
+  marginPercent: number;
+  mrr: string;
+  arr: string;
+  estimatedCash: string;
+  fixedMonthlyCost: string;
+  variableCost: string;
+  breakEven: string;
+  previousMonth: { revenue: string; expenses: string; netProfit: string };
+  upcomingRecurringExpenses: Array<{
+    id: string;
+    name: string;
+    amount: string;
+    currency: string;
+    nextOccurrenceDate: string | null;
+  }>;
+  monthlyTrend: Array<{ month: string; revenue: string; expenses: string; netProfit: string }>;
+}
+
 export interface WhatsAppConversation {
   id: string;
   externalContactPhone: string;

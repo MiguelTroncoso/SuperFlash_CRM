@@ -18,6 +18,7 @@ export interface AppConfiguration {
   whatsappGraphApiVersion: string;
   whatsappWebhookPublicUrl: string;
   whatsappProvider: WhatsAppProviderConfiguration;
+  whatsappReader: WhatsAppReaderConfiguration;
 }
 
 export interface WhatsAppProviderConfiguration {
@@ -25,6 +26,14 @@ export interface WhatsAppProviderConfiguration {
   businessAccountId: string | null;
   graphVersion: string;
   enabled: boolean;
+  missing: readonly string[];
+}
+
+export interface WhatsAppReaderConfiguration {
+  enabled: boolean;
+  serviceUrl: string;
+  serviceToken: string | null;
+  organizationId: string | null;
   missing: readonly string[];
 }
 
@@ -109,6 +118,15 @@ export function buildConfiguration(environment: Environment): AppConfiguration {
     .filter(([, value]) => !value)
     .map(([key]) => key);
 
+  const readerEnabled = environment.WHATSAPP_READER_ENABLED === 'true';
+  const readerMissing = Object.entries({
+    WHATSAPP_READER_SERVICE_URL: environment.WHATSAPP_READER_SERVICE_URL?.trim(),
+    WHATSAPP_READER_SERVICE_TOKEN: environment.WHATSAPP_READER_SERVICE_TOKEN?.trim(),
+    WHATSAPP_READER_ORGANIZATION_ID: environment.WHATSAPP_READER_ORGANIZATION_ID?.trim(),
+  })
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
+
   return {
     nodeEnv,
     apiPort: parsePositiveInteger(environment.API_PORT, 3001, 'API_PORT'),
@@ -139,6 +157,13 @@ export function buildConfiguration(environment: Environment): AppConfiguration {
       graphVersion: whatsappGraphVersion,
       enabled: whatsappMissing.length === 0,
       missing: whatsappMissing,
+    },
+    whatsappReader: {
+      enabled: readerEnabled && readerMissing.length === 0,
+      serviceUrl: environment.WHATSAPP_READER_SERVICE_URL?.trim() || '',
+      serviceToken: environment.WHATSAPP_READER_SERVICE_TOKEN?.trim() || null,
+      organizationId: environment.WHATSAPP_READER_ORGANIZATION_ID?.trim() || null,
+      missing: readerMissing,
     },
   };
 }

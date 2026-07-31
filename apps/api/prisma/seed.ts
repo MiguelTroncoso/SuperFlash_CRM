@@ -113,6 +113,21 @@ const permissions = [
   { key: 'whatsapp.manage', name: 'Administrar conexión WhatsApp' },
   { key: 'whatsapp.templates.read', name: 'Leer plantillas WhatsApp' },
   { key: 'whatsapp.conversations.assign', name: 'Asignar conversaciones WhatsApp' },
+  { key: 'financial.read', name: 'Leer inteligencia financiera' },
+  { key: 'financial.manage', name: 'Gestionar inteligencia financiera' },
+] as const;
+
+const expenseCategories = [
+  'Publicidad',
+  'Hosting',
+  'Software',
+  'Dominios',
+  'Servicios',
+  'Comisiones',
+  'Impuestos',
+  'Operación',
+  'Personal',
+  'Otros',
 ] as const;
 
 const pipelineStages = [
@@ -200,6 +215,7 @@ const salesPermissionKeys = [
   'whatsapp.send',
   'whatsapp.templates.read',
   'whatsapp.conversations.assign',
+  'financial.read',
 ] as const;
 
 const catalogExamplesEnabled =
@@ -265,6 +281,14 @@ async function seed(): Promise<void> {
           slug: 'demo',
         },
       });
+
+      for (const name of expenseCategories) {
+        await transaction.expenseCategory.upsert({
+          where: { organizationId_name: { organizationId: organization.id, name } },
+          update: { active: true, deletedAt: null },
+          create: { organizationId: organization.id, name },
+        });
+      }
 
       const roleRecords = new Map<string, string>();
       for (const role of roles) {
