@@ -1,6 +1,18 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { OpportunityPriority } from '@prisma/client';
 import { Transform } from 'class-transformer';
-import { IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 const trim = ({ value }: { value: unknown }): unknown =>
   typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : value;
@@ -55,6 +67,18 @@ export class CreateOpportunityDto {
   @Matches(CURRENCY)
   @Transform(upper)
   currency?: string | null;
+
+  @ApiPropertyOptional({ enum: OpportunityPriority, default: OpportunityPriority.NORMAL })
+  @IsOptional()
+  @IsEnum(OpportunityPriority)
+  priority?: OpportunityPriority;
+
+  @ApiPropertyOptional({ minimum: 0, maximum: 100, default: 50 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  probability?: number;
 
   @ApiPropertyOptional({ nullable: true, maxLength: 5000 })
   @IsOptional()

@@ -334,6 +334,130 @@ export interface MyDaySummary {
   [key: string]: number;
 }
 
+export interface IntelligenceMoneyMetric {
+  currency: string;
+  amount: string;
+  count: number;
+}
+
+export interface IntelligenceDashboard {
+  generatedAt: string;
+  period: { from: string; to: string };
+  kpis: {
+    salesToday: IntelligenceMoneyMetric[];
+    salesWeek: IntelligenceMoneyMetric[];
+    salesMonth: IntelligenceMoneyMetric[];
+    billingToday: IntelligenceMoneyMetric[];
+    billingMonth: IntelligenceMoneyMetric[];
+    mrr: IntelligenceMoneyMetric[];
+    arr: IntelligenceMoneyMetric[];
+    activeCustomers: number;
+    newCustomers: number;
+    lostCustomers: number;
+    renewalsMonth: number;
+    pendingRenewals: number;
+    pendingBalance: Array<{ currency: string; amount: string }>;
+    pendingFulfillments: number;
+    pendingActivations: number;
+    conversion: number;
+  };
+  charts: {
+    revenueDaily: Array<{ date: string; currency: string; revenue: string; sales: number }>;
+    revenueMonthly: Array<{ month: string; currency: string; revenue: string; sales: number }>;
+    salesCountry: Array<{ country: string; currency: string; revenue: string; sales: number }>;
+    salesProduct: Array<{
+      product: string;
+      currency: string;
+      revenue: string;
+      units: string;
+      sales: number;
+    }>;
+    newCustomersWeekly: Array<{ week: string; customers: number }>;
+    funnel: Array<{ stage: string; category: string; count: number }>;
+    renewalsTrend: Array<{
+      month: string;
+      status: string;
+      currency: string;
+      count: number;
+      amount: string;
+    }>;
+    mrrHistory: Array<{ month: string; currency: string; mrr: string }>;
+  };
+}
+
+export interface BusinessIntelligenceResponse {
+  generatedAt: string;
+  period: { from: string; to: string };
+  view: string;
+  data: JsonRecord | Array<JsonRecord>;
+}
+
+export interface Customer360Response {
+  contact: JsonRecord;
+  opportunities: JsonRecord[];
+  activities: JsonRecord[];
+  followUps: JsonRecord[];
+  conversations: JsonRecord[];
+  sales: JsonRecord[];
+  payments: JsonRecord[];
+  subscriptions: JsonRecord[];
+  renewals: JsonRecord[];
+  products: JsonRecord[];
+  fulfillments: JsonRecord[];
+  activations: JsonRecord[];
+  credentials: JsonRecord[];
+  timeline: JsonRecord[];
+  metrics: JsonRecord;
+}
+
+export interface GlobalSearchResult {
+  type: string;
+  id: string;
+  label: string;
+  detail: string | null;
+  href: string;
+  masked?: boolean;
+}
+
+export interface GlobalSearchResponse {
+  query: string;
+  results: GlobalSearchResult[];
+}
+
+export interface OperationalAgendaResponse {
+  generatedAt: string;
+  sections: Record<
+    string,
+    Array<{ id: string; title: string; dueAt: string | null; detail: string; href: string }>
+  >;
+}
+
+export interface PipelineIntelligenceItem extends JsonRecord {
+  id: string;
+  title: string;
+  expectedAmount: string | null;
+  currency: string | null;
+  probability: number;
+  priority: string;
+  ageDays: number;
+  daysInStage: number | null;
+  weightedValue: string | null;
+  stalled: boolean;
+  createdAt: string;
+  lastStageChangedAt: string | null;
+  contact: JsonRecord;
+  pipelineStage: JsonRecord;
+  owner: Person | null;
+  product: NamedRelation | null;
+  campaign: NamedRelation | null;
+  nextFollowUp: JsonRecord | null;
+}
+
+export interface PipelineIntelligenceResponse {
+  data: PipelineIntelligenceItem[];
+  pagination: Pagination;
+}
+
 export interface MessageTemplate {
   id: string;
   name: string;

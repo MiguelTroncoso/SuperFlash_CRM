@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -185,22 +186,29 @@ export function ContactsPage(): React.ReactElement {
       accessorKey: 'displayName',
       header: 'Contacto',
       cell: ({ row }) => (
-        <button
-          className="text-left"
-          onClick={() => {
-            setSelected(row.original);
-            setDrawer('edit');
-            setDrawerTab('details');
-          }}
-          type="button"
-        >
-          <p className="font-bold text-slate-800 hover:text-brand-600 dark:text-slate-100">
-            {row.original.displayName ?? 'Lead sin nombre'}
-          </p>
-          <p className="mt-1 text-xs text-slate-400">
-            {row.original.email ?? row.original.phone ?? 'Sin dato de contacto'}
-          </p>
-        </button>
+        <div className="text-left">
+          <button
+            onClick={() => {
+              setSelected(row.original);
+              setDrawer('edit');
+              setDrawerTab('details');
+            }}
+            type="button"
+          >
+            <p className="font-bold text-slate-800 hover:text-brand-600 dark:text-slate-100">
+              {row.original.displayName ?? 'Lead sin nombre'}
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              {row.original.email ?? row.original.phone ?? 'Sin dato de contacto'}
+            </p>
+          </button>
+          <Link
+            className="mt-2 inline-block text-[11px] font-bold text-brand-600 hover:text-brand-700"
+            href={`/customers/${row.original.id}`}
+          >
+            Ver Customer 360 →
+          </Link>
+        </div>
       ),
     },
     {

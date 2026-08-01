@@ -22,19 +22,20 @@ la arquitectura aprobada.
 
 ## Lenguaje ubicuo
 
-| Término              | Definición                                                                          |
-| -------------------- | ----------------------------------------------------------------------------------- |
-| Organization         | Tenant que agrupa usuarios, configuración y datos de negocio.                       |
-| Contact              | Persona o lead perteneciente a una organización.                                    |
-| Opportunity          | Posible acuerdo comercial dentro del pipeline.                                      |
-| Sale                 | Acuerdo comercial confirmado o en proceso de confirmación.                          |
-| Payment              | Movimiento financiero asociado a una venta.                                         |
-| Subscription         | Ciclo recurrente originado por un SaleItem elegible.                                |
-| Renewal              | Identidad histórica de un periodo de renovación.                                    |
-| Snapshot             | Representación inmutable del catálogo y pricing aplicado en un momento comercial.   |
-| Transactional Outbox | Registro durable de un evento creado en la misma transacción del cambio de dominio. |
-| Revenue Intelligence | Capa de lectura para métricas, embudos, cohortes, tendencias y forecast comercial.  |
-| Renewal Intelligence | Capa operativa para administrar ciclos, riesgo, recuperación y lifecycle.           |
+| Término                | Definición                                                                          |
+| ---------------------- | ----------------------------------------------------------------------------------- |
+| Organization           | Tenant que agrupa usuarios, configuración y datos de negocio.                       |
+| Contact                | Persona o lead perteneciente a una organización.                                    |
+| Opportunity            | Posible acuerdo comercial dentro del pipeline.                                      |
+| Sale                   | Acuerdo comercial confirmado o en proceso de confirmación.                          |
+| Payment                | Movimiento financiero asociado a una venta.                                         |
+| Subscription           | Ciclo recurrente originado por un SaleItem elegible.                                |
+| Renewal                | Identidad histórica de un periodo de renovación.                                    |
+| Snapshot               | Representación inmutable del catálogo y pricing aplicado en un momento comercial.   |
+| Transactional Outbox   | Registro durable de un evento creado en la misma transacción del cambio de dominio. |
+| Revenue Intelligence   | Capa de lectura para métricas, embudos, cohortes, tendencias y forecast comercial.  |
+| Renewal Intelligence   | Capa operativa para administrar ciclos, riesgo, recuperación y lifecycle.           |
+| Executive Intelligence | Capa read-side para dirección, BI, Customer 360, agenda y priorización comercial.   |
 
 ## Mapa de dominios
 
@@ -98,6 +99,10 @@ Architecture v2.6 agrega `Renewal Intelligence` como módulo de operación manua
 de renovaciones. Consume los ciclos y snapshots existentes, crea recordatorios
 internos idempotentes y no ejecuta comunicaciones externas.
 
+Architecture v2.7 agrega `Executive Intelligence & CRM Maturity` como capa
+read-side sobre los datos transaccionales existentes. No crea un modelo
+comercial paralelo ni modifica WhatsApp, Sales, Payments, Renewals o Fulfillment.
+
 ### Evolución y roadmap futuro
 
 Operations and Fulfillment está implementado como Architecture v1.1 y pendiente
@@ -156,6 +161,7 @@ Una versión arquitectónica solo puede aprobarse cuando:
 | Architecture v2.4 | WhatsApp Web Read Only         | **IMPLEMENTED / PENDING PRODUCTION** | Pairing QR, sesión persistente, reader Baileys y sincronización inbound nueva.            |
 | Architecture v2.5 | Financial Intelligence Phase 1 | **IMPLEMENTED**                      | Gastos, categorías, recurrencias idempotentes y dashboard financiero.                     |
 | Architecture v2.6 | Renewal Intelligence           | **IMPLEMENTED**                      | Centro de Renovaciones, lifecycle, recordatorios, CSV, reportes y calendario.             |
+| Architecture v2.7 | Executive Intelligence         | **IMPLEMENTED / PENDING REVIEW**     | Dashboard ejecutivo, BI, Customer 360, agenda, pipeline avanzado y búsqueda global.       |
 
 ### Architecture v1.0 — Commercial Core
 
@@ -269,6 +275,18 @@ Commercial Core y deja Revenue Intelligence y Financial Intelligence como
 consumidores de los datos persistidos. No envía WhatsApp, no automatiza
 respuestas, no usa IA y no modifica automáticamente el Pipeline.
 
+### Architecture v2.7 — Executive Intelligence & CRM Maturity
+
+Estado: **IMPLEMENTED / PENDING REVIEW**
+
+Esta versión agrega el read-side ejecutivo sobre los dominios existentes:
+Dashboard Ejecutivo, Business Intelligence por dimensiones, Customer 360,
+Agenda Operativa, Pipeline Intelligence y búsqueda global. No crea dominios
+transaccionales nuevos ni modifica las reglas de negocio. La única migración
+nueva agrega probabilidad y prioridad a Opportunity con constraint de rango.
+Las métricas se agrupan por moneda y cualquier indicador no soportado por datos
+persistidos se devuelve como no disponible, sin inventar estimaciones.
+
 ## Índice de ADRs
 
 - [ADR-006 — Sales Snapshot](../ADR-006-sales-snapshot.md)
@@ -292,6 +310,10 @@ respuestas, no usa IA y no modifica automáticamente el Pipeline.
 - [ADR-024 — WhatsApp Web Read-Only Source](../ADR-024-whatsapp-web-readonly-source.md)
 - [ADR-025 — Financial Intelligence Boundary](../ADR-025-financial-intelligence-boundary.md)
 - [ADR-026 — Recurring Expense Identity](../ADR-026-recurring-expense-identity.md)
+
+Sprint 28 no requiere ADR nuevo: las vistas read-side reutilizan las decisiones
+del Commercial Core, Revenue Intelligence, Financial Intelligence y Renewal
+Intelligence.
 
 La arquitectura de canales y sincronización está documentada en
 [WhatsApp Read Only](../whatsapp-readonly.md), [Synchronization](../synchronization.md)
@@ -317,3 +339,4 @@ Las definiciones de la fase están documentadas en [revenue-intelligence.md](../
 | Architecture v2.4 WhatsApp Web Read Only | `feat: connect whatsapp web qr read-only source`              | Reader QR privado, sesión cifrada y mensajes inbound nuevos.                |
 | Architecture v2.5 Financial Intelligence | `feat: implement financial intelligence phase 1`              | Gastos, categorías, recurrencias y dashboard financiero implementados.      |
 | Architecture v2.6 Renewal Intelligence   | `feat: implement renewal intelligence and customer lifecycle` | Centro de Renovaciones, ciclo de vida, recordatorios, CSV y reportes.       |
+| Architecture v2.7 Executive Intelligence | `feat: implement executive intelligence and CRM maturity`     | Dashboard, BI, Customer 360, agenda, pipeline avanzado y búsqueda global.   |

@@ -16,6 +16,12 @@ import type {
   FinancialCategory,
   FinancialDashboard,
   FinancialExpense,
+  BusinessIntelligenceResponse,
+  Customer360Response,
+  GlobalSearchResponse,
+  IntelligenceDashboard,
+  OperationalAgendaResponse,
+  PipelineIntelligenceResponse,
   RenewalCenterDashboard,
   RenewalCenterItem,
   RenewalCenterReport,
@@ -152,6 +158,15 @@ export const api = {
     request<AuthUser>('/auth/profile', { method: 'PATCH', ...jsonBody(body) }),
   getMyDay: (query = '') => request<MyDayResponse>(`/my-day${query}`),
   getMyDaySummary: (query = '') => request<MyDaySummary>(`/my-day/summary${query}`),
+  getExecutiveDashboard: (query = '') =>
+    request<IntelligenceDashboard>(`/executive/dashboard${query}`),
+  getBusinessIntelligence: (view: string, query = '') =>
+    request<BusinessIntelligenceResponse>(`/business-intelligence/${view}${query}`),
+  getCustomer360: (contactId: string) => request<Customer360Response>(`/customer-360/${contactId}`),
+  getGlobalSearch: (query = '') => request<GlobalSearchResponse>(`/global-search${query}`),
+  getOperationalAgenda: () => request<OperationalAgendaResponse>('/agenda/operational'),
+  getPipelineIntelligence: (query = '') =>
+    request<PipelineIntelligenceResponse>(`/pipeline/intelligence${query}`),
   getContacts: (query = '') => request<Paginated<Contact>>(`/contacts${query}`),
   getContactAssignees: () => request<Person[]>('/contacts/assignees'),
   createContact: (body: JsonRecord) =>

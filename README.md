@@ -499,3 +499,11 @@ y [docs/renewal-import.md](docs/renewal-import.md).
 
 El sprint no envía WhatsApp, no ejecuta respuestas automáticas, no usa IA y no modifica automáticamente
 el Pipeline.
+
+## Sprint 28 · Executive Intelligence & CRM Maturity
+
+El Dashboard ejecutivo (`/`) y Business Intelligence consumen métricas reales del núcleo comercial sin duplicar lógica transaccional. También están disponibles Customer 360 (`/customers/:id`), Agenda Operativa (`/agenda`), Pipeline Intelligence (`/pipeline/intelligence`) y búsqueda global mediante `Ctrl/⌘ K`.
+
+La API agrega las rutas read-side `/api/v1/executive/dashboard`, `/api/v1/business-intelligence/:view`, `/api/v1/customer-360/:contactId`, `/api/v1/global-search`, `/api/v1/agenda/operational` y `/api/v1/pipeline/intelligence`. Requieren los permisos existentes `reports.read`, `contacts.read`, `followups.read` u `opportunities.read`.
+
+La única migración nueva de este sprint agrega `Opportunity.probability` y `Opportunity.priority` con validación PostgreSQL. No se modificaron migraciones anteriores. Detalles en [docs/executive-dashboard.md](docs/executive-dashboard.md), [docs/business-intelligence.md](docs/business-intelligence.md), [docs/customer-360.md](docs/customer-360.md), [docs/operational-agenda.md](docs/operational-agenda.md), [docs/pipeline-intelligence.md](docs/pipeline-intelligence.md) y [docs/crm-v1-readiness.md](docs/crm-v1-readiness.md).

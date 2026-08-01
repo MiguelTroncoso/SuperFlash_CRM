@@ -1,4 +1,4 @@
-import { PipelineStageCategory, Prisma } from '@prisma/client';
+import { OpportunityPriority, PipelineStageCategory, Prisma } from '@prisma/client';
 
 const DECIMAL_AMOUNT = /^(?:0|[1-9]\d{0,11})(?:\.\d{1,2})?$/;
 
@@ -42,6 +42,8 @@ export interface PublicOpportunity {
   notes: string | null;
   expectedAmount: string | null;
   currency: string | null;
+  probability: number;
+  priority: OpportunityPriority;
   status: OpportunityStatus;
   archivedAt: Date | null;
   archiveReason: string | null;

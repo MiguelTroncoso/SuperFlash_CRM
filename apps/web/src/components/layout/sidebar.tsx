@@ -21,6 +21,22 @@ const sections: { label: string; items: NavItem[] }[] = [
     items: [
       { label: 'Dashboard', href: '/', icon: '⌂' },
       { label: 'Mi Día', href: '/my-day', icon: '◷', permission: 'followups.read' },
+      { label: 'Agenda operativa', href: '/agenda', icon: '▤', permission: 'followups.read' },
+      {
+        label: 'Business Intelligence',
+        href: '/business-intelligence',
+        icon: '◫',
+        permission: 'reports.read',
+        children: [
+          { label: 'Resumen', href: '/business-intelligence' },
+          { label: 'Países', href: '/business-intelligence/countries' },
+          { label: 'Productos', href: '/business-intelligence/products' },
+          { label: 'Campañas', href: '/business-intelligence/campaigns' },
+          { label: 'Vendedores', href: '/business-intelligence/sellers' },
+          { label: 'Providers', href: '/business-intelligence/providers' },
+          { label: 'Renovaciones', href: '/business-intelligence/renewals' },
+        ],
+      },
       { label: 'Revenue Intelligence', href: '/revenue', icon: '▥', permission: 'reports.read' },
       {
         label: 'Finanzas',
@@ -39,7 +55,16 @@ const sections: { label: string; items: NavItem[] }[] = [
     label: 'Comercial',
     items: [
       { label: 'Contactos', href: '/contacts', icon: '◎', permission: 'contacts.read' },
-      { label: 'Pipeline', href: '/pipeline', icon: '◇', permission: 'opportunities.read' },
+      {
+        label: 'Pipeline',
+        href: '/pipeline',
+        icon: '◇',
+        permission: 'opportunities.read',
+        children: [
+          { label: 'Kanban', href: '/pipeline' },
+          { label: 'Intelligence', href: '/pipeline/intelligence' },
+        ],
+      },
       { label: 'Ventas', href: '/sales', icon: '↗', permission: 'sales.read' },
       {
         label: 'Renovaciones',

@@ -214,6 +214,8 @@ export class OpportunitiesService {
             userId: assignedUserId,
             expectedAmount: money.amount,
             currency: money.currency,
+            probability: dto.probability ?? 50,
+            priority: dto.priority ?? 'NORMAL',
             ...(dto.campaignId ? { campaignId: dto.campaignId } : {}),
             ...(dto.productId ? { productId: dto.productId } : {}),
             lastStageChangedAt: now,
@@ -353,6 +355,8 @@ export class OpportunitiesService {
       title,
       expectedAmount: money.amount,
       currency: money.currency,
+      ...(dto.probability !== undefined ? { probability: dto.probability } : {}),
+      ...(dto.priority !== undefined ? { priority: dto.priority } : {}),
     };
     if (dto.campaignId !== undefined) {
       if (dto.campaignId) await this.assertCampaign(context.user.organizationId, dto.campaignId);
@@ -404,6 +408,8 @@ export class OpportunitiesService {
             currency: money.currency,
             campaignId: dto.campaignId ?? current.campaignId,
             productId: dto.productId ?? current.productId,
+            probability: String(dto.probability ?? current.probability),
+            priority: dto.priority ?? current.priority,
           }),
           ip: context.metadata.ipAddress,
         });
@@ -1373,6 +1379,8 @@ export class OpportunitiesService {
       notes: opportunity.notes,
       expectedAmount: this.decimalString(opportunity.expectedAmount),
       currency: opportunity.currency,
+      probability: opportunity.probability,
+      priority: opportunity.priority,
       status: opportunityStatus(opportunity.archivedAt, opportunity.pipelineStage.category),
       archivedAt: opportunity.archivedAt,
       archiveReason: opportunity.archiveReason,
@@ -1466,6 +1474,8 @@ export class OpportunitiesService {
       currency: opportunity.currency,
       campaignId: opportunity.campaignId,
       productId: opportunity.productId,
+      probability: String(opportunity.probability),
+      priority: opportunity.priority,
       archivedAt: opportunity.archivedAt?.toISOString() ?? null,
     });
   }

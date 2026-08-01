@@ -136,6 +136,13 @@ enum RenewalReminderStatus {
   CANCELLED
 }
 
+enum OpportunityPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
 enum OutboxEventStatus {
   PENDING
   PROCESSING
@@ -681,17 +688,19 @@ model ContactTag {
 }
 
 model Opportunity {
-  id                 String    @id @default(uuid()) @db.Uuid
-  organizationId     String    @db.Uuid
-  contactId          String    @db.Uuid
-  pipelineStageId    String    @db.Uuid
-  campaignId         String?   @db.Uuid
-  productId          String?   @db.Uuid
-  userId             String?   @db.Uuid
+  id                 String              @id @default(uuid()) @db.Uuid
+  organizationId     String              @db.Uuid
+  contactId          String              @db.Uuid
+  pipelineStageId    String              @db.Uuid
+  campaignId         String?             @db.Uuid
+  productId          String?             @db.Uuid
+  userId             String?             @db.Uuid
   title              String
   notes              String?
-  expectedAmount     Decimal?  @db.Decimal(14, 2)
+  expectedAmount     Decimal?            @db.Decimal(14, 2)
   currency           String?
+  probability        Int                 @default(50)
+  priority           OpportunityPriority @default(NORMAL)
   closedAt           DateTime?
   archivedAt         DateTime?
   archiveReason      String?
@@ -699,8 +708,8 @@ model Opportunity {
   lastStageChangedAt DateTime?
   lostAt             DateTime?
   lostReason         String?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
   deletedAt          DateTime?
 
   organization  Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
@@ -727,6 +736,8 @@ model Opportunity {
   @@index([organizationId, lastStageChangedAt])
   @@index([organizationId, wonAt])
   @@index([organizationId, lostAt])
+  @@index([organizationId, priority, deletedAt])
+  @@index([organizationId, probability, deletedAt])
   @@index([userId])
   @@index([createdAt])
   @@index([closedAt])

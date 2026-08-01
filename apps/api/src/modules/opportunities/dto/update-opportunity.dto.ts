@@ -1,6 +1,18 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { OpportunityPriority } from '@prisma/client';
 import { Transform } from 'class-transformer';
-import { IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 const trim = ({ value }: { value: unknown }): unknown =>
   typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : value;
@@ -40,4 +52,16 @@ export class UpdateOpportunityDto {
   @IsOptional()
   @IsUUID()
   productId?: string | null;
+
+  @ApiPropertyOptional({ enum: OpportunityPriority })
+  @IsOptional()
+  @IsEnum(OpportunityPriority)
+  priority?: OpportunityPriority;
+
+  @ApiPropertyOptional({ minimum: 0, maximum: 100 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  probability?: number;
 }

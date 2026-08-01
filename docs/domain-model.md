@@ -230,3 +230,13 @@ idempotente. Pausar o finalizar una plantilla no modifica ocurrencias pasadas.
 El dashboard financiero es una proyección de lectura: suma ventas `CONFIRMED`
 o `FULFILLED` y gastos no eliminados por período y moneda. No persiste saldos
 derivados ni modifica Sales, Payments o Revenue Intelligence.
+
+## Executive Intelligence & CRM Maturity
+
+Las vistas ejecutivas son proyecciones read-side sobre las entidades existentes;
+no introducen un segundo modelo de ventas ni un almacén analítico transaccional.
+`Opportunity` conserva ahora `probability` (0–100) y `priority` (`LOW`,
+`NORMAL`, `HIGH`, `URGENT`) para priorización operativa. `weightedValue` se
+calcula al leer y no se persiste. Customer 360, Agenda Operativa, búsqueda
+global y Business Intelligence aplican aislamiento por `organizationId` y
+excluyen secretos y campos internos.

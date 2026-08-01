@@ -10,10 +10,13 @@ import { useUiStore } from '@/lib/ui-store';
 
 const PAGE_LABELS: Record<string, string> = {
   activations: 'Activaciones',
+  agenda: 'Agenda operativa',
   automations: 'Automatizaciones',
+  'business-intelligence': 'Business Intelligence',
   catalog: 'Catálogo',
   contacts: 'Contactos',
   credentials: 'Credenciales',
+  customers: 'Customer 360',
   fulfillment: 'Fulfillment',
   'my-day': 'Mi Día',
   notifications: 'Notificaciones',

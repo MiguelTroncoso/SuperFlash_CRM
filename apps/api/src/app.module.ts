@@ -36,6 +36,7 @@ import { SmartInboxModule } from './modules/smart-inbox/smart-inbox.module';
 import { CommunicationModule } from './modules/communication/communication.module';
 import { FinancialModule } from './modules/financial/financial.module';
 import { RenewalIntelligenceModule } from './modules/renewal-intelligence/renewal-intelligence.module';
+import { ExecutiveIntelligenceModule } from './modules/executive-intelligence/executive-intelligence.module';
 
 @Module({
   imports: [
@@ -89,6 +90,7 @@ import { RenewalIntelligenceModule } from './modules/renewal-intelligence/renewa
     CommunicationModule,
     FinancialModule,
     RenewalIntelligenceModule,
+    ExecutiveIntelligenceModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
