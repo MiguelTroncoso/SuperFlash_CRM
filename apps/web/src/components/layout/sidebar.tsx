@@ -141,6 +141,7 @@ const sections: { label: string; items: NavItem[] }[] = [
         href: '/settings/integrations/whatsapp',
         icon: '⚑',
         permission: 'whatsapp.manage',
+        children: [{ label: 'WhatsApp Web Bridge', href: '/settings/channels/whatsapp-web' }],
       },
     ],
   },

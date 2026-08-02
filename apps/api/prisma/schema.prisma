@@ -214,6 +214,15 @@ enum WhatsAppConnectionStatus {
   ERROR
 }
 
+enum WhatsAppWebBridgeStatus {
+  DISABLED
+  PAIRING
+  CONNECTED
+  DISCONNECTED
+  AUTHENTICATION_ERROR
+  ERROR
+}
+
 enum WhatsAppConversationStatus {
   OPEN
   CLOSED
@@ -234,6 +243,7 @@ enum WhatsAppMessageType {
   DOCUMENT
   LOCATION
   CONTACTS
+  STICKER
   BUTTON
   INTERACTIVE
   UNKNOWN
@@ -460,6 +470,8 @@ model Organization {
   whatsappWebhookEvents        WhatsAppWebhookEvent[]
   whatsappMessageStatuses      WhatsAppMessageStatus[]
   communicationSyncCheckpoints CommunicationSyncCheckpoint[]
+  whatsappWebBridgeChannels    WhatsAppWebBridgeChannel[]
+  whatsappWebBridgeRequests    WhatsAppWebBridgeRequest[]
   expenseCategories            ExpenseCategory[]
   recurringExpenses            RecurringExpense[]
   productStockMovements        ProductStockMovement[]
@@ -2283,4 +2295,56 @@ model CommunicationSyncCheckpoint {
   @@index([organizationId, status, lastSynchronizedAt])
   @@index([organizationId, cursorAt, cursorId])
   @@index([nextRetryAt])
+}
+
+model WhatsAppWebBridgeChannel {
+  id                  String                  @id @default(uuid()) @db.Uuid
+  organizationId      String                  @db.Uuid
+  channelKey          String                  @unique
+  status              WhatsAppWebBridgeStatus @default(DISABLED)
+  enabled             Boolean                 @default(false)
+  phoneNumberMasked   String?
+  lastConnectedAt     DateTime?
+  lastDisconnectedAt  DateTime?
+  lastMessageAt       DateTime?
+  lastHeartbeatAt     DateTime?
+  ingestionStartedAt  DateTime?
+  firstAcceptedAt     DateTime?
+  reconnectCount      Int                     @default(0)
+  historicalDiscarded Int                     @default(0)
+  duplicatesAvoided   Int                     @default(0)
+  errorCount          Int                     @default(0)
+  lastError           String?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+  deletedAt           DateTime?
+
+  organization Organization               @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  requests     WhatsAppWebBridgeRequest[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, enabled])
+  @@index([lastHeartbeatAt])
+  @@index([lastMessageAt])
+  @@index([createdAt])
+}
+
+model WhatsAppWebBridgeRequest {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @db.Uuid
+  channelId      String   @db.Uuid
+  requestId      String
+  signature      String
+  createdAt      DateTime @default(now())
+
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  channel      WhatsAppWebBridgeChannel @relation(fields: [organizationId, channelId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, requestId])
+  @@unique([organizationId, signature])
+  @@index([channelId, createdAt])
+  @@index([createdAt])
 }

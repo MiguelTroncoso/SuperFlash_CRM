@@ -39,6 +39,15 @@ trabajando en WhatsApp Business. Consulta [docs/whatsapp-readonly.md](docs/whats
 [docs/synchronization.md](docs/synchronization.md) y
 [docs/read-only-architecture.md](docs/read-only-architecture.md).
 
+Architecture v2.8 — WhatsApp Web Transitional Bridge está **IMPLEMENTED / RISK
+ACCEPTED / PENDING PRODUCTION PAIRING**. `apps/whatsapp-bridge` es un proceso
+Baileys independiente, estrictamente read-only, con sesión AES-256-GCM,
+pairing QR temporal, HMAC interno, replay protection y resolución de tenant por
+configuración de canal. No importa historial, no envía mensajes y no se conecta
+durante CI. Consulta [docs/whatsapp-web-bridge.md](docs/whatsapp-web-bridge.md),
+[docs/whatsapp-web-security.md](docs/whatsapp-web-security.md) y
+[docs/whatsapp-web-operations.md](docs/whatsapp-web-operations.md).
+
 La implementación v1.1 agrega exclusivamente la capa operativa posterior a la
 venta. La integración oficial de WhatsApp Cloud API se mantiene como boundary
 externo aislado y no agrega bots ni automatizaciones externas.
@@ -145,6 +154,8 @@ npm run typecheck
 npm run build:web
 npm run build:api
 npm run format:check
+npm run build:bridge
+npm run test:bridge
 ```
 
 Prisma contiene el dominio inicial del CRM y la conexión se valida al iniciar la API mediante `PrismaService`. La generación y validación del esquema se ejecutan con:

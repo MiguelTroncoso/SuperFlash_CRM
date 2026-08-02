@@ -57,7 +57,11 @@ export type CommercialEventName =
   | 'MessageFailed'
   | 'ConversationClosed'
   | 'ConversationAssigned'
-  | 'ConversationArchived';
+  | 'ConversationArchived'
+  | 'ChannelConnected'
+  | 'ChannelDisconnected'
+  | 'ChannelAuthenticationFailed'
+  | 'ChannelQrUpdated';
 
 export interface CommercialEvent {
   eventId: string;

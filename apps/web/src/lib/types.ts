@@ -752,6 +752,31 @@ export interface WhatsAppWebReadOnlyStatus {
   externalWriteEnabled: false;
 }
 
+export interface WhatsAppWebBridgeStatus {
+  channel: 'WHATSAPP_WEB_BRIDGE';
+  provider: string;
+  configured: boolean;
+  enabled: boolean;
+  missingConfiguration: string[];
+  status: string;
+  qr: string | null;
+  qrExpiresAt: string | null;
+  connectedAt: string | null;
+  disconnectedAt: string | null;
+  lastMessageAt: string | null;
+  lastHeartbeatAt: string | null;
+  ingestionStartedAt: string | null;
+  firstAcceptedAt: string | null;
+  number: string | null;
+  historicalDiscarded: number;
+  duplicatesAvoided: number;
+  reconnects: number;
+  errorCount: number;
+  lastError: string | null;
+  readOnly: true;
+  externalWriteEnabled: false;
+}
+
 export interface FinancialCategory {
   id: string;
   name: string;
@@ -920,6 +945,7 @@ export interface SmartInboxConversation {
   tags: Tag[];
   source: string | null;
   channel: string;
+  readOnly: boolean;
   status: string;
   window: { open: boolean; expiresAt: string | null };
   unreadCount: number;

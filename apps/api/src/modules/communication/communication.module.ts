@@ -4,6 +4,8 @@ import { PrismaModule } from '../../infrastructure/prisma/prisma.module';
 import { AuthModule } from '../auth/auth.module';
 import { AuditModule } from '../audit/audit.module';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
+import { ContactsModule } from '../contacts/contacts.module';
+import { SmartInboxEventsService } from '../smart-inbox/smart-inbox.events';
 import { CommunicationController } from './communication.controller';
 import { CommunicationWebhookController } from './communication.webhook.controller';
 import { ConversationImportService } from './services/conversation-import.service';
@@ -19,15 +21,23 @@ import {
   WhatsAppWebReadOnlyInternalController,
 } from './providers/whatsapp-web-readonly/whatsapp-web-readonly.controller';
 import { WhatsAppWebReadOnlyService } from './providers/whatsapp-web-readonly/whatsapp-web-readonly.service';
+import {
+  WhatsAppWebBridgeController,
+  WhatsAppWebBridgeInternalController,
+} from './providers/whatsapp-web-bridge/whatsapp-web-bridge.controller';
+import { WhatsAppWebBridgeSecurity } from './providers/whatsapp-web-bridge/whatsapp-web-bridge.security';
+import { WhatsAppWebBridgeService } from './providers/whatsapp-web-bridge/whatsapp-web-bridge.service';
 
 @Global()
 @Module({
-  imports: [AuthModule, AuditModule, PrismaModule, WhatsAppModule],
+  imports: [AuthModule, AuditModule, PrismaModule, WhatsAppModule, ContactsModule],
   controllers: [
     CommunicationController,
     CommunicationWebhookController,
     WhatsAppWebReadOnlyController,
     WhatsAppWebReadOnlyInternalController,
+    WhatsAppWebBridgeController,
+    WhatsAppWebBridgeInternalController,
   ],
   providers: [
     CommunicationMetricsService,
@@ -39,6 +49,9 @@ import { WhatsAppWebReadOnlyService } from './providers/whatsapp-web-readonly/wh
     WhatsAppReadOnlyAnalyticsService,
     ChannelHealthService,
     CommunicationEventTranslator,
+    SmartInboxEventsService,
+    WhatsAppWebBridgeSecurity,
+    WhatsAppWebBridgeService,
   ],
   exports: [
     CommunicationMetricsService,
@@ -48,6 +61,8 @@ import { WhatsAppWebReadOnlyService } from './providers/whatsapp-web-readonly/wh
     WhatsAppReadOnlyHealthService,
     ConversationImportService,
     WhatsAppReadOnlyAnalyticsService,
+    SmartInboxEventsService,
+    WhatsAppWebBridgeService,
   ],
 })
 export class CommunicationModule {}
