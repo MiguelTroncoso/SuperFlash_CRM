@@ -642,7 +642,11 @@ export function SmartInboxPage(): React.ReactElement {
                   )}
                 </div>
                 <div className="border-t border-border-subtle bg-surface-inset p-3 text-center text-xs text-content-muted sm:p-4">
-                  WhatsApp Read Only: el operador continúa la conversación en WhatsApp Business.
+                  {(selected.readOnly ?? selected.channel === 'WhatsApp')
+                    ? selected.channel === 'WhatsApp Web Bridge'
+                      ? 'WhatsApp Web Bridge en solo lectura: el operador continúa la conversación en WhatsApp Business.'
+                      : 'WhatsApp Read Only: el operador continúa la conversación en WhatsApp Business.'
+                    : 'WhatsApp Cloud en modo lectura: el operador continúa la conversación en WhatsApp Business.'}
                 </div>
               </>
             ) : (

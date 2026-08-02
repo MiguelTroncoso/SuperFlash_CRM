@@ -95,6 +95,7 @@ const listInclude = {
     },
   },
   assignedUser: { select: { id: true, firstName: true, lastName: true } },
+  connection: { select: { wabaId: true } },
   messages: {
     where: { deletedAt: null },
     orderBy: { createdAt: 'desc' as const },
@@ -866,7 +867,9 @@ export class SmartInboxService {
       opportunity: opportunity ? { id: opportunity.id, title: opportunity.title } : null,
       tags: contact.tags.map(({ tag }) => tag),
       source: contact.source,
-      channel: 'WhatsApp',
+      channel:
+        row.connection?.wabaId === 'WHATSAPP_WEB_BRIDGE' ? 'WhatsApp Web Bridge' : 'WhatsApp',
+      readOnly: row.connection?.wabaId === 'WHATSAPP_WEB_BRIDGE',
       status: row.status,
       window: {
         open: Boolean(row.windowExpiresAt && row.windowExpiresAt > now),

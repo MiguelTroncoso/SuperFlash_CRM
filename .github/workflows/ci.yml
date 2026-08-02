@@ -66,6 +66,12 @@ jobs:
       - name: Unit tests
         run: npm run test:unit
 
+      - name: WhatsApp Web bridge tests
+        run: npm run test:bridge
+
+      - name: WhatsApp Web bridge typecheck
+        run: npm run typecheck --workspace=@superflash/whatsapp-bridge
+
       - name: Frontend tests
         run: npm run test:web
 
@@ -98,6 +104,17 @@ jobs:
 
       - name: Build WhatsApp Web reader
         run: npm run build --workspace=@superflash/whatsapp-reader
+
+      - name: Build WhatsApp Web bridge
+        run: npm run build:bridge
+
+      - name: Validate production Docker Compose
+        env:
+          PRODUCTION_ENV_FILE: .env.production.ci
+        run: |
+          cp .env.production.example .env.production.ci
+          docker compose -f docker-compose.prod.yml --env-file .env.production.ci config
+          rm -f .env.production.ci
 
       - name: Validate and start Docker Compose
         run: |

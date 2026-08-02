@@ -58,6 +58,10 @@ services:
       DATABASE_URL: postgresql://superflash:superflash@postgres:5432/superflash?schema=public
       NODE_ENV: development
       REDIS_URL: redis://redis:6379
+      WHATSAPP_WEB_BRIDGE_ENABLED: ${WHATSAPP_WEB_BRIDGE_ENABLED:-false}
+      WHATSAPP_BRIDGE_INTERNAL_SECRET: ${WHATSAPP_BRIDGE_INTERNAL_SECRET:-}
+      WHATSAPP_BRIDGE_CHANNEL_KEY: ${WHATSAPP_BRIDGE_CHANNEL_KEY:-}
+      WHATSAPP_BRIDGE_API_URL: http://whatsapp-bridge:3020
     ports:
       - '3001:3001'
     volumes:
@@ -81,6 +85,27 @@ services:
       - ./packages:/app/packages
     command: ['npm', 'run', 'dev:web']
 
+  whatsapp-bridge:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.whatsapp-bridge.prod
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      WHATSAPP_WEB_BRIDGE_ENABLED: ${WHATSAPP_WEB_BRIDGE_ENABLED:-false}
+      WHATSAPP_BRIDGE_API_URL: http://api:3001/api/v1
+      WHATSAPP_BRIDGE_INTERNAL_SECRET: ${WHATSAPP_BRIDGE_INTERNAL_SECRET:-}
+      WHATSAPP_BRIDGE_CHANNEL_KEY: ${WHATSAPP_BRIDGE_CHANNEL_KEY:-}
+      WHATSAPP_WEB_SESSION_ENCRYPTION_KEY: ${WHATSAPP_WEB_SESSION_ENCRYPTION_KEY:-}
+      WHATSAPP_WEB_SESSION_DIR: /data/session
+      WHATSAPP_BRIDGE_PORT: 3020
+    depends_on:
+      api:
+        condition: service_started
+    volumes:
+      - whatsapp_bridge_session:/data/session
+
 volumes:
   postgres_data:
   redis_data:
+  whatsapp_bridge_session:

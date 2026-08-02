@@ -240,3 +240,17 @@ no introducen un segundo modelo de ventas ni un almacén analítico transacciona
 calcula al leer y no se persiste. Customer 360, Agenda Operativa, búsqueda
 global y Business Intelligence aplican aislamiento por `organizationId` y
 excluyen secretos y campos internos.
+
+## WhatsApp Web Transitional Bridge (Architecture v2.8)
+
+`WhatsAppWebBridgeChannel` representa la configuración tenant-aware del
+provider transitorio. `channelKey` es único y permite resolver la organización
+sin aceptar `organizationId` desde el bridge. `WhatsAppWebBridgeRequest` es un
+registro de nonce/signature append-only que evita replay de requests internos.
+
+La ingesta reutiliza `WhatsAppConnection`, `WhatsAppPhoneNumber`,
+`WhatsAppConversation`, `WhatsAppMessage`, `Activity`, `AuditLog` y
+`OutboxEvent`; no duplica un modelo de conversación. Cada mensaje inbound
+normaliza el teléfono, conserva los datos manuales del Contact y crea o
+reutiliza una Opportunity abierta en la primera etapa activa. El provider se
+marca read-only en Smart Inbox y no agrega tablas para media o historial.

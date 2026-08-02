@@ -13,6 +13,7 @@ import type {
   WhatsAppReadOnlyHealth,
   WhatsAppReadOnlySyncStatus,
   WhatsAppWebReadOnlyStatus,
+  WhatsAppWebBridgeStatus,
   FinancialCategory,
   FinancialDashboard,
   FinancialExpense,
@@ -376,6 +377,32 @@ export const api = {
     }),
   unlinkWhatsAppWeb: () =>
     request<WhatsAppWebReadOnlyStatus>('/communication/channels/whatsapp-web-read-only/unlink', {
+      method: 'POST',
+    }),
+  getWhatsAppWebBridgeStatus: () =>
+    request<WhatsAppWebBridgeStatus>('/communication/channels/whatsapp-web-bridge/status'),
+  enableWhatsAppWebBridge: () =>
+    request<WhatsAppWebBridgeStatus>('/communication/channels/whatsapp-web-bridge/enable', {
+      method: 'POST',
+    }),
+  disableWhatsAppWebBridge: () =>
+    request<WhatsAppWebBridgeStatus>('/communication/channels/whatsapp-web-bridge/disable', {
+      method: 'POST',
+    }),
+  requestWhatsAppWebBridgePairing: () =>
+    request<JsonRecord>('/communication/channels/whatsapp-web-bridge/pairing', {
+      method: 'POST',
+    }),
+  reconnectWhatsAppWebBridge: () =>
+    request<JsonRecord>('/communication/channels/whatsapp-web-bridge/reconnect', {
+      method: 'POST',
+    }),
+  cancelWhatsAppWebBridge: () =>
+    request<JsonRecord>('/communication/channels/whatsapp-web-bridge/cancel', {
+      method: 'POST',
+    }),
+  unlinkWhatsAppWebBridge: () =>
+    request<JsonRecord>('/communication/channels/whatsapp-web-bridge/unlink', {
       method: 'POST',
     }),
   saveWhatsAppConnection: (body: JsonRecord) =>

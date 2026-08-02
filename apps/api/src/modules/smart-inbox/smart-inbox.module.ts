@@ -10,7 +10,6 @@ import { TrialsModule } from '../trials/trials.module';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 import { CommunicationModule } from '../communication/communication.module';
 import { SmartInboxController } from './smart-inbox.controller';
-import { SmartInboxEventsService } from './smart-inbox.events';
 import { SmartInboxService } from './smart-inbox.service';
 
 @Module({
@@ -26,6 +25,6 @@ import { SmartInboxService } from './smart-inbox.service';
     CommunicationModule,
   ],
   controllers: [SmartInboxController],
-  providers: [SmartInboxEventsService, SmartInboxService],
+  providers: [SmartInboxService],
 })
 export class SmartInboxModule {}

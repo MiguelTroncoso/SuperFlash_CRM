@@ -19,6 +19,7 @@ export interface AppConfiguration {
   whatsappWebhookPublicUrl: string;
   whatsappProvider: WhatsAppProviderConfiguration;
   whatsappReader: WhatsAppReaderConfiguration;
+  whatsappWebBridge: WhatsAppWebBridgeConfiguration;
 }
 
 export interface WhatsAppProviderConfiguration {
@@ -34,6 +35,15 @@ export interface WhatsAppReaderConfiguration {
   serviceUrl: string;
   serviceToken: string | null;
   organizationId: string | null;
+  missing: readonly string[];
+}
+
+export interface WhatsAppWebBridgeConfiguration {
+  enabled: boolean;
+  apiUrl: string;
+  internalSecret: string | null;
+  channelKey: string | null;
+  sessionEncryptionKeyConfigured: boolean;
   missing: readonly string[];
 }
 
@@ -127,6 +137,15 @@ export function buildConfiguration(environment: Environment): AppConfiguration {
     .filter(([, value]) => !value)
     .map(([key]) => key);
 
+  const bridgeEnabled = environment.WHATSAPP_WEB_BRIDGE_ENABLED === 'true';
+  const bridgeMissing = Object.entries({
+    WHATSAPP_BRIDGE_INTERNAL_SECRET: environment.WHATSAPP_BRIDGE_INTERNAL_SECRET?.trim(),
+    WHATSAPP_BRIDGE_CHANNEL_KEY: environment.WHATSAPP_BRIDGE_CHANNEL_KEY?.trim(),
+    WHATSAPP_WEB_SESSION_ENCRYPTION_KEY: environment.WHATSAPP_WEB_SESSION_ENCRYPTION_KEY?.trim(),
+  })
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
+
   return {
     nodeEnv,
     apiPort: parsePositiveInteger(environment.API_PORT, 3001, 'API_PORT'),
@@ -164,6 +183,16 @@ export function buildConfiguration(environment: Environment): AppConfiguration {
       serviceToken: environment.WHATSAPP_READER_SERVICE_TOKEN?.trim() || null,
       organizationId: environment.WHATSAPP_READER_ORGANIZATION_ID?.trim() || null,
       missing: readerMissing,
+    },
+    whatsappWebBridge: {
+      enabled: bridgeEnabled && bridgeMissing.length === 0,
+      apiUrl: environment.WHATSAPP_BRIDGE_API_URL?.trim() || 'http://whatsapp-bridge:3020',
+      internalSecret: environment.WHATSAPP_BRIDGE_INTERNAL_SECRET?.trim() || null,
+      channelKey: environment.WHATSAPP_BRIDGE_CHANNEL_KEY?.trim() || null,
+      sessionEncryptionKeyConfigured: Boolean(
+        environment.WHATSAPP_WEB_SESSION_ENCRYPTION_KEY?.trim(),
+      ),
+      missing: bridgeMissing,
     },
   };
 }

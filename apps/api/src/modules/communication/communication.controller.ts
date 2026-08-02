@@ -87,6 +87,13 @@ export class CommunicationController {
     return this.readOnlyAnalytics.get(user.organizationId);
   }
 
+  @Get('channels/whatsapp-web-bridge/health')
+  @Permissions('whatsapp.read')
+  @ApiOperation({ summary: 'Estado del proveedor transitorio WhatsApp Web Bridge' })
+  whatsappWebBridgeHealth(@CurrentUser() user: AuthenticatedUser) {
+    return this.health.getWhatsAppWebBridgeHealth(user.organizationId);
+  }
+
   @Post('channels/whatsapp/verify')
   @HttpCode(HttpStatus.OK)
   @Permissions('whatsapp.manage')

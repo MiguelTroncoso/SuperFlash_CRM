@@ -148,20 +148,21 @@ Una versión arquitectónica solo puede aprobarse cuando:
 
 ## Versiones de arquitectura
 
-| Versión           | Nombre                         | Estado                               | Alcance                                                                                   |
-| ----------------- | ------------------------------ | ------------------------------------ | ----------------------------------------------------------------------------------------- |
-| Architecture v1.0 | Commercial Core                | **APPROVED / FROZEN**                | Núcleo CRM, catálogo y ciclo comercial transaccional.                                     |
-| Architecture v1.1 | Operations and Fulfillment     | **IMPLEMENTED / PENDING REVIEW**     | Providers, fulfillment, provisioning, credentials, trials y activations.                  |
-| Architecture v1.2 | Communications and Automations | **IMPLEMENTED / PENDING REVIEW**     | Templates, variables, reglas, triggers, acciones, ejecuciones y notificaciones internas.  |
-| Architecture v1.3 | Analytics and Reporting        | **PLANNED**                          | Analítica y reporting; no iniciado.                                                       |
-| Architecture v2.0 | Revenue Intelligence           | **IMPLEMENTED / PHASE 1**            | KPIs, embudos, cohortes, tendencias, forecast básico y dashboard ejecutivo de lectura.    |
-| Architecture v2.1 | Operational Workspace          | **IMPLEMENTED / PENDING REVIEW**     | Smart Inbox, timeline operacional, acciones contextuales y preparación realtime.          |
-| Architecture v2.2 | Communication Layer            | **IMPLEMENTED**                      | Contratos de canales, provider WhatsApp foundation, webhook firmado, health y métricas.   |
-| Architecture v2.3 | WhatsApp Read Only             | **IMPLEMENTED**                      | Read model local, sincronización incremental, checkpoint, health, Smart Inbox y métricas. |
-| Architecture v2.4 | WhatsApp Web Read Only         | **IMPLEMENTED / PENDING PRODUCTION** | Pairing QR, sesión persistente, reader Baileys y sincronización inbound nueva.            |
-| Architecture v2.5 | Financial Intelligence Phase 1 | **IMPLEMENTED**                      | Gastos, categorías, recurrencias idempotentes y dashboard financiero.                     |
-| Architecture v2.6 | Renewal Intelligence           | **IMPLEMENTED**                      | Centro de Renovaciones, lifecycle, recordatorios, CSV, reportes y calendario.             |
-| Architecture v2.7 | Executive Intelligence         | **IMPLEMENTED / PENDING REVIEW**     | Dashboard ejecutivo, BI, Customer 360, agenda, pipeline avanzado y búsqueda global.       |
+| Versión           | Nombre                           | Estado                                                       | Alcance                                                                                   |
+| ----------------- | -------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| Architecture v1.0 | Commercial Core                  | **APPROVED / FROZEN**                                        | Núcleo CRM, catálogo y ciclo comercial transaccional.                                     |
+| Architecture v1.1 | Operations and Fulfillment       | **IMPLEMENTED / PENDING REVIEW**                             | Providers, fulfillment, provisioning, credentials, trials y activations.                  |
+| Architecture v1.2 | Communications and Automations   | **IMPLEMENTED / PENDING REVIEW**                             | Templates, variables, reglas, triggers, acciones, ejecuciones y notificaciones internas.  |
+| Architecture v1.3 | Analytics and Reporting          | **PLANNED**                                                  | Analítica y reporting; no iniciado.                                                       |
+| Architecture v2.0 | Revenue Intelligence             | **IMPLEMENTED / PHASE 1**                                    | KPIs, embudos, cohortes, tendencias, forecast básico y dashboard ejecutivo de lectura.    |
+| Architecture v2.1 | Operational Workspace            | **IMPLEMENTED / PENDING REVIEW**                             | Smart Inbox, timeline operacional, acciones contextuales y preparación realtime.          |
+| Architecture v2.2 | Communication Layer              | **IMPLEMENTED**                                              | Contratos de canales, provider WhatsApp foundation, webhook firmado, health y métricas.   |
+| Architecture v2.3 | WhatsApp Read Only               | **IMPLEMENTED**                                              | Read model local, sincronización incremental, checkpoint, health, Smart Inbox y métricas. |
+| Architecture v2.4 | WhatsApp Web Read Only           | **IMPLEMENTED / PENDING PRODUCTION**                         | Pairing QR, sesión persistente, reader Baileys y sincronización inbound nueva.            |
+| Architecture v2.5 | Financial Intelligence Phase 1   | **IMPLEMENTED**                                              | Gastos, categorías, recurrencias idempotentes y dashboard financiero.                     |
+| Architecture v2.6 | Renewal Intelligence             | **IMPLEMENTED**                                              | Centro de Renovaciones, lifecycle, recordatorios, CSV, reportes y calendario.             |
+| Architecture v2.7 | Executive Intelligence           | **IMPLEMENTED / PENDING REVIEW**                             | Dashboard ejecutivo, BI, Customer 360, agenda, pipeline avanzado y búsqueda global.       |
+| Architecture v2.8 | WhatsApp Web Transitional Bridge | **IMPLEMENTED / RISK ACCEPTED / PENDING PRODUCTION PAIRING** | Bridge Baileys independiente, ingesta inbound nueva, QR temporal y Smart Inbox read-only. |
 
 ### Architecture v1.0 — Commercial Core
 
@@ -287,6 +288,31 @@ nueva agrega probabilidad y prioridad a Opportunity con constraint de rango.
 Las métricas se agrupan por moneda y cualquier indicador no soportado por datos
 persistidos se devuelve como no disponible, sin inventar estimaciones.
 
+### Architecture v2.8 — WhatsApp Web Transitional Bridge
+
+Estado: **IMPLEMENTED / RISK ACCEPTED / PENDING PRODUCTION PAIRING**
+
+`apps/whatsapp-bridge` es un proceso independiente que implementa el contrato
+interno de Communication mediante Baileys. La API nunca recibe ni confía en un
+`organizationId` enviado por el bridge: resuelve el tenant desde
+`WhatsAppWebBridgeChannel.channelKey`. Cada request interno exige HMAC-SHA256,
+timestamp vigente, `requestId` y nonce persistido para impedir replay.
+
+La sesión se cifra en el volumen privado del bridge con AES-256-GCM usando una
+clave exclusiva. El QR existe únicamente en memoria del API, está limitado a
+usuarios con `whatsapp.manage` y expira. El bridge no imprime QR, secretos ni
+payloads sensibles. Solo procesa mensajes nuevos posteriores a la activación,
+ignora grupos, broadcasts, estados, presencia, llamadas, reacciones sin
+contexto y mensajes propios, y permanece estrictamente read-only.
+
+El canal reutiliza `WhatsAppConversation`, `WhatsAppMessage`, `Activity`,
+`AuditLog`, `OutboxEvent` y Smart Inbox. Al recibir un mensaje válido crea o
+actualiza el contacto por teléfono, conserva los datos manuales, reutiliza o
+crea la oportunidad abierta y publica actualizaciones SSE. No se habilitan
+respuestas, bots, campañas, automatizaciones ni conexión real en CI. El riesgo
+operacional de WhatsApp Web como provider transitorio queda aceptado hasta la
+migración futura a Cloud API.
+
 ## Índice de ADRs
 
 - [ADR-006 — Sales Snapshot](../ADR-006-sales-snapshot.md)
@@ -310,6 +336,7 @@ persistidos se devuelve como no disponible, sin inventar estimaciones.
 - [ADR-024 — WhatsApp Web Read-Only Source](../ADR-024-whatsapp-web-readonly-source.md)
 - [ADR-025 — Financial Intelligence Boundary](../ADR-025-financial-intelligence-boundary.md)
 - [ADR-026 — Recurring Expense Identity](../ADR-026-recurring-expense-identity.md)
+- [ADR-027 — WhatsApp Web Bridge Library](../ADR-027-whatsapp-web-bridge-library.md)
 
 Sprint 28 no requiere ADR nuevo: las vistas read-side reutilizan las decisiones
 del Commercial Core, Revenue Intelligence, Financial Intelligence y Renewal
