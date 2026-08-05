@@ -143,4 +143,49 @@ describe('Marketing attribution and campaign performance HTTP flow', () => {
       .send({ date: '2026-08-05', campaignId: otherCampaign.id, amount: '10.00', currency: 'USD' });
     expect(response.status).toBe(404);
   });
+
+  it('enforces spend idempotency and controlled currencies', async () => {
+    const login = await api.post('/api/v1/auth/login').send({ email, password });
+    const authorization = `Bearer ${String(login.body.accessToken)}`;
+    const campaign = await api
+      .post('/api/v1/marketing/campaigns')
+      .set('Authorization', authorization)
+      .send({ name: 'Campaña idempotente', platform: 'META_ADS', source: 'PAID' });
+    const payload = {
+      date: '2026-08-05',
+      campaignId: campaign.body.id,
+      amount: '25.00',
+      currency: 'USD',
+      idempotencyKey: 'marketing-spend-key-1',
+    };
+    const first = await api
+      .post('/api/v1/marketing/spend')
+      .set('Authorization', authorization)
+      .send(payload);
+    const repeated = await api
+      .post('/api/v1/marketing/spend')
+      .set('Authorization', authorization)
+      .send(payload);
+    const sameDayList = await api
+      .get('/api/v1/marketing/spend?from=2026-08-05&to=2026-08-05')
+      .set('Authorization', authorization);
+    const changed = await api
+      .post('/api/v1/marketing/spend')
+      .set('Authorization', authorization)
+      .send({ ...payload, amount: '30.00' });
+    const unsupported = await api
+      .post('/api/v1/marketing/spend')
+      .set('Authorization', authorization)
+      .send({ ...payload, idempotencyKey: 'marketing-spend-key-2', currency: 'XYZ' });
+
+    expect(first.status).toBe(201);
+    expect(repeated.status).toBe(201);
+    expect(repeated.body.id).toBe(first.body.id);
+    expect(repeated.body.idempotent).toBe(true);
+    expect(sameDayList.status).toBe(200);
+    expect(sameDayList.body.pagination.total).toBe(1);
+    expect(changed.status).toBe(409);
+    expect(changed.body.code).toBe('MARKETING_SPEND_IDEMPOTENCY_CONFLICT');
+    expect(unsupported.status).toBe(400);
+  });
 });

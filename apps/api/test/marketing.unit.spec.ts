@@ -95,7 +95,7 @@ describe('Marketing attribution and profitability calculations', () => {
 
     expect(result.conversations).toBe(4);
     expect(result.sales).toBe(1);
-    expect(result.averageTicket).toBe('450.00');
+    expect(result.averageTicket).toBe('500.00');
   });
 
   it('preserves the campaign identity and time-to-sale metric for dashboard grouping', () => {

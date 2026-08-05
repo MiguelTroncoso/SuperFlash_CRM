@@ -1,9 +1,11 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
   IsDateString,
   IsEnum,
   IsInt,
+  IsISO31661Alpha2,
+  IsIn,
   IsNumberString,
   IsOptional,
   IsString,
@@ -21,6 +23,10 @@ import {
   ProspectConversationStateType,
   ProspectReasonType,
 } from '@prisma/client';
+import { SUPPORTED_CURRENCIES } from '../../commercial/currency';
+
+const uppercase = ({ value }: { value: unknown }): unknown =>
+  typeof value === 'string' ? value.trim().toUpperCase() : value;
 
 export class CreateCampaignDto {
   @IsString()
@@ -59,8 +65,8 @@ export class CreateCampaignDto {
 
   @IsOptional()
   @IsString()
-  @MinLength(2)
-  @MaxLength(2)
+  @IsISO31661Alpha2()
+  @Transform(uppercase)
   targetedCountry?: string;
 
   @IsOptional()
@@ -115,7 +121,9 @@ export class MarketingHierarchyDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(120)
+  @IsISO31661Alpha2()
+  @Transform(uppercase)
+  @MaxLength(2)
   targetedCountry?: string;
 
   @IsOptional()
@@ -210,8 +218,8 @@ export class CreateSpendDto {
   amount!: string;
 
   @IsString()
-  @MinLength(3)
-  @MaxLength(3)
+  @IsIn([...SUPPORTED_CURRENCIES])
+  @Transform(uppercase)
   currency!: string;
 
   @IsOptional()
@@ -262,7 +270,80 @@ export class CreateSpendDto {
   idempotencyKey?: string;
 }
 
-export class UpdateSpendDto extends PartialType(CreateSpendDto) {}
+export class UpdateSpendDto {
+  @IsOptional()
+  @IsDateString()
+  date?: string;
+
+  @IsOptional()
+  @IsUUID()
+  campaignId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  adSetId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  adId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  creativeId?: string;
+
+  @IsOptional()
+  @IsNumberString()
+  @MaxLength(18)
+  amount?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn([...SUPPORTED_CURRENCIES])
+  @Transform(uppercase)
+  currency?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  conversations?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  contacts?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  impressions?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  reach?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  clicks?: number;
+
+  @IsOptional()
+  @IsNumberString()
+  cpmInput?: string;
+
+  @IsOptional()
+  @IsNumberString()
+  cpcInput?: string;
+
+  @IsOptional()
+  @IsNumberString()
+  ctrInput?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  notes?: string;
+}
 
 export class MarketingDateQueryDto extends ListMarketingQueryDto {
   @IsOptional()
@@ -275,11 +356,14 @@ export class MarketingDateQueryDto extends ListMarketingQueryDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(3)
+  @IsIn([...SUPPORTED_CURRENCIES])
+  @Transform(uppercase)
   currency?: string;
 
   @IsOptional()
   @IsString()
+  @IsISO31661Alpha2()
+  @Transform(uppercase)
   @MaxLength(2)
   actualCountry?: string;
 
@@ -338,21 +422,25 @@ export class CreateAttributionDto {
   creativeId?: string;
 
   @IsString()
+  @MinLength(1)
   @MaxLength(60)
   platform!: string;
 
   @IsString()
+  @MinLength(1)
   @MaxLength(120)
   source!: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(2)
+  @IsISO31661Alpha2()
+  @Transform(uppercase)
   targetedCountry?: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(2)
+  @IsISO31661Alpha2()
+  @Transform(uppercase)
   actualCountry?: string;
 
   @IsOptional()

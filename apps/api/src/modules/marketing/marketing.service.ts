@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { Prisma, ProspectReasonType } from '@prisma/client';
 import { parsePhoneNumberFromString, CountryCode } from 'libphonenumber-js';
 
@@ -12,6 +13,7 @@ import { OutboxService } from '../../infrastructure/outbox/outbox.service';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/auth.types';
+import { isSupportedCurrency } from '../commercial/currency';
 import {
   ChangeProspectStateDto,
   CommercialImportDto,
@@ -39,11 +41,42 @@ import {
 const DEFAULT_FROM = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 const DEFAULT_TO = new Date();
 
+function marketingBadRequest(code: string, message = code): BadRequestException {
+  return new BadRequestException({ code, message });
+}
+
+function marketingConflict(code: string, message = code): ConflictException {
+  return new ConflictException({ code, message });
+}
+
+function marketingNotFound(code: string, message = code): NotFoundException {
+  return new NotFoundException({ code, message });
+}
+
+function marketingForbidden(code: string, message = code): ForbiddenException {
+  return new ForbiddenException({ code, message });
+}
+
 function decimal(value: string): Prisma.Decimal {
   const parsed = new Prisma.Decimal(value);
   if (!parsed.isFinite() || parsed.isNegative())
-    throw new BadRequestException('El importe debe ser válido y no negativo.');
+    throw marketingBadRequest(
+      'MARKETING_AMOUNT_INVALID',
+      'El importe debe ser válido y no negativo.',
+    );
   return parsed;
+}
+
+function supportedCurrency(value: string): string {
+  const normalized = value.trim().toUpperCase();
+  if (!isSupportedCurrency(normalized)) throw marketingBadRequest('MARKETING_UNSUPPORTED_CURRENCY');
+  return normalized;
+}
+
+function dateBoundary(value: string, inclusiveEnd = false): Date {
+  const date = new Date(value);
+  if (inclusiveEnd && /^\d{4}-\d{2}-\d{2}$/.test(value)) date.setUTCDate(date.getUTCDate() + 1);
+  return date;
 }
 
 function decimalString(value: Prisma.Decimal | string | number | null): string {
@@ -207,7 +240,7 @@ export class MarketingService {
     const current = await this.prisma.campaign.findFirst({
       where: { id, organizationId: user.organizationId, deletedAt: null },
     });
-    if (!current) throw new NotFoundException('MARKETING_CAMPAIGN_NOT_FOUND');
+    if (!current) throw marketingNotFound('MARKETING_CAMPAIGN_NOT_FOUND');
     await this.assertUser(dto.ownerId, user.organizationId);
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.campaign.update({
@@ -256,7 +289,7 @@ export class MarketingService {
     const existing = await this.prisma.campaign.findFirst({
       where: { id, organizationId: user.organizationId, deletedAt: null },
     });
-    if (!existing) throw new NotFoundException('MARKETING_CAMPAIGN_NOT_FOUND');
+    if (!existing) throw marketingNotFound('MARKETING_CAMPAIGN_NOT_FOUND');
     await this.prisma.$transaction(async (tx) => {
       await tx.campaign.update({
         where: { organizationId_id: { organizationId: user.organizationId, id } },
@@ -377,57 +410,84 @@ export class MarketingService {
       await this.assertAdSet(dto.adSetId, dto.campaignId, user.organizationId);
     if (kind === 'creative' && dto.adId)
       await this.assertAd(dto.adId, dto.campaignId, user.organizationId);
-    const data =
-      kind === 'adSet'
-        ? await this.prisma.marketingAdSet.create({
-            data: {
-              organizationId: user.organizationId,
-              campaignId: dto.campaignId,
-              name: dto.name.trim(),
-              ...(dto.externalId ? { externalId: dto.externalId } : {}),
-              ...(dto.status ? { status: dto.status } : {}),
-              ...(dto.targetedCountry
-                ? { targetedCountry: dto.targetedCountry.toUpperCase() }
-                : {}),
-              ...(dto.audience ? { audience: dto.audience } : {}),
-            },
-          })
-        : kind === 'ad'
-          ? await this.prisma.marketingAd.create({
-              data: {
-                organizationId: user.organizationId,
-                campaignId: dto.campaignId,
-                ...(dto.adSetId ? { adSetId: dto.adSetId } : {}),
-                name: dto.name.trim(),
-                ...(dto.externalId ? { externalId: dto.externalId } : {}),
-                ...(dto.status ? { status: dto.status } : {}),
-                ...(dto.destination ? { destination: dto.destination } : {}),
-              },
-            })
-          : await this.prisma.marketingCreative.create({
-              data: {
-                organizationId: user.organizationId,
-                campaignId: dto.campaignId,
-                ...(dto.adId ? { adId: dto.adId } : {}),
-                name: dto.name.trim(),
-                format: dto.format ?? 'OTHER',
-                ...(dto.headline ? { headline: dto.headline } : {}),
-                ...(dto.body ? { body: dto.body } : {}),
-                ...(dto.assetReference ? { assetReference: dto.assetReference } : {}),
-              },
-            });
-    await this.audit.record({
-      organizationId: user.organizationId,
-      userId: user.userId,
-      action: `MARKETING_${kind.toUpperCase()}_CREATED`,
-      tableName:
-        kind === 'adSet' ? 'MarketingAdSet' : kind === 'ad' ? 'MarketingAd' : 'MarketingCreative',
-      recordId: data.id,
-      newValue: { name: data.name, campaignId: dto.campaignId },
-      ip: metadata.ipAddress,
-      requestId: metadata.requestId,
-    });
-    return data;
+    try {
+      const data = await this.prisma.$transaction(async (tx) => {
+        const created =
+          kind === 'adSet'
+            ? await tx.marketingAdSet.create({
+                data: {
+                  organizationId: user.organizationId,
+                  campaignId: dto.campaignId,
+                  name: dto.name.trim(),
+                  ...(dto.externalId ? { externalId: dto.externalId } : {}),
+                  ...(dto.status ? { status: dto.status } : {}),
+                  ...(dto.targetedCountry
+                    ? { targetedCountry: dto.targetedCountry.toUpperCase() }
+                    : {}),
+                  ...(dto.audience ? { audience: dto.audience } : {}),
+                },
+              })
+            : kind === 'ad'
+              ? await tx.marketingAd.create({
+                  data: {
+                    organizationId: user.organizationId,
+                    campaignId: dto.campaignId,
+                    ...(dto.adSetId ? { adSetId: dto.adSetId } : {}),
+                    name: dto.name.trim(),
+                    ...(dto.externalId ? { externalId: dto.externalId } : {}),
+                    ...(dto.status ? { status: dto.status } : {}),
+                    ...(dto.destination ? { destination: dto.destination } : {}),
+                  },
+                })
+              : await tx.marketingCreative.create({
+                  data: {
+                    organizationId: user.organizationId,
+                    campaignId: dto.campaignId,
+                    ...(dto.adId ? { adId: dto.adId } : {}),
+                    name: dto.name.trim(),
+                    format: dto.format ?? 'OTHER',
+                    ...(dto.headline ? { headline: dto.headline } : {}),
+                    ...(dto.body ? { body: dto.body } : {}),
+                    ...(dto.assetReference ? { assetReference: dto.assetReference } : {}),
+                  },
+                });
+        await this.audit.recordWithClient(tx, {
+          organizationId: user.organizationId,
+          userId: user.userId,
+          action: `MARKETING_${kind.toUpperCase()}_CREATED`,
+          tableName:
+            kind === 'adSet'
+              ? 'MarketingAdSet'
+              : kind === 'ad'
+                ? 'MarketingAd'
+                : 'MarketingCreative',
+          recordId: created.id,
+          newValue: { name: created.name, campaignId: dto.campaignId },
+          ip: metadata.ipAddress,
+          requestId: metadata.requestId,
+        });
+        await this.outbox.enqueueWithClient(tx, {
+          eventType: 'MarketingHierarchyCreated',
+          organizationId: user.organizationId,
+          aggregateType:
+            kind === 'adSet'
+              ? 'MarketingAdSet'
+              : kind === 'ad'
+                ? 'MarketingAd'
+                : 'MarketingCreative',
+          aggregateId: created.id,
+          actorId: user.userId,
+          requestId: metadata.requestId ?? created.id,
+          payload: { name: created.name, campaignId: dto.campaignId, kind },
+        });
+        return created;
+      });
+      return data;
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+        throw marketingConflict('MARKETING_HIERARCHY_DUPLICATE');
+      throw error;
+    }
   }
 
   async listSpend(query: MarketingDateQueryDto, user: AuthenticatedUser) {
@@ -440,8 +500,8 @@ export class MarketingService {
       ...(query.from || query.to
         ? {
             expenseDate: {
-              ...(query.from ? { gte: new Date(query.from) } : {}),
-              ...(query.to ? { lt: new Date(query.to) } : {}),
+              ...(query.from ? { gte: dateBoundary(query.from) } : {}),
+              ...(query.to ? { lt: dateBoundary(query.to, true) } : {}),
             },
           }
         : {}),
@@ -489,12 +549,17 @@ export class MarketingService {
     if (dto.creativeId)
       await this.assertCreative(dto.creativeId, dto.campaignId, user.organizationId);
     const amount = decimal(dto.amount);
+    const currency = supportedCurrency(dto.currency);
     const existing = dto.idempotencyKey
       ? await this.prisma.expense.findFirst({
           where: { organizationId: user.organizationId, idempotencyKey: dto.idempotencyKey },
         })
       : null;
-    if (existing) return { ...existing, amount: existing.amount.toFixed(2), idempotent: true };
+    if (existing) {
+      if (!this.spendRequestMatches(existing, dto))
+        throw marketingConflict('MARKETING_SPEND_IDEMPOTENCY_CONFLICT');
+      return { ...existing, amount: existing.amount.toFixed(2), idempotent: true };
+    }
     try {
       const entry = await this.prisma.$transaction(async (tx) => {
         const created = await tx.expense.create({
@@ -505,7 +570,7 @@ export class MarketingService {
             ...(dto.adId ? { adId: dto.adId } : {}),
             ...(dto.creativeId ? { creativeId: dto.creativeId } : {}),
             amount,
-            currency: dto.currency.toUpperCase(),
+            currency,
             expenseDate: new Date(dto.date),
             paymentMethod: 'OTHER',
             frequency: 'ONE_TIME',
@@ -555,8 +620,19 @@ export class MarketingService {
       });
       return { ...entry, amount: entry.amount.toFixed(2) };
     } catch (error: unknown) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
-        throw new ConflictException('MARKETING_SPEND_DUPLICATE');
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        if (dto.idempotencyKey) {
+          const winner = await this.prisma.expense.findFirst({
+            where: { organizationId: user.organizationId, idempotencyKey: dto.idempotencyKey },
+          });
+          if (winner) {
+            if (!this.spendRequestMatches(winner, dto))
+              throw marketingConflict('MARKETING_SPEND_IDEMPOTENCY_CONFLICT');
+            return { ...winner, amount: winner.amount.toFixed(2), idempotent: true };
+          }
+        }
+        throw marketingConflict('MARKETING_SPEND_DUPLICATE');
+      }
       throw error;
     }
   }
@@ -567,68 +643,126 @@ export class MarketingService {
     user: AuthenticatedUser,
     metadata: MarketingRequestMetadata,
   ) {
-    const current = await this.prisma.expense.findFirst({
-      where: { id, organizationId: user.organizationId, deletedAt: null, source: 'MANUAL' },
-    });
-    if (!current) throw new NotFoundException('MARKETING_SPEND_NOT_FOUND');
-    if (dto.campaignId) await this.assertCampaign(dto.campaignId, user.organizationId);
-    const updated = await this.prisma.expense.update({
-      where: { organizationId_id: { organizationId: user.organizationId, id } },
-      data: {
-        ...(dto.amount !== undefined ? { amount: decimal(dto.amount) } : {}),
-        ...(dto.currency !== undefined ? { currency: dto.currency.toUpperCase() } : {}),
-        ...(dto.date !== undefined ? { expenseDate: new Date(dto.date) } : {}),
-        ...(dto.campaignId !== undefined ? { campaignId: dto.campaignId } : {}),
-        ...(dto.notes !== undefined ? { notes: dto.notes || null } : {}),
-        ...(dto.conversations !== undefined ? { conversations: dto.conversations } : {}),
-      },
-    });
-    await this.audit.record({
-      organizationId: user.organizationId,
-      userId: user.userId,
-      action: 'MARKETING_SPEND_UPDATED',
-      tableName: 'Expense',
-      recordId: id,
-      previousValue: { amount: current.amount.toFixed(2) },
-      newValue: { amount: updated.amount.toFixed(2) },
-      ip: metadata.ipAddress,
-      requestId: metadata.requestId,
-    });
-    return { ...updated, amount: updated.amount.toFixed(2) };
+    try {
+      const updated = await this.prisma.$transaction(async (tx) => {
+        const current = await tx.expense.findFirst({
+          where: { id, organizationId: user.organizationId, deletedAt: null, source: 'MANUAL' },
+        });
+        if (!current) throw marketingNotFound('MARKETING_SPEND_NOT_FOUND');
+        const campaignId = dto.campaignId ?? current.campaignId;
+        if ((dto.adSetId || dto.adId || dto.creativeId) && !campaignId)
+          throw marketingBadRequest('MARKETING_CAMPAIGN_REQUIRED');
+        if (dto.campaignId) await this.assertCampaign(dto.campaignId, user.organizationId);
+        if (dto.adSetId && campaignId)
+          await this.assertAdSet(dto.adSetId, campaignId, user.organizationId);
+        if (dto.adId && campaignId) await this.assertAd(dto.adId, campaignId, user.organizationId);
+        if (dto.creativeId && campaignId)
+          await this.assertCreative(dto.creativeId, campaignId, user.organizationId);
+        const currency = dto.currency ? supportedCurrency(dto.currency) : undefined;
+        const result = await tx.expense.update({
+          where: { organizationId_id: { organizationId: user.organizationId, id } },
+          data: {
+            ...(dto.amount !== undefined ? { amount: decimal(dto.amount) } : {}),
+            ...(currency !== undefined ? { currency } : {}),
+            ...(dto.date !== undefined ? { expenseDate: new Date(dto.date) } : {}),
+            ...(dto.campaignId !== undefined ? { campaignId: dto.campaignId } : {}),
+            ...(dto.adSetId !== undefined ? { adSetId: dto.adSetId } : {}),
+            ...(dto.adId !== undefined ? { adId: dto.adId } : {}),
+            ...(dto.creativeId !== undefined ? { creativeId: dto.creativeId } : {}),
+            ...(dto.conversations !== undefined ? { conversations: dto.conversations } : {}),
+            ...(dto.contacts !== undefined ? { contacts: dto.contacts } : {}),
+            ...(dto.impressions !== undefined ? { impressions: dto.impressions } : {}),
+            ...(dto.reach !== undefined ? { reach: dto.reach } : {}),
+            ...(dto.clicks !== undefined ? { clicks: dto.clicks } : {}),
+            ...(dto.cpmInput !== undefined ? { cpmInput: decimal(dto.cpmInput) } : {}),
+            ...(dto.cpcInput !== undefined ? { cpcInput: decimal(dto.cpcInput) } : {}),
+            ...(dto.ctrInput !== undefined ? { ctrInput: decimal(dto.ctrInput) } : {}),
+            ...(dto.notes !== undefined ? { notes: dto.notes || null } : {}),
+          },
+        });
+        await this.audit.recordWithClient(tx, {
+          organizationId: user.organizationId,
+          userId: user.userId,
+          action: 'MARKETING_SPEND_UPDATED',
+          tableName: 'Expense',
+          recordId: id,
+          previousValue: {
+            amount: current.amount.toFixed(2),
+            currency: current.currency,
+            campaignId: current.campaignId,
+          },
+          newValue: {
+            amount: result.amount.toFixed(2),
+            currency: result.currency,
+            campaignId: result.campaignId,
+          },
+          ip: metadata.ipAddress,
+          requestId: metadata.requestId,
+        });
+        await this.outbox.enqueueWithClient(tx, {
+          eventType: 'MarketingSpendUpdated',
+          organizationId: user.organizationId,
+          aggregateType: 'Expense',
+          aggregateId: result.id,
+          actorId: user.userId,
+          requestId: metadata.requestId ?? result.id,
+          payload: { campaignId: result.campaignId, currency: result.currency },
+        });
+        return result;
+      });
+      return { ...updated, amount: updated.amount.toFixed(2) };
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+        throw marketingConflict('MARKETING_SPEND_DUPLICATE');
+      throw error;
+    }
   }
 
   async archiveSpend(id: string, user: AuthenticatedUser, metadata: MarketingRequestMetadata) {
-    const current = await this.prisma.expense.findFirst({
-      where: { id, organizationId: user.organizationId, deletedAt: null, source: 'MANUAL' },
-    });
-    if (!current) throw new NotFoundException('MARKETING_SPEND_NOT_FOUND');
-    await this.prisma.expense.update({
-      where: { organizationId_id: { organizationId: user.organizationId, id } },
-      data: { deletedAt: new Date(), active: false },
-    });
-    await this.audit.record({
-      organizationId: user.organizationId,
-      userId: user.userId,
-      action: 'MARKETING_SPEND_ARCHIVED',
-      tableName: 'Expense',
-      recordId: id,
-      previousValue: { amount: current.amount.toFixed(2) },
-      ip: metadata.ipAddress,
-      requestId: metadata.requestId,
+    await this.prisma.$transaction(async (tx) => {
+      const current = await tx.expense.findFirst({
+        where: { id, organizationId: user.organizationId, deletedAt: null, source: 'MANUAL' },
+      });
+      if (!current) throw marketingNotFound('MARKETING_SPEND_NOT_FOUND');
+      await tx.expense.update({
+        where: { organizationId_id: { organizationId: user.organizationId, id } },
+        data: { deletedAt: new Date(), active: false },
+      });
+      await this.audit.recordWithClient(tx, {
+        organizationId: user.organizationId,
+        userId: user.userId,
+        action: 'MARKETING_SPEND_ARCHIVED',
+        tableName: 'Expense',
+        recordId: id,
+        previousValue: { amount: current.amount.toFixed(2) },
+        newValue: { archived: true },
+        ip: metadata.ipAddress,
+        requestId: metadata.requestId,
+      });
+      await this.outbox.enqueueWithClient(tx, {
+        eventType: 'MarketingSpendArchived',
+        organizationId: user.organizationId,
+        aggregateType: 'Expense',
+        aggregateId: id,
+        actorId: user.userId,
+        requestId: metadata.requestId ?? id,
+        payload: { archived: true },
+      });
     });
     return { id, archived: true };
   }
 
   async performance(query: MarketingDateQueryDto, user: AuthenticatedUser) {
-    const from = query.from ? new Date(query.from) : DEFAULT_FROM;
-    const to = query.to ? new Date(query.to) : DEFAULT_TO;
+    const from = query.from ? dateBoundary(query.from) : DEFAULT_FROM;
+    const to = query.to ? dateBoundary(query.to, true) : DEFAULT_TO;
+    const requestedCurrency = query.currency ? supportedCurrency(query.currency) : undefined;
     const conditions = [
       Prisma.sql`c."organizationId" = ${user.organizationId}::uuid`,
       Prisma.sql`c."deletedAt" IS NULL`,
     ];
     if (query.campaignId) conditions.push(Prisma.sql`c."id" = ${query.campaignId}::uuid`);
-    if (query.currency)
-      conditions.push(Prisma.sql`currency_scope."currency" = ${query.currency.toUpperCase()}`);
+    if (requestedCurrency)
+      conditions.push(Prisma.sql`currency_scope."currency" = ${requestedCurrency}`);
     const where = Prisma.join(conditions, ' AND ');
     const actualCountryFilter = query.actualCountry
       ? Prisma.sql`AND a."actualCountry" = ${query.actualCountry.toUpperCase()}`
@@ -652,19 +786,20 @@ export class MarketingService {
           ${actualCountryFilter}
         GROUP BY a."campaignId"
       ), payment_totals AS (
-        SELECT p."saleId", SUM(p."netAmount" - p."refundedAmount") AS net_received
+        SELECT p."saleId", p."currency", SUM(p."netAmount" - p."refundedAmount") AS net_received
         FROM "Payment" p
         WHERE p."organizationId" = ${user.organizationId}::uuid AND p."status" IN ('CONFIRMED', 'REFUNDED') AND p."deletedAt" IS NULL
-        GROUP BY p."saleId"
+        GROUP BY p."saleId", p."currency"
       ), item_costs AS (
-        SELECT si."saleId", SUM(CASE WHEN (si."catalogSnapshot"->>'costPrice') ~ '^[0-9]+(\\.[0-9]+)?$' THEN ((si."catalogSnapshot"->>'costPrice')::numeric * si."quantity") ELSE 0 END) AS product_cost
-        FROM "SaleItem" si WHERE si."organizationId" = ${user.organizationId}::uuid AND si."deletedAt" IS NULL GROUP BY si."saleId"
+        SELECT si."saleId", si."currency", SUM(CASE WHEN (si."catalogSnapshot"->>'costPrice') ~ '^[0-9]+(\\.[0-9]+)?$' THEN ((si."catalogSnapshot"->>'costPrice')::numeric * si."quantity") ELSE 0 END) AS product_cost
+        FROM "SaleItem" si WHERE si."organizationId" = ${user.organizationId}::uuid AND si."deletedAt" IS NULL GROUP BY si."saleId", si."currency"
       ), fulfillment_costs AS (
-        SELECT f."saleId", SUM(COALESCE(f."costAmount", 0)) AS fulfillment_cost
-        FROM "Fulfillment" f WHERE f."organizationId" = ${user.organizationId}::uuid AND f."deletedAt" IS NULL GROUP BY f."saleId"
+        SELECT f."saleId", COALESCE(f."costCurrency", s."currency") AS "currency", SUM(COALESCE(f."costAmount", 0)) AS fulfillment_cost
+        FROM "Fulfillment" f JOIN "Sale" s ON s."organizationId" = f."organizationId" AND s."id" = f."saleId"
+        WHERE f."organizationId" = ${user.organizationId}::uuid AND f."deletedAt" IS NULL GROUP BY f."saleId", COALESCE(f."costCurrency", s."currency")
       ), sales AS (
         SELECT a."campaignId", s."currency", COUNT(DISTINCT s."id") AS sales, SUM(s."total") AS gross_revenue, SUM(COALESCE(pt.net_received, 0)) AS net_revenue, SUM(COALESCE(ic.product_cost, 0)) AS product_cost, SUM(COALESCE(fc.fulfillment_cost, 0)) AS fulfillment_cost, AVG(EXTRACT(EPOCH FROM (COALESCE(s."soldAt", s."createdAt") - ctc."createdAt"))) AS average_time_to_sale_seconds
-        FROM "Attribution" a JOIN "Sale" s ON s."organizationId" = a."organizationId" AND s."id" = a."saleId" JOIN "Contact" ctc ON ctc."organizationId" = s."organizationId" AND ctc."id" = s."contactId" LEFT JOIN payment_totals pt ON pt."saleId" = s."id" LEFT JOIN item_costs ic ON ic."saleId" = s."id" LEFT JOIN fulfillment_costs fc ON fc."saleId" = s."id"
+        FROM "Attribution" a JOIN "Sale" s ON s."organizationId" = a."organizationId" AND s."id" = a."saleId" JOIN "Contact" ctc ON ctc."organizationId" = s."organizationId" AND ctc."id" = s."contactId" LEFT JOIN payment_totals pt ON pt."saleId" = s."id" AND pt."currency" = s."currency" LEFT JOIN item_costs ic ON ic."saleId" = s."id" AND ic."currency" = s."currency" LEFT JOIN fulfillment_costs fc ON fc."saleId" = s."id" AND fc."currency" = s."currency"
         WHERE a."organizationId" = ${user.organizationId}::uuid AND a."kind" = 'CONVERSION' AND a."saleId" IS NOT NULL AND a."deletedAt" IS NULL AND s."deletedAt" IS NULL AND s."status" IN ('CONFIRMED', 'FULFILLED') AND COALESCE(s."soldAt", s."createdAt") >= ${from} AND COALESCE(s."soldAt", s."createdAt") < ${to}
           ${actualCountryFilter} ${sellerFilter} ${productFilter}
         GROUP BY a."campaignId", s."currency"
@@ -733,7 +868,7 @@ export class MarketingService {
       conversationToSaleConversion: conversations
         ? new Prisma.Decimal(sales).div(conversations).mul(100).toFixed(2)
         : null,
-      averageTicket: sales ? net.div(sales).toFixed(2) : null,
+      averageTicket: sales ? gross.div(sales).toFixed(2) : null,
       averageTimeToSaleSeconds:
         row.averageTimeToSaleSeconds === null ? null : Number(row.averageTimeToSaleSeconds),
       unansweredPercentage: null,
@@ -751,8 +886,8 @@ export class MarketingService {
         ...(query.from || query.to
           ? {
               acquiredAt: {
-                ...(query.from ? { gte: new Date(query.from) } : {}),
-                ...(query.to ? { lt: new Date(query.to) } : {}),
+                ...(query.from ? { gte: dateBoundary(query.from) } : {}),
+                ...(query.to ? { lt: dateBoundary(query.to, true) } : {}),
               },
             }
           : {}),
@@ -790,10 +925,10 @@ export class MarketingService {
       dto.trialId,
       dto.saleId,
     ].filter(Boolean).length;
-    if (targetCount !== 1) throw new BadRequestException('MARKETING_ATTRIBUTION_TARGET_REQUIRED');
+    if (targetCount !== 1) throw marketingBadRequest('MARKETING_ATTRIBUTION_TARGET_REQUIRED');
     if (dto.campaignId) await this.assertCampaign(dto.campaignId, user.organizationId);
     if ((dto.adSetId || dto.adId || dto.creativeId) && !dto.campaignId)
-      throw new BadRequestException('MARKETING_CAMPAIGN_REQUIRED');
+      throw marketingBadRequest('MARKETING_CAMPAIGN_REQUIRED');
     if (dto.adSetId)
       await this.assertAdSet(dto.adSetId, dto.campaignId as string, user.organizationId);
     if (dto.adId) await this.assertAd(dto.adId, dto.campaignId as string, user.organizationId);
@@ -815,61 +950,73 @@ export class MarketingService {
             },
           })
         : null;
-    if (existing) throw new ConflictException('MARKETING_ORIGINAL_ATTRIBUTION_EXISTS');
-    const created = await this.prisma.$transaction(async (tx) => {
-      const record = await tx.attribution.create({
-        data: {
+    if (existing) throw marketingConflict('MARKETING_ORIGINAL_ATTRIBUTION_EXISTS');
+    try {
+      const created = await this.prisma.$transaction(async (tx) => {
+        const record = await tx.attribution.create({
+          data: {
+            organizationId: user.organizationId,
+            kind: dto.kind,
+            ...(dto.contactId ? { contactId: dto.contactId } : {}),
+            ...(dto.conversationId ? { conversationId: dto.conversationId } : {}),
+            ...(dto.opportunityId ? { opportunityId: dto.opportunityId } : {}),
+            ...(dto.trialId ? { trialId: dto.trialId } : {}),
+            ...(dto.saleId ? { saleId: dto.saleId } : {}),
+            ...(dto.campaignId ? { campaignId: dto.campaignId } : {}),
+            ...(dto.adSetId ? { adSetId: dto.adSetId } : {}),
+            ...(dto.adId ? { adId: dto.adId } : {}),
+            ...(dto.creativeId ? { creativeId: dto.creativeId } : {}),
+            platform: dto.platform,
+            source: dto.source,
+            ...(dto.targetedCountry ? { targetedCountry: dto.targetedCountry.toUpperCase() } : {}),
+            ...(dto.actualCountry ? { actualCountry: dto.actualCountry.toUpperCase() } : {}),
+            ...(dto.acquiredAt ? { acquiredAt: new Date(dto.acquiredAt) } : {}),
+            createdByUserId: user.userId,
+            ...(metadata.requestId ? { requestId: metadata.requestId } : {}),
+          },
+        });
+        await this.audit.recordWithClient(tx, {
           organizationId: user.organizationId,
-          kind: dto.kind,
-          ...(dto.contactId ? { contactId: dto.contactId } : {}),
-          ...(dto.conversationId ? { conversationId: dto.conversationId } : {}),
-          ...(dto.opportunityId ? { opportunityId: dto.opportunityId } : {}),
-          ...(dto.trialId ? { trialId: dto.trialId } : {}),
-          ...(dto.saleId ? { saleId: dto.saleId } : {}),
-          ...(dto.campaignId ? { campaignId: dto.campaignId } : {}),
-          ...(dto.adSetId ? { adSetId: dto.adSetId } : {}),
-          ...(dto.adId ? { adId: dto.adId } : {}),
-          ...(dto.creativeId ? { creativeId: dto.creativeId } : {}),
-          platform: dto.platform,
-          source: dto.source,
-          ...(dto.targetedCountry ? { targetedCountry: dto.targetedCountry.toUpperCase() } : {}),
-          ...(dto.actualCountry ? { actualCountry: dto.actualCountry.toUpperCase() } : {}),
-          ...(dto.acquiredAt ? { acquiredAt: new Date(dto.acquiredAt) } : {}),
-          createdByUserId: user.userId,
-          ...(metadata.requestId ? { requestId: metadata.requestId } : {}),
-        },
+          userId: user.userId,
+          action:
+            dto.kind === 'ORIGINAL'
+              ? 'ORIGINAL_ATTRIBUTION_ASSIGNED'
+              : 'CONVERSION_ATTRIBUTION_ASSIGNED',
+          tableName: 'Attribution',
+          recordId: record.id,
+          newValue: {
+            kind: record.kind,
+            campaignId: record.campaignId,
+            platform: record.platform,
+            source: record.source,
+          },
+          ip: metadata.ipAddress,
+          requestId: metadata.requestId,
+        });
+        await this.outbox.enqueueWithClient(tx, {
+          eventType:
+            dto.kind === 'ORIGINAL'
+              ? 'OriginalAttributionAssigned'
+              : 'ConversionAttributionAssigned',
+          organizationId: user.organizationId,
+          aggregateType: 'Attribution',
+          aggregateId: record.id,
+          actorId: user.userId,
+          requestId: metadata.requestId ?? record.id,
+          payload: { kind: record.kind, campaignId: record.campaignId },
+        });
+        return record;
       });
-      await this.audit.recordWithClient(tx, {
-        organizationId: user.organizationId,
-        userId: user.userId,
-        action:
+      return created;
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+        throw marketingConflict(
           dto.kind === 'ORIGINAL'
-            ? 'ORIGINAL_ATTRIBUTION_ASSIGNED'
-            : 'CONVERSION_ATTRIBUTION_ASSIGNED',
-        tableName: 'Attribution',
-        recordId: record.id,
-        newValue: {
-          kind: record.kind,
-          campaignId: record.campaignId,
-          platform: record.platform,
-          source: record.source,
-        },
-        ip: metadata.ipAddress,
-        requestId: metadata.requestId,
-      });
-      await this.outbox.enqueueWithClient(tx, {
-        eventType:
-          dto.kind === 'ORIGINAL' ? 'OriginalAttributionAssigned' : 'ConversionAttributionAssigned',
-        organizationId: user.organizationId,
-        aggregateType: 'Attribution',
-        aggregateId: record.id,
-        actorId: user.userId,
-        requestId: metadata.requestId ?? record.id,
-        payload: { kind: record.kind, campaignId: record.campaignId },
-      });
-      return record;
-    });
-    return created;
+            ? 'MARKETING_ORIGINAL_ATTRIBUTION_EXISTS'
+            : 'MARKETING_CONVERSION_ATTRIBUTION_EXISTS',
+        );
+      throw error;
+    }
   }
 
   async correctAttribution(
@@ -880,9 +1027,9 @@ export class MarketingService {
   ) {
     const correctionReason = dto.correctionReason?.trim();
     if (!correctionReason)
-      throw new BadRequestException('MARKETING_ATTRIBUTION_CORRECTION_REASON_REQUIRED');
+      throw marketingBadRequest('MARKETING_ATTRIBUTION_CORRECTION_REASON_REQUIRED');
     if ((dto.adSetId || dto.adId || dto.creativeId) && !dto.campaignId)
-      throw new BadRequestException('MARKETING_CAMPAIGN_REQUIRED');
+      throw marketingBadRequest('MARKETING_CAMPAIGN_REQUIRED');
     if (dto.campaignId) await this.assertCampaign(dto.campaignId, user.organizationId);
     if (dto.adSetId)
       await this.assertAdSet(dto.adSetId, dto.campaignId as string, user.organizationId);
@@ -892,7 +1039,7 @@ export class MarketingService {
     const current = await this.prisma.attribution.findFirst({
       where: { id, organizationId: user.organizationId, deletedAt: null, kind: 'ORIGINAL' },
     });
-    if (!current) throw new NotFoundException('MARKETING_ATTRIBUTION_NOT_FOUND');
+    if (!current) throw marketingNotFound('MARKETING_ATTRIBUTION_NOT_FOUND');
     const updated = await this.prisma.$transaction(async (tx) => {
       const record = await tx.attribution.update({
         where: { organizationId_id: { organizationId: user.organizationId, id } },
@@ -1039,26 +1186,43 @@ export class MarketingService {
     user: AuthenticatedUser,
     metadata: MarketingRequestMetadata,
   ) {
-    const reason = await this.prisma.lossReason.create({
-      data: {
-        organizationId: user.organizationId,
-        type: dto.type,
-        systemKey: dto.systemKey.toUpperCase(),
-        name: dto.name.trim(),
-        sortOrder: dto.sortOrder ?? 0,
-      },
-    });
-    await this.audit.record({
-      organizationId: user.organizationId,
-      userId: user.userId,
-      action: 'LOSS_REASON_CREATED',
-      tableName: 'LossReason',
-      recordId: reason.id,
-      newValue: { type: reason.type, systemKey: reason.systemKey, name: reason.name },
-      ip: metadata.ipAddress,
-      requestId: metadata.requestId,
-    });
-    return reason;
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const reason = await tx.lossReason.create({
+          data: {
+            organizationId: user.organizationId,
+            type: dto.type,
+            systemKey: dto.systemKey.toUpperCase(),
+            name: dto.name.trim(),
+            sortOrder: dto.sortOrder ?? 0,
+          },
+        });
+        await this.audit.recordWithClient(tx, {
+          organizationId: user.organizationId,
+          userId: user.userId,
+          action: 'LOSS_REASON_CREATED',
+          tableName: 'LossReason',
+          recordId: reason.id,
+          newValue: { type: reason.type, systemKey: reason.systemKey, name: reason.name },
+          ip: metadata.ipAddress,
+          requestId: metadata.requestId,
+        });
+        await this.outbox.enqueueWithClient(tx, {
+          eventType: 'LossReasonCreated',
+          organizationId: user.organizationId,
+          aggregateType: 'LossReason',
+          aggregateId: reason.id,
+          actorId: user.userId,
+          requestId: metadata.requestId ?? reason.id,
+          payload: { type: reason.type, systemKey: reason.systemKey },
+        });
+        return reason;
+      });
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+        throw marketingConflict('LOSS_REASON_ALREADY_EXISTS');
+      throw error;
+    }
   }
 
   async updateLossReason(
@@ -1070,27 +1234,44 @@ export class MarketingService {
     const reason = await this.prisma.lossReason.findFirst({
       where: { id, organizationId: user.organizationId, deletedAt: null },
     });
-    if (!reason) throw new NotFoundException('LOSS_REASON_NOT_FOUND');
-    const updated = await this.prisma.lossReason.update({
-      where: { organizationId_id: { organizationId: user.organizationId, id } },
-      data: {
-        ...(dto.name !== undefined ? { name: dto.name } : {}),
-        ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
-        ...(dto.active !== undefined ? { active: dto.active } : {}),
-      },
-    });
-    await this.audit.record({
-      organizationId: user.organizationId,
-      userId: user.userId,
-      action: 'LOSS_REASON_UPDATED',
-      tableName: 'LossReason',
-      recordId: id,
-      previousValue: { name: reason.name, active: reason.active },
-      newValue: { name: updated.name, active: updated.active },
-      ip: metadata.ipAddress,
-      requestId: metadata.requestId,
-    });
-    return updated;
+    if (!reason) throw marketingNotFound('LOSS_REASON_NOT_FOUND');
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.lossReason.update({
+          where: { organizationId_id: { organizationId: user.organizationId, id } },
+          data: {
+            ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+            ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
+            ...(dto.active !== undefined ? { active: dto.active } : {}),
+          },
+        });
+        await this.audit.recordWithClient(tx, {
+          organizationId: user.organizationId,
+          userId: user.userId,
+          action: 'LOSS_REASON_UPDATED',
+          tableName: 'LossReason',
+          recordId: id,
+          previousValue: { name: reason.name, active: reason.active },
+          newValue: { name: updated.name, active: updated.active },
+          ip: metadata.ipAddress,
+          requestId: metadata.requestId,
+        });
+        await this.outbox.enqueueWithClient(tx, {
+          eventType: 'LossReasonUpdated',
+          organizationId: user.organizationId,
+          aggregateType: 'LossReason',
+          aggregateId: id,
+          actorId: user.userId,
+          requestId: metadata.requestId ?? id,
+          payload: { active: updated.active },
+        });
+        return updated;
+      });
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+        throw marketingConflict('LOSS_REASON_ALREADY_EXISTS');
+      throw error;
+    }
   }
 
   async createProspectReason(
@@ -1101,7 +1282,7 @@ export class MarketingService {
     const targetCount = [dto.contactId, dto.conversationId, dto.opportunityId].filter(
       Boolean,
     ).length;
-    if (targetCount !== 1) throw new BadRequestException('MARKETING_REASON_TARGET_REQUIRED');
+    if (targetCount !== 1) throw marketingBadRequest('MARKETING_REASON_TARGET_REQUIRED');
     const reason = await this.prisma.lossReason.findFirst({
       where: {
         id: dto.reasonId,
@@ -1110,48 +1291,50 @@ export class MarketingService {
         active: true,
       },
     });
-    if (!reason) throw new NotFoundException('LOSS_REASON_NOT_FOUND');
+    if (!reason) throw marketingNotFound('LOSS_REASON_NOT_FOUND');
     if (dto.contactId) await this.assertContact(dto.contactId, user.organizationId);
     if (dto.conversationId) await this.assertConversation(dto.conversationId, user.organizationId);
     if (dto.opportunityId) await this.assertOpportunity(dto.opportunityId, user.organizationId);
-    const event = await this.prisma.prospectReason.create({
-      data: {
+    return this.prisma.$transaction(async (tx) => {
+      const event = await tx.prospectReason.create({
+        data: {
+          organizationId: user.organizationId,
+          reasonId: dto.reasonId,
+          ...(dto.contactId ? { contactId: dto.contactId } : {}),
+          ...(dto.conversationId ? { conversationId: dto.conversationId } : {}),
+          ...(dto.opportunityId ? { opportunityId: dto.opportunityId } : {}),
+          ...(dto.note ? { note: dto.note } : {}),
+          createdByUserId: user.userId,
+          ...(metadata.requestId ? { requestId: metadata.requestId } : {}),
+        },
+        include: { reason: true },
+      });
+      await this.audit.recordWithClient(tx, {
         organizationId: user.organizationId,
-        reasonId: dto.reasonId,
-        ...(dto.contactId ? { contactId: dto.contactId } : {}),
-        ...(dto.conversationId ? { conversationId: dto.conversationId } : {}),
-        ...(dto.opportunityId ? { opportunityId: dto.opportunityId } : {}),
-        ...(dto.note ? { note: dto.note } : {}),
-        createdByUserId: user.userId,
-        ...(metadata.requestId ? { requestId: metadata.requestId } : {}),
-      },
-      include: { reason: true },
+        userId: user.userId,
+        action: 'LOSS_REASON_RECORDED',
+        tableName: 'ProspectReason',
+        recordId: event.id,
+        newValue: {
+          reasonId: event.reasonId,
+          type: reason.type,
+          contactId: event.contactId,
+          opportunityId: event.opportunityId,
+        },
+        ip: metadata.ipAddress,
+        requestId: metadata.requestId,
+      });
+      await this.outbox.enqueueWithClient(tx, {
+        eventType: 'LossReasonRecorded',
+        organizationId: user.organizationId,
+        aggregateType: 'ProspectReason',
+        aggregateId: event.id,
+        actorId: user.userId,
+        requestId: metadata.requestId ?? event.id,
+        payload: { reasonId: event.reasonId, type: reason.type },
+      });
+      return event;
     });
-    await this.audit.record({
-      organizationId: user.organizationId,
-      userId: user.userId,
-      action: 'LOSS_REASON_RECORDED',
-      tableName: 'ProspectReason',
-      recordId: event.id,
-      newValue: {
-        reasonId: event.reasonId,
-        type: reason.type,
-        contactId: event.contactId,
-        opportunityId: event.opportunityId,
-      },
-      ip: metadata.ipAddress,
-      requestId: metadata.requestId,
-    });
-    await this.outbox.enqueue({
-      eventType: 'LossReasonRecorded',
-      organizationId: user.organizationId,
-      aggregateType: 'ProspectReason',
-      aggregateId: event.id,
-      actorId: user.userId,
-      requestId: metadata.requestId ?? event.id,
-      payload: { reasonId: event.reasonId, type: reason.type },
-    });
-    return event;
   }
 
   async getEngagementConfig(user: AuthenticatedUser) {
@@ -1176,42 +1359,56 @@ export class MarketingService {
     try {
       cadence = JSON.parse(dto.cadenceDays) as unknown;
     } catch {
-      throw new BadRequestException('MARKETING_CADENCE_INVALID');
+      throw marketingBadRequest('MARKETING_CADENCE_INVALID');
     }
     if (
       !Array.isArray(cadence) ||
       cadence.some((item) => typeof item !== 'number' || item < 1 || item > 365)
     )
-      throw new BadRequestException('MARKETING_CADENCE_INVALID');
-    const updated = await this.prisma.prospectEngagementConfig.upsert({
-      where: { organizationId: user.organizationId },
-      update: {
-        slaFirstResponseThresholdMinutes: dto.slaFirstResponseThresholdMinutes,
-        cadenceDays: jsonObject(cadence),
-        maxUnansweredAttempts: dto.maxUnansweredAttempts,
-      },
-      create: {
+      throw marketingBadRequest('MARKETING_CADENCE_INVALID');
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.prospectEngagementConfig.upsert({
+        where: { organizationId: user.organizationId },
+        update: {
+          slaFirstResponseThresholdMinutes: dto.slaFirstResponseThresholdMinutes,
+          cadenceDays: jsonObject(cadence),
+          maxUnansweredAttempts: dto.maxUnansweredAttempts,
+        },
+        create: {
+          organizationId: user.organizationId,
+          slaFirstResponseThresholdMinutes: dto.slaFirstResponseThresholdMinutes,
+          cadenceDays: jsonObject(cadence),
+          maxUnansweredAttempts: dto.maxUnansweredAttempts,
+        },
+      });
+      await this.audit.recordWithClient(tx, {
         organizationId: user.organizationId,
-        slaFirstResponseThresholdMinutes: dto.slaFirstResponseThresholdMinutes,
-        cadenceDays: jsonObject(cadence),
-        maxUnansweredAttempts: dto.maxUnansweredAttempts,
-      },
+        userId: user.userId,
+        action: 'MARKETING_ENGAGEMENT_CONFIG_UPDATED',
+        tableName: 'ProspectEngagementConfig',
+        recordId: updated.id,
+        newValue: {
+          slaFirstResponseThresholdMinutes: updated.slaFirstResponseThresholdMinutes,
+          cadenceDays: updated.cadenceDays,
+          maxUnansweredAttempts: updated.maxUnansweredAttempts,
+        },
+        ip: metadata.ipAddress,
+        requestId: metadata.requestId,
+      });
+      await this.outbox.enqueueWithClient(tx, {
+        eventType: 'MarketingEngagementConfigUpdated',
+        organizationId: user.organizationId,
+        aggregateType: 'ProspectEngagementConfig',
+        aggregateId: updated.id,
+        actorId: user.userId,
+        requestId: metadata.requestId ?? updated.id,
+        payload: {
+          slaFirstResponseThresholdMinutes: updated.slaFirstResponseThresholdMinutes,
+          maxUnansweredAttempts: updated.maxUnansweredAttempts,
+        },
+      });
+      return updated;
     });
-    await this.audit.record({
-      organizationId: user.organizationId,
-      userId: user.userId,
-      action: 'MARKETING_ENGAGEMENT_CONFIG_UPDATED',
-      tableName: 'ProspectEngagementConfig',
-      recordId: updated.id,
-      newValue: {
-        slaFirstResponseThresholdMinutes: updated.slaFirstResponseThresholdMinutes,
-        cadenceDays: updated.cadenceDays,
-        maxUnansweredAttempts: updated.maxUnansweredAttempts,
-      },
-      ip: metadata.ipAddress,
-      requestId: metadata.requestId,
-    });
-    return updated;
   }
 
   async previewImport(dto: CommercialImportDto, user: AuthenticatedUser) {
@@ -1234,10 +1431,21 @@ export class MarketingService {
     user: AuthenticatedUser,
     metadata: MarketingRequestMetadata,
   ) {
+    const fingerprint = createHash('sha256')
+      .update(`${dto.type}\0${dto.fileName ?? ''}\0${dto.csv}`)
+      .digest('hex');
     const existing = await this.prisma.commercialImport.findFirst({
       where: { organizationId: user.organizationId, idempotencyKey: dto.idempotencyKey },
     });
-    if (existing) return existing;
+    if (existing) {
+      const report = existing.report;
+      const previousFingerprint =
+        typeof report === 'object' && report !== null && !Array.isArray(report)
+          ? (report as { requestFingerprint?: unknown }).requestFingerprint
+          : undefined;
+      if (previousFingerprint === fingerprint) return existing;
+      throw marketingConflict('COMMERCIAL_IMPORT_IDEMPOTENCY_CONFLICT');
+    }
     const records = parseCsv(dto.csv);
     const validationErrors = records.flatMap((record, index) =>
       this.validateImportRow(dto.type, record, index + 2),
@@ -1245,34 +1453,52 @@ export class MarketingService {
     const report = {
       errors: validationErrors.slice(0, 1000),
       supported: ['CONTACTS', 'ATTRIBUTION'],
+      requestFingerprint: fingerprint,
     };
     if (validationErrors.length > 0)
       throw new BadRequestException({ code: 'COMMERCIAL_IMPORT_INVALID', ...report });
-    const created = await this.prisma.$transaction(async (tx) => {
-      const imported = await tx.commercialImport.create({
-        data: {
-          organizationId: user.organizationId,
-          createdByUserId: user.userId,
-          type: dto.type,
-          status: 'PROCESSING',
-          idempotencyKey: dto.idempotencyKey,
-          ...(dto.fileName ? { fileName: dto.fileName } : {}),
-          rowCount: records.length,
-          ...(metadata.requestId ? { requestId: metadata.requestId } : {}),
-          report: report as Prisma.InputJsonObject,
-        },
-      });
-      for (const [index, record] of records.entries())
-        await tx.commercialImportRow.create({
+    let created;
+    try {
+      created = await this.prisma.$transaction(async (tx) => {
+        const imported = await tx.commercialImport.create({
           data: {
             organizationId: user.organizationId,
-            importId: imported.id,
-            rowNumber: index + 2,
-            payload: record as Prisma.InputJsonObject,
+            createdByUserId: user.userId,
+            type: dto.type,
+            status: 'PROCESSING',
+            idempotencyKey: dto.idempotencyKey,
+            ...(dto.fileName ? { fileName: dto.fileName } : {}),
+            rowCount: records.length,
+            ...(metadata.requestId ? { requestId: metadata.requestId } : {}),
+            report: report as Prisma.InputJsonObject,
           },
         });
-      return imported;
-    });
+        for (const [index, record] of records.entries())
+          await tx.commercialImportRow.create({
+            data: {
+              organizationId: user.organizationId,
+              importId: imported.id,
+              rowNumber: index + 2,
+              payload: record as Prisma.InputJsonObject,
+            },
+          });
+        return imported;
+      });
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const winner = await this.prisma.commercialImport.findFirst({
+          where: { organizationId: user.organizationId, idempotencyKey: dto.idempotencyKey },
+        });
+        const winnerReport = winner?.report;
+        const winnerFingerprint =
+          typeof winnerReport === 'object' && winnerReport !== null && !Array.isArray(winnerReport)
+            ? (winnerReport as { requestFingerprint?: unknown }).requestFingerprint
+            : undefined;
+        if (winner && winnerFingerprint === fingerprint) return winner;
+        throw marketingConflict('COMMERCIAL_IMPORT_IDEMPOTENCY_CONFLICT');
+      }
+      throw error;
+    }
     let succeeded = 0;
     let failed = 0;
     for (const [index, record] of records.entries()) {
@@ -1280,7 +1506,7 @@ export class MarketingService {
         if (dto.type === 'CONTACTS') await this.importContact(record, user, metadata);
         else if (dto.type === 'ATTRIBUTION') await this.importAttribution(record, user, metadata);
         else
-          throw new BadRequestException(
+          throw marketingBadRequest(
             'COMMERCIAL_IMPORT_TYPE_NOT_SUPPORTED_WITHOUT_REQUIRED_SNAPSHOT',
           );
         succeeded += 1;
@@ -1378,13 +1604,13 @@ export class MarketingService {
     const phone = record.phone?.trim();
     const country = record.country?.trim().toUpperCase();
     const parsed = phone ? parsePhoneNumberFromString(phone, country as CountryCode) : undefined;
-    if (phone && !parsed?.isValid()) throw new BadRequestException('CONTACT_INVALID_PHONE');
+    if (phone && !parsed?.isValid()) throw marketingBadRequest('CONTACT_INVALID_PHONE');
     const phoneNormalized = parsed?.number;
     if (phoneNormalized) {
       const existing = await this.prisma.contact.findFirst({
         where: { organizationId: user.organizationId, phoneNormalized, deletedAt: null },
       });
-      if (existing) throw new ConflictException('CONTACT_PHONE_ALREADY_EXISTS');
+      if (existing) throw marketingConflict('CONTACT_PHONE_ALREADY_EXISTS');
     }
     const contact = await this.prisma.contact.create({
       data: {
@@ -1419,7 +1645,7 @@ export class MarketingService {
     const platform = record.platform;
     const source = record.source;
     if (!contactId || !campaignId || !platform || !source)
-      throw new BadRequestException('MARKETING_ATTRIBUTION_IMPORT_ROW_INVALID');
+      throw marketingBadRequest('MARKETING_ATTRIBUTION_IMPORT_ROW_INVALID');
     await this.createAttribution(
       {
         kind: 'ORIGINAL',
@@ -1435,11 +1661,56 @@ export class MarketingService {
     );
   }
 
+  private spendRequestMatches(
+    entry: {
+      amount: Prisma.Decimal;
+      currency: string;
+      expenseDate: Date;
+      campaignId: string | null;
+      adSetId: string | null;
+      adId: string | null;
+      creativeId: string | null;
+      conversations: number | null;
+      contacts: number | null;
+      impressions: number | null;
+      reach: number | null;
+      clicks: number | null;
+      cpmInput: Prisma.Decimal | null;
+      cpcInput: Prisma.Decimal | null;
+      ctrInput: Prisma.Decimal | null;
+      notes: string | null;
+    },
+    dto: CreateSpendDto,
+  ): boolean {
+    const decimalMatches = (expected: string | undefined, actual: Prisma.Decimal | null) =>
+      expected === undefined ? actual === null : actual !== null && actual.eq(decimal(expected));
+    const optionalMatches = (expected: number | undefined, actual: number | null) =>
+      expected === undefined ? actual === null : actual === expected;
+    return (
+      entry.amount.eq(decimal(dto.amount)) &&
+      entry.currency === supportedCurrency(dto.currency) &&
+      entry.expenseDate.getTime() === new Date(dto.date).getTime() &&
+      entry.campaignId === dto.campaignId &&
+      entry.adSetId === (dto.adSetId ?? null) &&
+      entry.adId === (dto.adId ?? null) &&
+      entry.creativeId === (dto.creativeId ?? null) &&
+      optionalMatches(dto.conversations, entry.conversations) &&
+      optionalMatches(dto.contacts, entry.contacts) &&
+      optionalMatches(dto.impressions, entry.impressions) &&
+      optionalMatches(dto.reach, entry.reach) &&
+      optionalMatches(dto.clicks, entry.clicks) &&
+      decimalMatches(dto.cpmInput, entry.cpmInput) &&
+      decimalMatches(dto.cpcInput, entry.cpcInput) &&
+      decimalMatches(dto.ctrInput, entry.ctrInput) &&
+      (dto.notes ?? null) === entry.notes
+    );
+  }
+
   private async assertCampaign(id: string, organizationId: string) {
     const record = await this.prisma.campaign.findFirst({
       where: { id, organizationId, deletedAt: null },
     });
-    if (!record) throw new NotFoundException('MARKETING_CAMPAIGN_NOT_FOUND');
+    if (!record) throw marketingNotFound('MARKETING_CAMPAIGN_NOT_FOUND');
     return record;
   }
 
@@ -1447,7 +1718,7 @@ export class MarketingService {
     const record = await this.prisma.marketingAdSet.findFirst({
       where: { id, campaignId, organizationId, deletedAt: null },
     });
-    if (!record) throw new NotFoundException('MARKETING_AD_SET_NOT_FOUND');
+    if (!record) throw marketingNotFound('MARKETING_AD_SET_NOT_FOUND');
     return record;
   }
 
@@ -1455,7 +1726,7 @@ export class MarketingService {
     const record = await this.prisma.marketingAd.findFirst({
       where: { id, campaignId, organizationId, deletedAt: null },
     });
-    if (!record) throw new NotFoundException('MARKETING_AD_NOT_FOUND');
+    if (!record) throw marketingNotFound('MARKETING_AD_NOT_FOUND');
     return record;
   }
 
@@ -1463,7 +1734,7 @@ export class MarketingService {
     const record = await this.prisma.marketingCreative.findFirst({
       where: { id, campaignId, organizationId, deletedAt: null },
     });
-    if (!record) throw new NotFoundException('MARKETING_CREATIVE_NOT_FOUND');
+    if (!record) throw marketingNotFound('MARKETING_CREATIVE_NOT_FOUND');
     return record;
   }
 
@@ -1471,7 +1742,7 @@ export class MarketingService {
     const record = await this.prisma.contact.findFirst({
       where: { id, organizationId, deletedAt: null },
     });
-    if (!record) throw new NotFoundException('CONTACT_NOT_FOUND');
+    if (!record) throw marketingNotFound('CONTACT_NOT_FOUND');
     return record;
   }
 
@@ -1479,7 +1750,7 @@ export class MarketingService {
     const record = await this.prisma.opportunity.findFirst({
       where: { id, organizationId, deletedAt: null },
     });
-    if (!record) throw new NotFoundException('OPPORTUNITY_NOT_FOUND');
+    if (!record) throw marketingNotFound('OPPORTUNITY_NOT_FOUND');
     return record;
   }
 
@@ -1487,7 +1758,7 @@ export class MarketingService {
     const record = await this.prisma.whatsAppConversation.findFirst({
       where: { id, organizationId },
     });
-    if (!record) throw new NotFoundException('WHATSAPP_CONVERSATION_NOT_FOUND');
+    if (!record) throw marketingNotFound('WHATSAPP_CONVERSATION_NOT_FOUND');
     return record;
   }
 
@@ -1495,7 +1766,7 @@ export class MarketingService {
     const record = await this.prisma.trial.findFirst({
       where: { id, organizationId, deletedAt: null },
     });
-    if (!record) throw new NotFoundException('TRIAL_NOT_FOUND');
+    if (!record) throw marketingNotFound('TRIAL_NOT_FOUND');
     return record;
   }
 
@@ -1503,7 +1774,7 @@ export class MarketingService {
     const record = await this.prisma.sale.findFirst({
       where: { id, organizationId, deletedAt: null },
     });
-    if (!record) throw new NotFoundException('SALE_NOT_FOUND');
+    if (!record) throw marketingNotFound('SALE_NOT_FOUND');
     return record;
   }
 
@@ -1512,6 +1783,6 @@ export class MarketingService {
     const record = await this.prisma.user.findFirst({
       where: { id, organizationId, status: 'ACTIVE', deletedAt: null },
     });
-    if (!record) throw new ForbiddenException('MARKETING_ASSIGNEE_NOT_FOUND');
+    if (!record) throw marketingForbidden('MARKETING_ASSIGNEE_NOT_FOUND');
   }
 }

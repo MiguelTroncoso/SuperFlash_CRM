@@ -8,4 +8,6 @@ producto y costo de fulfillment; el margen es utilidad / ingreso neto y es
 
 Las métricas de costo y utilidad no se aceptan desde el frontend ni se exponen
 sin `commercial.costs.read` o `commercial.profit.read`. No se almacenan
-balances derivados ni se mezclan monedas.
+balances derivados ni se mezclan monedas. Los costos de productos y fulfillment
+solo se incorporan a una métrica de venta cuando su moneda coincide con la
+moneda de la venta; no se realiza conversión implícita.

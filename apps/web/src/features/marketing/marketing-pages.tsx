@@ -89,19 +89,48 @@ export function MarketingOverviewPage(): React.ReactElement {
     queryKey: ['marketing-performance', query],
     queryFn: () => api.getMarketingPerformance(query),
   });
-  const rows = performance.data?.data ?? [];
-  const totals = rows.reduce(
-    (result, row) => ({
-      spend: result.spend + Number(row.spend),
-      revenue: result.revenue + Number(row.netRevenue),
-      sales: result.sales + row.sales,
-      conversations: result.conversations + row.conversations,
-      profit: result.profit + Number(row.profit ?? 0),
-    }),
-    { spend: 0, revenue: 0, sales: 0, conversations: 0, profit: 0 },
-  );
-  const mainCurrency = performance.data?.currencies[0] ?? (currency || '—');
-  const roas = totals.spend > 0 ? totals.revenue / totals.spend : null;
+  const performanceRows = performance.data?.data;
+  const rows = useMemo(() => performanceRows ?? [], [performanceRows]);
+  const currencyTotals = useMemo(() => {
+    const totals = new Map<string, { spend: number; revenue: number; profit: number }>();
+    rows.forEach((row) => {
+      const current = totals.get(row.currency) ?? {
+        spend: 0,
+        revenue: 0,
+        profit: 0,
+      };
+      current.spend += Number(row.spend);
+      current.revenue += Number(row.netRevenue);
+      current.profit += Number(row.profit ?? 0);
+      totals.set(row.currency, current);
+    });
+    return [...totals.entries()].map(([currencyCode, total]) => ({
+      currency: currencyCode,
+      ...total,
+    }));
+  }, [rows]);
+  const funnelTotals = useMemo(() => {
+    const campaignRows = new Map<string, MarketingPerformanceMetric>();
+    rows.forEach((row) => {
+      const current = campaignRows.get(row.campaignId);
+      campaignRows.set(row.campaignId, {
+        ...row,
+        sales: (current?.sales ?? 0) + row.sales,
+        conversations: current?.conversations ?? row.conversations,
+        contacts: current?.contacts ?? row.contacts,
+        demos: current?.demos ?? row.demos,
+      });
+    });
+    return [...campaignRows.values()].reduce(
+      (result, row) => ({
+        conversations: result.conversations + row.conversations,
+        contacts: result.contacts + row.contacts,
+        demos: result.demos + row.demos,
+        sales: result.sales + row.sales,
+      }),
+      { conversations: 0, contacts: 0, demos: 0, sales: 0 },
+    );
+  }, [rows]);
   return (
     <MarketingLayout
       active="overview"
@@ -157,33 +186,47 @@ export function MarketingOverviewPage(): React.ReactElement {
           />
         ) : (
           <>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            {currencyTotals.map((total) => {
+              const roas = total.spend > 0 ? total.revenue / total.spend : null;
+              return (
+                <section aria-label={`Resumen ${total.currency}`} key={total.currency}>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-content-muted">
+                    Resumen en {total.currency}
+                  </p>
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                    <MetricCard
+                      icon="$"
+                      label="Gasto"
+                      value={money(total.spend.toFixed(2), total.currency)}
+                    />
+                    <MetricCard
+                      icon="↗"
+                      label="Ingresos netos"
+                      value={money(total.revenue.toFixed(2), total.currency)}
+                    />
+                    <MetricCard
+                      icon="✓"
+                      label="Utilidad"
+                      value={money(total.profit.toFixed(2), total.currency)}
+                    />
+                    <MetricCard
+                      icon="◎"
+                      label="ROAS neto"
+                      value={roas === null ? '—' : `${roas.toFixed(2)}x`}
+                    />
+                  </div>
+                </section>
+              );
+            })}
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <MetricCard icon="#" label="Ventas" value={String(funnelTotals.sales)} />
               <MetricCard
-                icon="$"
-                label="Gasto"
-                value={money(totals.spend.toFixed(2), mainCurrency)}
+                icon="◌"
+                label="Conversaciones"
+                value={String(funnelTotals.conversations)}
               />
-              <MetricCard
-                icon="↗"
-                label="Ingresos netos"
-                value={money(totals.revenue.toFixed(2), mainCurrency)}
-              />
-              <MetricCard
-                icon="✓"
-                label="Utilidad"
-                value={money(totals.profit.toFixed(2), mainCurrency)}
-              />
-              <MetricCard
-                icon="◎"
-                label="ROAS neto"
-                value={roas === null ? '—' : `${roas.toFixed(2)}x`}
-              />
-              <MetricCard
-                icon="#"
-                label="Ventas"
-                value={String(totals.sales)}
-                trend={`${totals.conversations} conversaciones`}
-              />
+              <MetricCard icon="+" label="Contactos" value={String(funnelTotals.contacts)} />
+              <MetricCard icon="◇" label="Demos" value={String(funnelTotals.demos)} />
             </div>
             <PerformanceTable rows={rows} />
           </>
