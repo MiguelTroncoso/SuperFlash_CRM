@@ -8,6 +8,7 @@ import {
   PrismaClient,
   ProductStatus,
   ProductType,
+  ProspectReasonType,
 } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -117,6 +118,21 @@ const permissions = [
   { key: 'whatsapp.conversations.assign', name: 'Asignar conversaciones WhatsApp' },
   { key: 'financial.read', name: 'Leer inteligencia financiera' },
   { key: 'financial.manage', name: 'Gestionar inteligencia financiera' },
+  { key: 'marketing.campaigns.read', name: 'Leer campañas de marketing' },
+  { key: 'marketing.campaigns.manage', name: 'Gestionar campañas de marketing' },
+  { key: 'marketing.spend.read', name: 'Leer gasto publicitario' },
+  { key: 'marketing.spend.manage', name: 'Gestionar gasto publicitario' },
+  { key: 'marketing.analytics.read', name: 'Leer rendimiento de marketing' },
+  { key: 'marketing.attribution.read', name: 'Leer atribución comercial' },
+  { key: 'marketing.attribution.manage', name: 'Gestionar atribución comercial' },
+  { key: 'marketing.loss-reasons.read', name: 'Leer motivos comerciales' },
+  { key: 'marketing.loss-reasons.manage', name: 'Gestionar motivos comerciales' },
+  { key: 'commercial.net-values.read', name: 'Leer ingresos netos comerciales' },
+  { key: 'commercial.costs.read', name: 'Leer costos comerciales' },
+  { key: 'commercial.profit.read', name: 'Leer utilidad comercial' },
+  { key: 'imports.commercial.execute', name: 'Ejecutar importaciones comerciales' },
+  { key: 'imports.commercial.read', name: 'Leer importaciones comerciales' },
+  { key: 'imports.commercial.export', name: 'Exportar importaciones comerciales' },
 ] as const;
 
 const expenseCategories = [
@@ -221,6 +237,66 @@ const salesPermissionKeys = [
   'financial.read',
 ] as const;
 
+const marketingSalesPermissionKeys = [
+  'marketing.campaigns.read',
+  'marketing.spend.read',
+  'marketing.analytics.read',
+  'marketing.attribution.read',
+  'marketing.loss-reasons.read',
+  'commercial.net-values.read',
+] as const;
+
+const lossReasons = [
+  { type: ProspectReasonType.LOSS, systemKey: 'NO_RESPONSE', name: 'Sin respuesta' },
+  { type: ProspectReasonType.LOSS, systemKey: 'PRICE', name: 'Precio' },
+  { type: ProspectReasonType.LOSS, systemKey: 'NO_MONEY', name: 'Sin dinero' },
+  { type: ProspectReasonType.LOSS, systemKey: 'WILL_REVIEW_LATER', name: 'Lo revisará después' },
+  { type: ProspectReasonType.LOSS, systemKey: 'DISTRUST', name: 'Desconfianza' },
+  {
+    type: ProspectReasonType.LOSS,
+    systemKey: 'WANTED_PERSONAL_SERVICE',
+    name: 'Quería atención personal',
+  },
+  {
+    type: ProspectReasonType.LOSS,
+    systemKey: 'PAYMENT_METHOD_ISSUE',
+    name: 'Problema con medio de pago',
+  },
+  {
+    type: ProspectReasonType.LOSS,
+    systemKey: 'INSTALLATION_ISSUE',
+    name: 'Problema de instalación',
+  },
+  { type: ProspectReasonType.LOSS, systemKey: 'DEMO_ISSUE', name: 'Problema con demo' },
+  {
+    type: ProspectReasonType.LOSS,
+    systemKey: 'CHOSE_OTHER_PROVIDER',
+    name: 'Eligió otro proveedor',
+  },
+  { type: ProspectReasonType.LOSS, systemKey: 'OTHER', name: 'Otro' },
+  { type: ProspectReasonType.OBJECTION, systemKey: 'PRICE', name: 'Objeción de precio' },
+  { type: ProspectReasonType.OBJECTION, systemKey: 'NO_MONEY', name: 'Objeción de presupuesto' },
+  { type: ProspectReasonType.OBJECTION, systemKey: 'DISTRUST', name: 'Objeción de confianza' },
+  { type: ProspectReasonType.OBJECTION, systemKey: 'OTHER', name: 'Otra objeción' },
+  {
+    type: ProspectReasonType.SILENCE,
+    systemKey: 'AFTER_FIRST_CONTACT',
+    name: 'Después del primer contacto',
+  },
+  {
+    type: ProspectReasonType.SILENCE,
+    systemKey: 'AFTER_PRICING',
+    name: 'Después de enviar precio',
+  },
+  { type: ProspectReasonType.SILENCE, systemKey: 'AFTER_DEMO', name: 'Después de la demo' },
+  {
+    type: ProspectReasonType.SILENCE,
+    systemKey: 'AFTER_PAYMENT_REQUEST',
+    name: 'Después de solicitar pago',
+  },
+  { type: ProspectReasonType.SILENCE, systemKey: 'AFTER_PROMOTION', name: 'Después de promoción' },
+] as const;
+
 const catalogExamplesEnabled =
   process.env.NODE_ENV !== 'production' && process.env.SEED_CATALOG_EXAMPLES === 'true';
 
@@ -254,12 +330,16 @@ function permissionsForRole(roleName: string): readonly string[] {
   }
 
   if (roleName === 'Sales') {
-    return salesPermissionKeys;
+    return [...salesPermissionKeys, ...marketingSalesPermissionKeys];
   }
 
   return permissions
     .filter(
-      (permission) => permission.key.endsWith('.read') && permission.key !== 'catalog.costs.read',
+      (permission) =>
+        permission.key.endsWith('.read') &&
+        !['catalog.costs.read', 'commercial.costs.read', 'commercial.profit.read'].includes(
+          permission.key,
+        ),
     )
     .map((permission) => permission.key);
 }
@@ -292,6 +372,46 @@ async function seed(): Promise<void> {
           create: { organizationId: organization.id, name },
         });
       }
+
+      for (const [index, reason] of lossReasons.entries()) {
+        await transaction.lossReason.upsert({
+          where: {
+            organizationId_type_systemKey: {
+              organizationId: organization.id,
+              type: reason.type,
+              systemKey: reason.systemKey,
+            },
+          },
+          update: {
+            name: reason.name,
+            sortOrder: index + 1,
+            active: true,
+            deletedAt: null,
+          },
+          create: {
+            organizationId: organization.id,
+            type: reason.type,
+            systemKey: reason.systemKey,
+            name: reason.name,
+            sortOrder: index + 1,
+          },
+        });
+      }
+
+      await transaction.prospectEngagementConfig.upsert({
+        where: { organizationId: organization.id },
+        update: {
+          slaFirstResponseThresholdMinutes: 15,
+          cadenceDays: [2, 4, 7, 14, 30],
+          maxUnansweredAttempts: 3,
+        },
+        create: {
+          organizationId: organization.id,
+          slaFirstResponseThresholdMinutes: 15,
+          cadenceDays: [2, 4, 7, 14, 30],
+          maxUnansweredAttempts: 3,
+        },
+      });
 
       const roleRecords = new Map<string, string>();
       for (const role of roles) {

@@ -39,6 +39,20 @@ const sections: { label: string; items: NavItem[] }[] = [
       },
       { label: 'Revenue Intelligence', href: '/revenue', icon: '▥', permission: 'reports.read' },
       {
+        label: 'Marketing y atribución',
+        href: '/marketing',
+        icon: '◉',
+        permission: 'marketing.analytics.read',
+        children: [
+          { label: 'Rendimiento', href: '/marketing' },
+          { label: 'Campañas', href: '/marketing/campaigns' },
+          { label: 'Gasto', href: '/marketing/spend' },
+          { label: 'Atribución', href: '/marketing/attribution' },
+          { label: 'Prospectos', href: '/marketing/prospects' },
+          { label: 'Importaciones', href: '/marketing/imports' },
+        ],
+      },
+      {
         label: 'Finanzas',
         href: '/financial',
         icon: '$',

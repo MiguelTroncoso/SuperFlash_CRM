@@ -19,3 +19,9 @@ Todos los endpoints son tenant-aware y requieren `financial.read` o `financial.m
 ## Métricas
 
 El dashboard calcula ingresos de ventas confirmadas/fulfilled, egresos no eliminados, utilidad neta, margen, costos fijos/variables, punto de equilibrio, caja estimada y tendencia de 12 meses. En Phase 1, MRR/ARR se calculan únicamente al seleccionar una moneda; no se hace conversión implícita entre monedas.
+
+El gasto publicitario de Marketing v2.9 se registra en `Expense` y queda
+disponible para este dashboard sin duplicar filas financieras. La rentabilidad
+de campaña lee pagos confirmados netos, snapshots de producto y costos de
+Fulfillment. Las monedas permanecen separadas y los campos de costos/utilidad
+se protegen con permisos comerciales.

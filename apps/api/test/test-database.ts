@@ -6,6 +6,17 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
     await transaction.renewalReminder.deleteMany();
     await transaction.notification.deleteMany();
     await transaction.expense.deleteMany();
+    await transaction.commercialImportRow.deleteMany();
+    await transaction.commercialImport.deleteMany();
+    await transaction.prospectReason.deleteMany();
+    await transaction.prospectConversationStateHistory.deleteMany();
+    await transaction.prospectConversationState.deleteMany();
+    await transaction.attribution.deleteMany();
+    await transaction.marketingCreative.deleteMany();
+    await transaction.marketingAd.deleteMany();
+    await transaction.marketingAdSet.deleteMany();
+    await transaction.prospectEngagementConfig.deleteMany();
+    await transaction.lossReason.deleteMany();
     await transaction.recurringExpense.deleteMany();
     await transaction.expenseCategory.deleteMany();
     await transaction.communicationSyncCheckpoint.deleteMany();

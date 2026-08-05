@@ -67,3 +67,8 @@ Phase 1 uses only existing first-party data. Attribution, MarketingSpend,
 external ad connectors, AI recommendations and an Analytical Event Store remain
 roadmap capabilities. Multi-currency conversion is intentionally not performed;
 metrics are grouped by currency.
+
+Marketing v2.9 entrega atribución y rendimiento de campañas a través de su
+propio módulo y reutiliza las fuentes transaccionales existentes. Revenue
+Intelligence no duplica ingresos, no mezcla monedas y no calcula utilidad sin
+el permiso comercial correspondiente.

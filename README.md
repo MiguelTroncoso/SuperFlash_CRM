@@ -193,6 +193,20 @@ activaciones, trials y reintentos operativos.
 
 El modelo aplica `deletedAt` para soft delete en las entidades del dominio. Las eliminaciones físicas de información crítica deben evitarse en las capas futuras de aplicación.
 
+## Marketing y atribución comercial
+
+Architecture v2.9 agrega `/marketing` para campañas, gasto publicitario,
+atribución, estados conversacionales, motivos, importaciones y rendimiento.
+Las rutas requieren permisos `marketing.*`; la utilidad solo se incluye cuando
+el usuario tiene `commercial.profit.read`. Campaign y Expense siguen siendo las
+entidades canónicas, por lo que Revenue Intelligence y Financial Intelligence
+no reciben ingresos duplicados.
+
+Documentación operativa: [campañas](docs/marketing-campaigns.md),
+[atribución](docs/commercial-attribution.md), [gasto](docs/marketing-spend.md),
+[rendimiento](docs/campaign-performance.md) e
+[importaciones](docs/commercial-imports.md).
+
 ## Estructura
 
 ```text
