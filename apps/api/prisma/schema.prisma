@@ -281,6 +281,102 @@ enum ExpensePaymentMethod {
   OTHER
 }
 
+enum MarketingStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum MarketingSpendSource {
+  MANUAL
+  IMPORT
+}
+
+enum AttributionKind {
+  ORIGINAL
+  CONVERSION
+}
+
+enum ProspectConversationStateType {
+  NEW_UNANSWERED
+  RESPONDED
+  ACTIVE_CONVERSATION
+  WAITING_CUSTOMER
+  DEMO_REQUESTED
+  DEMO_SENT
+  DEMO_ACTIVE
+  DEMO_EXPIRED
+  FOLLOW_UP_SCHEDULED
+  NO_RESPONSE_FOLLOW_UP_1
+  NO_RESPONSE_FOLLOW_UP_2
+  NO_RESPONSE_FOLLOW_UP_3
+  FUTURE_REACTIVATION
+  NOT_INTERESTED
+  LOST
+  PURCHASED
+}
+
+enum ProspectReasonType {
+  LOSS
+  OBJECTION
+  SILENCE
+}
+
+enum FollowUpResult {
+  RESPONDED
+  NO_RESPONSE
+  INTERESTED
+  NOT_INTERESTED
+  PAYMENT_PROMISE
+  DEMO_REQUESTED
+  DEMO_SENT
+  RESCHEDULED
+  PURCHASED
+  FUTURE_REACTIVATION
+  OTHER
+}
+
+enum ResponseSlaBucket {
+  UNDER_5_MIN
+  UNDER_15_MIN
+  UNDER_60_MIN
+  OVER_60_MIN
+  UNANSWERED
+}
+
+enum CommercialCycleBucket {
+  SAME_DAY
+  ONE_DAY
+  TWO_TO_THREE_DAYS
+  FOUR_TO_SEVEN_DAYS
+  EIGHT_TO_FOURTEEN_DAYS
+  OVER_FOURTEEN_DAYS
+}
+
+enum CommercialImportType {
+  CONTACTS
+  HISTORICAL_SALES
+  PAYMENTS
+  SUBSCRIPTIONS
+  DEMOS
+  ATTRIBUTION
+  OUTSTANDING_BALANCES
+}
+
+enum CommercialImportStatus {
+  PREVIEW
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum CommercialImportRowStatus {
+  PENDING
+  SUCCEEDED
+  SKIPPED
+  FAILED
+}
+
 enum ProductType {
   SUBSCRIPTION
   CREDIT_PACKAGE
@@ -437,6 +533,17 @@ model Organization {
   renewalReminders             RenewalReminder[]
   campaigns                    Campaign[]
   expenses                     Expense[]
+  marketingAdSets              MarketingAdSet[]
+  marketingAds                 MarketingAd[]
+  marketingCreatives           MarketingCreative[]
+  attributions                 Attribution[]
+  prospectConversationStates   ProspectConversationState[]
+  prospectConversationHistory  ProspectConversationStateHistory[]
+  lossReasons                  LossReason[]
+  prospectReasons              ProspectReason[]
+  prospectEngagementConfigs    ProspectEngagementConfig[]
+  commercialImports            CommercialImport[]
+  commercialImportRows         CommercialImportRow[]
   auditLogs                    AuditLog[]
   followUpHistories            FollowUpHistory[]
   outboxEvents                 OutboxEvent[]
@@ -514,36 +621,43 @@ model User {
   updatedAt      DateTime   @updatedAt
   deletedAt      DateTime?
 
-  organization                  Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  role                          Role                      @relation(fields: [organizationId, roleId], references: [organizationId, id], onDelete: Restrict)
-  contacts                      Contact[]                 @relation("ContactAssignee")
-  opportunities                 Opportunity[]             @relation("OpportunityOwner")
-  activities                    Activity[]                @relation("ActivityAuthor")
-  followUps                     FollowUp[]                @relation("FollowUpResponsible")
-  sales                         Sale[]                    @relation("SaleSeller")
-  subscriptions                 Subscription[]            @relation("SubscriptionOwner")
-  renewals                      Renewal[]                 @relation("RenewalOwner")
+  organization                  Organization                       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  role                          Role                               @relation(fields: [organizationId, roleId], references: [organizationId, id], onDelete: Restrict)
+  contacts                      Contact[]                          @relation("ContactAssignee")
+  opportunities                 Opportunity[]                      @relation("OpportunityOwner")
+  activities                    Activity[]                         @relation("ActivityAuthor")
+  followUps                     FollowUp[]                         @relation("FollowUpResponsible")
+  sales                         Sale[]                             @relation("SaleSeller")
+  subscriptions                 Subscription[]                     @relation("SubscriptionOwner")
+  renewals                      Renewal[]                          @relation("RenewalOwner")
   renewalReminders              RenewalReminder[]
-  campaigns                     Campaign[]                @relation("CampaignOwner")
-  auditLogs                     AuditLog[]                @relation("AuditActor")
-  outboxEvents                  OutboxEvent[]             @relation("OutboxActor")
-  opportunityStageHistories     OpportunityStageHistory[] @relation("OpportunityStageHistoryActor")
+  campaigns                     Campaign[]                         @relation("CampaignOwner")
+  createdAttributions           Attribution[]                      @relation("AttributionCreator")
+  correctedAttributions         Attribution[]                      @relation("AttributionCorrector")
+  prospectStatesChanged         ProspectConversationState[]        @relation("ProspectStateActor")
+  prospectStateChanges          ProspectConversationStateHistory[] @relation("ProspectStateHistoryActor")
+  prospectReasons               ProspectReason[]                   @relation("ProspectReasonActor")
+  commercialImports             CommercialImport[]                 @relation("CommercialImportCreator")
+  createdExpenses               Expense[]                          @relation("ExpenseCreator")
+  auditLogs                     AuditLog[]                         @relation("AuditActor")
+  outboxEvents                  OutboxEvent[]                      @relation("OutboxActor")
+  opportunityStageHistories     OpportunityStageHistory[]          @relation("OpportunityStageHistoryActor")
   authSessions                  AuthSession[]
   passwordResetTokens           PasswordResetToken[]
-  createdFollowUps              FollowUp[]                @relation("FollowUpCreatedBy")
-  completedFollowUps            FollowUp[]                @relation("FollowUpCompletedBy")
-  cancelledFollowUps            FollowUp[]                @relation("FollowUpCancelledBy")
-  followUpHistories             FollowUpHistory[]         @relation("FollowUpHistoryActor")
-  priceHistories                PriceHistory[]            @relation("PriceHistoryActor")
-  assignedFulfillments          Fulfillment[]             @relation("FulfillmentAssignee")
-  ownedTrials                   Trial[]                   @relation("TrialOwner")
-  credentialReveals             CredentialRecord[]        @relation("CredentialRevealedBy")
-  createdMessageTemplates       MessageTemplate[]         @relation("MessageTemplateCreator")
-  createdAutomationRules        AutomationRule[]          @relation("AutomationRuleCreator")
-  automationExecutions          AutomationExecution[]     @relation("AutomationExecutionActor")
+  createdFollowUps              FollowUp[]                         @relation("FollowUpCreatedBy")
+  completedFollowUps            FollowUp[]                         @relation("FollowUpCompletedBy")
+  cancelledFollowUps            FollowUp[]                         @relation("FollowUpCancelledBy")
+  followUpHistories             FollowUpHistory[]                  @relation("FollowUpHistoryActor")
+  priceHistories                PriceHistory[]                     @relation("PriceHistoryActor")
+  assignedFulfillments          Fulfillment[]                      @relation("FulfillmentAssignee")
+  ownedTrials                   Trial[]                            @relation("TrialOwner")
+  credentialReveals             CredentialRecord[]                 @relation("CredentialRevealedBy")
+  createdMessageTemplates       MessageTemplate[]                  @relation("MessageTemplateCreator")
+  createdAutomationRules        AutomationRule[]                   @relation("AutomationRuleCreator")
+  automationExecutions          AutomationExecution[]              @relation("AutomationExecutionActor")
   notifications                 Notification[]
-  assignedWhatsAppConversations WhatsAppConversation[]    @relation("WhatsAppConversationAssignee")
-  productStockMovements         ProductStockMovement[]    @relation("ProductStockMovementActor")
+  assignedWhatsAppConversations WhatsAppConversation[]             @relation("WhatsAppConversationAssignee")
+  productStockMovements         ProductStockMovement[]             @relation("ProductStockMovementActor")
 
   @@unique([organizationId, id])
   @@unique([organizationId, email])
@@ -619,14 +733,18 @@ model Contact {
   updatedAt       DateTime  @updatedAt
   deletedAt       DateTime?
 
-  organization          Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  assignedTo            User?                  @relation("ContactAssignee", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
+  organization          Organization                       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  assignedTo            User?                              @relation("ContactAssignee", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
   tags                  ContactTag[]
   opportunities         Opportunity[]
   sales                 Sale[]
   subscriptions         Subscription[]
   activities            Activity[]
   trials                Trial[]
+  attributions          Attribution[]
+  prospectState         ProspectConversationState?
+  prospectStateHistory  ProspectConversationStateHistory[]
+  prospectReasons       ProspectReason[]
   whatsappConversations WhatsAppConversation[]
   whatsappMessages      WhatsAppMessage[]
 
@@ -712,17 +830,19 @@ model Opportunity {
   updatedAt          DateTime            @updatedAt
   deletedAt          DateTime?
 
-  organization  Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  contact       Contact                   @relation(fields: [organizationId, contactId], references: [organizationId, id], onDelete: Restrict)
-  pipelineStage PipelineStage             @relation(fields: [organizationId, pipelineStageId], references: [organizationId, id], onDelete: Restrict)
-  campaign      Campaign?                 @relation(fields: [organizationId, campaignId], references: [organizationId, id], onDelete: Restrict)
-  product       Product?                  @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
-  owner         User?                     @relation("OpportunityOwner", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
-  activities    Activity[]
-  followUps     FollowUp[]
-  sales         Sale[]
-  stageHistory  OpportunityStageHistory[]
-  trials        Trial[]
+  organization    Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  contact         Contact                   @relation(fields: [organizationId, contactId], references: [organizationId, id], onDelete: Restrict)
+  pipelineStage   PipelineStage             @relation(fields: [organizationId, pipelineStageId], references: [organizationId, id], onDelete: Restrict)
+  campaign        Campaign?                 @relation(fields: [organizationId, campaignId], references: [organizationId, id], onDelete: Restrict)
+  product         Product?                  @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
+  owner           User?                     @relation("OpportunityOwner", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
+  activities      Activity[]
+  followUps       FollowUp[]
+  sales           Sale[]
+  stageHistory    OpportunityStageHistory[]
+  trials          Trial[]
+  attributions    Attribution[]
+  prospectReasons ProspectReason[]
 
   @@unique([organizationId, id])
   @@index([organizationId])
@@ -846,6 +966,7 @@ model FollowUp {
   rescheduledFromId  String?          @db.Uuid
   rescheduledAt      DateTime?
   completionNote     String?
+  result             FollowUpResult?
   completedAt        DateTime?
   completedByUserId  String?          @db.Uuid
   cancelledAt        DateTime?
@@ -892,6 +1013,7 @@ model FollowUpHistory {
   newDueAt        DateTime?
   previousStatus  FollowUpStatus?
   newStatus       FollowUpStatus?
+  result          FollowUpResult?
   note            String?
   metadata        Json?
   changedAt       DateTime              @default(now())
@@ -1181,25 +1303,28 @@ model PriceHistory {
 }
 
 model Sale {
-  id                 String     @id @default(uuid()) @db.Uuid
-  organizationId     String     @db.Uuid
-  contactId          String     @db.Uuid
-  opportunityId      String?    @db.Uuid
-  userId             String?    @db.Uuid
-  status             SaleStatus
-  subtotal           Decimal    @db.Decimal(18, 2)
-  discountAmount     Decimal    @default(0) @db.Decimal(18, 2)
-  taxAmount          Decimal    @default(0) @db.Decimal(18, 2)
-  total              Decimal    @db.Decimal(18, 2)
-  currency           String
-  soldAt             DateTime?
-  cancelledAt        DateTime?
-  cancellationReason String?
-  note               String?
-  version            Int        @default(0)
-  createdAt          DateTime   @default(now())
-  updatedAt          DateTime   @updatedAt
-  deletedAt          DateTime?
+  id                   String     @id @default(uuid()) @db.Uuid
+  organizationId       String     @db.Uuid
+  contactId            String     @db.Uuid
+  opportunityId        String?    @db.Uuid
+  userId               String?    @db.Uuid
+  status               SaleStatus
+  subtotal             Decimal    @db.Decimal(18, 2)
+  discountAmount       Decimal    @default(0) @db.Decimal(18, 2)
+  taxAmount            Decimal    @default(0) @db.Decimal(18, 2)
+  total                Decimal    @db.Decimal(18, 2)
+  currency             String
+  baseCurrency         String?
+  exchangeRate         Decimal?   @db.Decimal(18, 8)
+  exchangeRateSnapshot Json?
+  soldAt               DateTime?
+  cancelledAt          DateTime?
+  cancellationReason   String?
+  note                 String?
+  version              Int        @default(0)
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+  deletedAt            DateTime?
 
   organization     Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   contact          Contact        @relation(fields: [organizationId, contactId], references: [organizationId, id], onDelete: Restrict)
@@ -1213,6 +1338,7 @@ model Sale {
   activities       Activity[]
   trialConversions Trial[]
   fulfillments     Fulfillment[]
+  attributions     Attribution[]
 
   @@unique([organizationId, id])
   @@index([organizationId])
@@ -1274,30 +1400,33 @@ model SaleItem {
 }
 
 model Payment {
-  id                 String        @id @default(uuid()) @db.Uuid
-  organizationId     String        @db.Uuid
-  saleId             String        @db.Uuid
-  grossAmount        Decimal       @db.Decimal(18, 2)
-  feeAmount          Decimal       @default(0) @db.Decimal(18, 2)
-  netAmount          Decimal       @db.Decimal(18, 2)
-  refundedAmount     Decimal       @default(0) @db.Decimal(18, 2)
-  currency           String
-  method             PaymentMethod
-  reference          String?
-  idempotencyKey     String?
-  requestFingerprint String?
-  status             PaymentStatus
-  paymentDate        DateTime      @default(now())
-  confirmedAt        DateTime?
-  failedAt           DateTime?
-  refundedAt         DateTime?
-  refundReason       String?
-  note               String?
-  metadata           Json?
-  version            Int           @default(0)
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
-  deletedAt          DateTime?
+  id                   String        @id @default(uuid()) @db.Uuid
+  organizationId       String        @db.Uuid
+  saleId               String        @db.Uuid
+  grossAmount          Decimal       @db.Decimal(18, 2)
+  feeAmount            Decimal       @default(0) @db.Decimal(18, 2)
+  netAmount            Decimal       @db.Decimal(18, 2)
+  refundedAmount       Decimal       @default(0) @db.Decimal(18, 2)
+  currency             String
+  baseCurrency         String?
+  exchangeRate         Decimal?      @db.Decimal(18, 8)
+  exchangeRateSnapshot Json?
+  method               PaymentMethod
+  reference            String?
+  idempotencyKey       String?
+  requestFingerprint   String?
+  status               PaymentStatus
+  paymentDate          DateTime      @default(now())
+  confirmedAt          DateTime?
+  failedAt             DateTime?
+  refundedAt           DateTime?
+  refundReason         String?
+  note                 String?
+  metadata             Json?
+  version              Int           @default(0)
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  deletedAt            DateTime?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   sale         Sale         @relation(fields: [organizationId, saleId], references: [organizationId, id], onDelete: Restrict)
@@ -1577,6 +1706,8 @@ model Fulfillment {
   credentials  CredentialRecord[]
   trial        Trial?
   activations  Activation[]
+  costAmount   Decimal?              @db.Decimal(18, 2)
+  costCurrency String?
 
   @@unique([organizationId, id])
   @@unique([organizationId, identityKey])
@@ -1691,6 +1822,7 @@ model Trial {
   fulfillment    Fulfillment?    @relation(fields: [organizationId, fulfillmentId], references: [organizationId, id], onDelete: Restrict)
   owner          User?           @relation("TrialOwner", fields: [organizationId, ownerId], references: [organizationId, id], onDelete: Restrict)
   conversionSale Sale?           @relation(fields: [organizationId, conversionSaleId], references: [organizationId, id], onDelete: Restrict)
+  attributions   Attribution[]
 
   @@unique([organizationId, id])
   @@unique([organizationId, identityKey])
@@ -1736,27 +1868,38 @@ model Activation {
 }
 
 model Campaign {
-  id             String    @id @default(uuid()) @db.Uuid
-  organizationId String    @db.Uuid
-  userId         String?   @db.Uuid
-  externalId     String?
-  name           String
-  source         String
-  platform       String
-  active         Boolean   @default(true)
-  startDate      DateTime?
-  endDate        DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  deletedAt      DateTime?
+  id              String          @id @default(uuid()) @db.Uuid
+  organizationId  String          @db.Uuid
+  userId          String?         @db.Uuid
+  externalId      String?
+  name            String
+  code            String?
+  source          String
+  platform        String
+  status          MarketingStatus @default(ACTIVE)
+  objective       String?
+  targetedCountry String?
+  notes           String?
+  metadata        Json?
+  active          Boolean         @default(true)
+  startDate       DateTime?
+  endDate         DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  deletedAt       DateTime?
 
-  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  owner         User?         @relation("CampaignOwner", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
+  organization  Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  owner         User?               @relation("CampaignOwner", fields: [organizationId, userId], references: [organizationId, id], onDelete: Restrict)
   opportunities Opportunity[]
   expenses      Expense[]
+  adSets        MarketingAdSet[]
+  ads           MarketingAd[]
+  creatives     MarketingCreative[]
+  attributions  Attribution[]
 
   @@unique([organizationId, id])
   @@unique([organizationId, platform, externalId])
+  @@unique([organizationId, code])
   @@index([organizationId])
   @@index([platform])
   @@index([active])
@@ -1767,6 +1910,9 @@ model Expense {
   id                 String               @id @default(uuid()) @db.Uuid
   organizationId     String               @db.Uuid
   campaignId         String?              @db.Uuid
+  adSetId            String?              @db.Uuid
+  adId               String?              @db.Uuid
+  creativeId         String?              @db.Uuid
   categoryId         String?              @db.Uuid
   recurringExpenseId String?              @db.Uuid
   occurrenceKey      String?
@@ -1783,22 +1929,331 @@ model Expense {
   notes              String?
   receiptUrl         String?
   generated          Boolean              @default(false)
+  conversations      Int?
+  contacts           Int?
+  impressions        Int?
+  reach              Int?
+  clicks             Int?
+  cpmInput           Decimal?             @db.Decimal(18, 6)
+  cpcInput           Decimal?             @db.Decimal(18, 6)
+  ctrInput           Decimal?             @db.Decimal(18, 6)
+  source             MarketingSpendSource @default(MANUAL)
+  createdByUserId    String?              @db.Uuid
+  idempotencyKey     String?
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
   deletedAt          DateTime?
 
-  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  campaign         Campaign?         @relation(fields: [organizationId, campaignId], references: [organizationId, id], onDelete: Restrict)
-  category         ExpenseCategory?  @relation(fields: [organizationId, categoryId], references: [organizationId, id], onDelete: Restrict)
-  recurringExpense RecurringExpense? @relation(fields: [organizationId, recurringExpenseId], references: [organizationId, id], onDelete: Restrict)
+  organization     Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  campaign         Campaign?          @relation(fields: [organizationId, campaignId], references: [organizationId, id], onDelete: Restrict)
+  adSet            MarketingAdSet?    @relation(fields: [organizationId, adSetId], references: [organizationId, id], onDelete: Restrict)
+  ad               MarketingAd?       @relation(fields: [organizationId, adId], references: [organizationId, id], onDelete: Restrict)
+  creative         MarketingCreative? @relation(fields: [organizationId, creativeId], references: [organizationId, id], onDelete: Restrict)
+  createdBy        User?              @relation("ExpenseCreator", fields: [organizationId, createdByUserId], references: [organizationId, id], onDelete: Restrict)
+  category         ExpenseCategory?   @relation(fields: [organizationId, categoryId], references: [organizationId, id], onDelete: Restrict)
+  recurringExpense RecurringExpense?  @relation(fields: [organizationId, recurringExpenseId], references: [organizationId, id], onDelete: Restrict)
 
   @@unique([organizationId, id])
   @@unique([organizationId, recurringExpenseId, occurrenceKey])
+  @@unique([organizationId, idempotencyKey])
   @@index([organizationId])
   @@index([organizationId, categoryId, expenseDate])
   @@index([organizationId, recurringExpenseId, expenseDate])
   @@index([campaignId])
+  @@index([organizationId, campaignId, expenseDate, currency])
+  @@index([organizationId, adSetId, expenseDate])
+  @@index([organizationId, adId, expenseDate])
+  @@index([organizationId, creativeId, expenseDate])
   @@index([createdAt])
+}
+
+model MarketingAdSet {
+  id              String          @id @default(uuid()) @db.Uuid
+  organizationId  String          @db.Uuid
+  campaignId      String          @db.Uuid
+  externalId      String?
+  name            String
+  targetedCountry String?
+  audience        String?
+  status          MarketingStatus @default(ACTIVE)
+  startedAt       DateTime?
+  endedAt         DateTime?
+  metadata        Json?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  deletedAt       DateTime?
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  campaign     Campaign      @relation(fields: [organizationId, campaignId], references: [organizationId, id], onDelete: Restrict)
+  ads          MarketingAd[]
+  expenses     Expense[]
+  attributions Attribution[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, campaignId, externalId])
+  @@index([organizationId, campaignId, status])
+  @@index([organizationId, targetedCountry])
+}
+
+model MarketingAd {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @db.Uuid
+  campaignId     String          @db.Uuid
+  adSetId        String?         @db.Uuid
+  externalId     String?
+  name           String
+  status         MarketingStatus @default(ACTIVE)
+  destination    String?
+  metadata       Json?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  campaign     Campaign            @relation(fields: [organizationId, campaignId], references: [organizationId, id], onDelete: Restrict)
+  adSet        MarketingAdSet?     @relation(fields: [organizationId, adSetId], references: [organizationId, id], onDelete: Restrict)
+  creatives    MarketingCreative[]
+  expenses     Expense[]
+  attributions Attribution[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, campaignId, externalId])
+  @@index([organizationId, campaignId, status])
+  @@index([organizationId, adSetId])
+}
+
+model MarketingCreative {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  campaignId     String    @db.Uuid
+  adId           String?   @db.Uuid
+  name           String
+  format         String
+  headline       String?
+  body           String?
+  assetReference String?
+  metadata       Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  campaign     Campaign      @relation(fields: [organizationId, campaignId], references: [organizationId, id], onDelete: Restrict)
+  ad           MarketingAd?  @relation(fields: [organizationId, adId], references: [organizationId, id], onDelete: Restrict)
+  expenses     Expense[]
+  attributions Attribution[]
+
+  @@unique([organizationId, id])
+  @@index([organizationId, campaignId])
+  @@index([organizationId, adId])
+}
+
+model Attribution {
+  id                String          @id @default(uuid()) @db.Uuid
+  organizationId    String          @db.Uuid
+  kind              AttributionKind
+  contactId         String?         @db.Uuid
+  conversationId    String?         @db.Uuid
+  opportunityId     String?         @db.Uuid
+  trialId           String?         @db.Uuid
+  saleId            String?         @db.Uuid
+  campaignId        String?         @db.Uuid
+  adSetId           String?         @db.Uuid
+  adId              String?         @db.Uuid
+  creativeId        String?         @db.Uuid
+  platform          String
+  source            String
+  targetedCountry   String?
+  actualCountry     String?
+  acquiredAt        DateTime        @default(now())
+  correctionReason  String?
+  correctedAt       DateTime?
+  correctedByUserId String?         @db.Uuid
+  createdByUserId   String?         @db.Uuid
+  requestId         String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  deletedAt         DateTime?
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  contact      Contact?              @relation(fields: [organizationId, contactId], references: [organizationId, id], onDelete: Restrict)
+  conversation WhatsAppConversation? @relation(fields: [organizationId, conversationId], references: [organizationId, id], onDelete: Restrict)
+  opportunity  Opportunity?          @relation(fields: [organizationId, opportunityId], references: [organizationId, id], onDelete: Restrict)
+  trial        Trial?                @relation(fields: [organizationId, trialId], references: [organizationId, id], onDelete: Restrict)
+  sale         Sale?                 @relation(fields: [organizationId, saleId], references: [organizationId, id], onDelete: Restrict)
+  campaign     Campaign?             @relation(fields: [organizationId, campaignId], references: [organizationId, id], onDelete: Restrict)
+  adSet        MarketingAdSet?       @relation(fields: [organizationId, adSetId], references: [organizationId, id], onDelete: Restrict)
+  ad           MarketingAd?          @relation(fields: [organizationId, adId], references: [organizationId, id], onDelete: Restrict)
+  creative     MarketingCreative?    @relation(fields: [organizationId, creativeId], references: [organizationId, id], onDelete: Restrict)
+  createdBy    User?                 @relation("AttributionCreator", fields: [organizationId, createdByUserId], references: [organizationId, id], onDelete: Restrict)
+  correctedBy  User?                 @relation("AttributionCorrector", fields: [organizationId, correctedByUserId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@index([organizationId, kind, acquiredAt])
+  @@index([organizationId, contactId, kind])
+  @@index([organizationId, campaignId, kind])
+  @@index([organizationId, conversationId])
+  @@index([organizationId, opportunityId])
+  @@index([organizationId, trialId])
+  @@index([organizationId, saleId])
+}
+
+model ProspectConversationState {
+  id                 String                        @id @default(uuid()) @db.Uuid
+  organizationId     String                        @db.Uuid
+  contactId          String                        @db.Uuid
+  conversationId     String?                       @db.Uuid
+  state              ProspectConversationStateType
+  lastFollowUpAt     DateTime?
+  nextFollowUpAt     DateTime?
+  unansweredAttempts Int                           @default(0)
+  lastFollowUpResult FollowUpResult?
+  changedByUserId    String?                       @db.Uuid
+  changeReason       String?
+  requestId          String?
+  createdAt          DateTime                      @default(now())
+  updatedAt          DateTime                      @updatedAt
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  contact      Contact               @relation(fields: [organizationId, contactId], references: [organizationId, id], onDelete: Restrict)
+  conversation WhatsAppConversation? @relation(fields: [organizationId, conversationId], references: [organizationId, id], onDelete: Restrict)
+  changedBy    User?                 @relation("ProspectStateActor", fields: [organizationId, changedByUserId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, contactId])
+  @@unique([organizationId, conversationId])
+  @@index([organizationId, state])
+  @@index([organizationId, nextFollowUpAt])
+}
+
+model ProspectConversationStateHistory {
+  id              String                         @id @default(uuid()) @db.Uuid
+  organizationId  String                         @db.Uuid
+  contactId       String                         @db.Uuid
+  conversationId  String?                        @db.Uuid
+  state           ProspectConversationStateType
+  previousState   ProspectConversationStateType?
+  reason          String?
+  source          String
+  changedByUserId String?                        @db.Uuid
+  requestId       String?
+  createdAt       DateTime                       @default(now())
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  contact      Contact               @relation(fields: [organizationId, contactId], references: [organizationId, id], onDelete: Restrict)
+  conversation WhatsAppConversation? @relation(fields: [organizationId, conversationId], references: [organizationId, id], onDelete: Restrict)
+  changedBy    User?                 @relation("ProspectStateHistoryActor", fields: [organizationId, changedByUserId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@index([organizationId, contactId, createdAt])
+  @@index([organizationId, state, createdAt])
+}
+
+model LossReason {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @db.Uuid
+  type           ProspectReasonType
+  systemKey      String
+  name           String
+  sortOrder      Int                @default(0)
+  active         Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  events       ProspectReason[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, type, systemKey])
+  @@index([organizationId, type, active, sortOrder])
+}
+
+model ProspectReason {
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String   @db.Uuid
+  reasonId        String   @db.Uuid
+  contactId       String?  @db.Uuid
+  conversationId  String?  @db.Uuid
+  opportunityId   String?  @db.Uuid
+  note            String?
+  createdByUserId String?  @db.Uuid
+  requestId       String?
+  createdAt       DateTime @default(now())
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  reason       LossReason            @relation(fields: [organizationId, reasonId], references: [organizationId, id], onDelete: Restrict)
+  contact      Contact?              @relation(fields: [organizationId, contactId], references: [organizationId, id], onDelete: Restrict)
+  conversation WhatsAppConversation? @relation(fields: [organizationId, conversationId], references: [organizationId, id], onDelete: Restrict)
+  opportunity  Opportunity?          @relation(fields: [organizationId, opportunityId], references: [organizationId, id], onDelete: Restrict)
+  createdBy    User?                 @relation("ProspectReasonActor", fields: [organizationId, createdByUserId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@index([organizationId, reasonId, createdAt])
+  @@index([organizationId, contactId, createdAt])
+  @@index([organizationId, opportunityId, createdAt])
+}
+
+model ProspectEngagementConfig {
+  id                               String   @id @default(uuid()) @db.Uuid
+  organizationId                   String   @db.Uuid
+  slaFirstResponseThresholdMinutes Int      @default(15)
+  cadenceDays                      Json
+  maxUnansweredAttempts            Int      @default(3)
+  createdAt                        DateTime @default(now())
+  updatedAt                        DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId])
+}
+
+model CommercialImport {
+  id              String                 @id @default(uuid()) @db.Uuid
+  organizationId  String                 @db.Uuid
+  createdByUserId String                 @db.Uuid
+  type            CommercialImportType
+  status          CommercialImportStatus @default(PREVIEW)
+  idempotencyKey  String
+  fileName        String?
+  rowCount        Int                    @default(0)
+  succeededCount  Int                    @default(0)
+  skippedCount    Int                    @default(0)
+  failedCount     Int                    @default(0)
+  report          Json?
+  requestId       String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  createdBy    User                  @relation("CommercialImportCreator", fields: [organizationId, createdByUserId], references: [organizationId, id], onDelete: Restrict)
+  rows         CommercialImportRow[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, status, createdAt])
+}
+
+model CommercialImportRow {
+  id             String                    @id @default(uuid()) @db.Uuid
+  organizationId String                    @db.Uuid
+  importId       String                    @db.Uuid
+  rowNumber      Int
+  status         CommercialImportRowStatus @default(PENDING)
+  payload        Json
+  entityId       String?                   @db.Uuid
+  errorCode      String?
+  errorMessage   String?
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  import       CommercialImport @relation(fields: [organizationId, importId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, importId, rowNumber])
+  @@index([organizationId, importId, status])
 }
 
 model ExpenseCategory {
@@ -2118,17 +2573,25 @@ model WhatsAppConversation {
   lastMessageAt                  DateTime?
   lastInboundAt                  DateTime?
   lastOutboundAt                 DateTime?
+  firstInboundMessageAt          DateTime?
+  firstAgentResponseAt           DateTime?
+  firstResponseDurationSeconds   Int?
+  firstResponseBucket            ResponseSlaBucket?
   unreadCount                    Int                        @default(0)
   createdAt                      DateTime                   @default(now())
   updatedAt                      DateTime                   @updatedAt
   deletedAt                      DateTime?
 
-  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  connection   WhatsAppConnection  @relation(fields: [organizationId, connectionId], references: [organizationId, id], onDelete: Restrict)
-  phoneNumber  WhatsAppPhoneNumber @relation(fields: [organizationId, phoneNumberId], references: [organizationId, id], onDelete: Restrict)
-  contact      Contact             @relation(fields: [organizationId, contactId], references: [organizationId, id], onDelete: Restrict)
-  assignedUser User?               @relation("WhatsAppConversationAssignee", fields: [organizationId, assignedUserId], references: [organizationId, id], onDelete: Restrict)
-  messages     WhatsAppMessage[]
+  organization         Organization                       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  connection           WhatsAppConnection                 @relation(fields: [organizationId, connectionId], references: [organizationId, id], onDelete: Restrict)
+  phoneNumber          WhatsAppPhoneNumber                @relation(fields: [organizationId, phoneNumberId], references: [organizationId, id], onDelete: Restrict)
+  contact              Contact                            @relation(fields: [organizationId, contactId], references: [organizationId, id], onDelete: Restrict)
+  assignedUser         User?                              @relation("WhatsAppConversationAssignee", fields: [organizationId, assignedUserId], references: [organizationId, id], onDelete: Restrict)
+  messages             WhatsAppMessage[]
+  attributions         Attribution[]
+  prospectState        ProspectConversationState?
+  prospectStateHistory ProspectConversationStateHistory[]
+  prospectReasons      ProspectReason[]
 
   @@unique([organizationId, id])
   @@unique([organizationId, phoneNumberId, externalContactPhoneNormalized])

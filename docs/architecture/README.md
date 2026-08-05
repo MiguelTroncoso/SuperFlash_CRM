@@ -148,20 +148,21 @@ Una versión arquitectónica solo puede aprobarse cuando:
 
 ## Versiones de arquitectura
 
-| Versión           | Nombre                         | Estado                               | Alcance                                                                                   |
-| ----------------- | ------------------------------ | ------------------------------------ | ----------------------------------------------------------------------------------------- |
-| Architecture v1.0 | Commercial Core                | **APPROVED / FROZEN**                | Núcleo CRM, catálogo y ciclo comercial transaccional.                                     |
-| Architecture v1.1 | Operations and Fulfillment     | **IMPLEMENTED / PENDING REVIEW**     | Providers, fulfillment, provisioning, credentials, trials y activations.                  |
-| Architecture v1.2 | Communications and Automations | **IMPLEMENTED / PENDING REVIEW**     | Templates, variables, reglas, triggers, acciones, ejecuciones y notificaciones internas.  |
-| Architecture v1.3 | Analytics and Reporting        | **PLANNED**                          | Analítica y reporting; no iniciado.                                                       |
-| Architecture v2.0 | Revenue Intelligence           | **IMPLEMENTED / PHASE 1**            | KPIs, embudos, cohortes, tendencias, forecast básico y dashboard ejecutivo de lectura.    |
-| Architecture v2.1 | Operational Workspace          | **IMPLEMENTED / PENDING REVIEW**     | Smart Inbox, timeline operacional, acciones contextuales y preparación realtime.          |
-| Architecture v2.2 | Communication Layer            | **IMPLEMENTED**                      | Contratos de canales, provider WhatsApp foundation, webhook firmado, health y métricas.   |
-| Architecture v2.3 | WhatsApp Read Only             | **IMPLEMENTED**                      | Read model local, sincronización incremental, checkpoint, health, Smart Inbox y métricas. |
-| Architecture v2.4 | WhatsApp Web Read Only         | **IMPLEMENTED / PENDING PRODUCTION** | Pairing QR, sesión persistente, reader Baileys y sincronización inbound nueva.            |
-| Architecture v2.5 | Financial Intelligence Phase 1 | **IMPLEMENTED**                      | Gastos, categorías, recurrencias idempotentes y dashboard financiero.                     |
-| Architecture v2.6 | Renewal Intelligence           | **IMPLEMENTED**                      | Centro de Renovaciones, lifecycle, recordatorios, CSV, reportes y calendario.             |
-| Architecture v2.7 | Executive Intelligence         | **IMPLEMENTED / PENDING REVIEW**     | Dashboard ejecutivo, BI, Customer 360, agenda, pipeline avanzado y búsqueda global.       |
+| Versión           | Nombre                                              | Estado                               | Alcance                                                                                           |
+| ----------------- | --------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| Architecture v1.0 | Commercial Core                                     | **APPROVED / FROZEN**                | Núcleo CRM, catálogo y ciclo comercial transaccional.                                             |
+| Architecture v1.1 | Operations and Fulfillment                          | **IMPLEMENTED / PENDING REVIEW**     | Providers, fulfillment, provisioning, credentials, trials y activations.                          |
+| Architecture v1.2 | Communications and Automations                      | **IMPLEMENTED / PENDING REVIEW**     | Templates, variables, reglas, triggers, acciones, ejecuciones y notificaciones internas.          |
+| Architecture v1.3 | Analytics and Reporting                             | **PLANNED**                          | Analítica y reporting; no iniciado.                                                               |
+| Architecture v2.0 | Revenue Intelligence                                | **IMPLEMENTED / PHASE 1**            | KPIs, embudos, cohortes, tendencias, forecast básico y dashboard ejecutivo de lectura.            |
+| Architecture v2.1 | Operational Workspace                               | **IMPLEMENTED / PENDING REVIEW**     | Smart Inbox, timeline operacional, acciones contextuales y preparación realtime.                  |
+| Architecture v2.2 | Communication Layer                                 | **IMPLEMENTED**                      | Contratos de canales, provider WhatsApp foundation, webhook firmado, health y métricas.           |
+| Architecture v2.3 | WhatsApp Read Only                                  | **IMPLEMENTED**                      | Read model local, sincronización incremental, checkpoint, health, Smart Inbox y métricas.         |
+| Architecture v2.4 | WhatsApp Web Read Only                              | **IMPLEMENTED / PENDING PRODUCTION** | Pairing QR, sesión persistente, reader Baileys y sincronización inbound nueva.                    |
+| Architecture v2.5 | Financial Intelligence Phase 1                      | **IMPLEMENTED**                      | Gastos, categorías, recurrencias idempotentes y dashboard financiero.                             |
+| Architecture v2.6 | Renewal Intelligence                                | **IMPLEMENTED**                      | Centro de Renovaciones, lifecycle, recordatorios, CSV, reportes y calendario.                     |
+| Architecture v2.7 | Executive Intelligence                              | **IMPLEMENTED / PENDING REVIEW**     | Dashboard ejecutivo, BI, Customer 360, agenda, pipeline avanzado y búsqueda global.               |
+| Architecture v2.9 | Commercial Attribution, Performance & Profitability | **IMPLEMENTED / PENDING REVIEW**     | Campañas, atribución, gasto, estados conversacionales, SLA, rentabilidad e importaciones seguras. |
 
 ### Architecture v1.0 — Commercial Core
 
@@ -287,6 +288,18 @@ nueva agrega probabilidad y prioridad a Opportunity con constraint de rango.
 Las métricas se agrupan por moneda y cualquier indicador no soportado por datos
 persistidos se devuelve como no disponible, sin inventar estimaciones.
 
+### Architecture v2.9 — Commercial Attribution, Performance & Profitability
+
+Estado: **IMPLEMENTED / PENDING REVIEW**
+
+Esta versión agrega el módulo Feature First `marketing`. Reutiliza Campaign y
+Expense como entidades canónicas, añade la jerarquía publicitaria, Attribution,
+estado conversacional, motivos, configuración de cadencia e importaciones
+auditables. Performance consume pagos confirmados, snapshots de SaleItem y
+costos de Fulfillment sin duplicar Revenue Intelligence ni Financial
+Intelligence. WhatsApp permanece sin activación y no se envían mensajes desde
+estas reglas.
+
 ## Índice de ADRs
 
 - [ADR-006 — Sales Snapshot](../ADR-006-sales-snapshot.md)
@@ -323,20 +336,21 @@ Las definiciones de la fase están documentadas en [revenue-intelligence.md](../
 
 ## Historial de decisiones
 
-| Hito                                     | Evidencia                                                     | Resultado                                                                   |
-| ---------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Bootstrap y dominios CRM                 | Historial de commits de los Sprints 1–7.1                     | Base multiempresa y Feature First.                                          |
-| Commercial Core                          | `9bcada0928c440b022863359e2156439883aebaf`                    | Sales, Payments, Subscriptions y Renewals implementados.                    |
-| CI Recovery                              | `16503b9720a6033efb5ce9b64ce80395ab76168a`                    | CI recuperado y verificado.                                                 |
-| Architecture Review v1.0                 | `4bc0658942172f967a11b2e52f0bec338a7ee034`                    | Hallazgos HIGH/MEDIUM documentados.                                         |
-| Architecture v1.0 Remediation            | `d4ee72096edb6d691675a8a518a6ee3aeb610a18`                    | Hallazgos remediados; Commercial Core aprobado con follow-ups.              |
-| Governance update                        | Este cambio documental                                        | v1.0 congelada y roadmap Revenue Intelligence registrado.                   |
-| Architecture v1.1 Operations             | `feat: implement operations and fulfillment core`             | Implementación operativa pendiente de revisión formal.                      |
-| Architecture v2.0 Phase 1                | `feat: implement revenue intelligence phase 1`                | KPIs, lectura analítica, funnels, cohortes, tendencias y forecast básico.   |
-| Architecture v2.1 Operational Workspace  | `feat: implement smart inbox operational workspace`           | Smart Inbox operacional implementado; pendiente de revisión formal.         |
-| Architecture v2.2 Communication Layer    | `feat: implement communication layer and whatsapp foundation` | Foundation de canales y provider WhatsApp implementado; go-live pendiente.  |
-| Architecture v2.3 WhatsApp Read Only     | `feat: implement whatsapp read-only synchronization`          | Read model, checkpoint, sincronización y métricas de lectura implementados. |
-| Architecture v2.4 WhatsApp Web Read Only | `feat: connect whatsapp web qr read-only source`              | Reader QR privado, sesión cifrada y mensajes inbound nuevos.                |
-| Architecture v2.5 Financial Intelligence | `feat: implement financial intelligence phase 1`              | Gastos, categorías, recurrencias y dashboard financiero implementados.      |
-| Architecture v2.6 Renewal Intelligence   | `feat: implement renewal intelligence and customer lifecycle` | Centro de Renovaciones, ciclo de vida, recordatorios, CSV y reportes.       |
-| Architecture v2.7 Executive Intelligence | `feat: implement executive intelligence and CRM maturity`     | Dashboard, BI, Customer 360, agenda, pipeline avanzado y búsqueda global.   |
+| Hito                                     | Evidencia                                                           | Resultado                                                                                                       |
+| ---------------------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Bootstrap y dominios CRM                 | Historial de commits de los Sprints 1–7.1                           | Base multiempresa y Feature First.                                                                              |
+| Commercial Core                          | `9bcada0928c440b022863359e2156439883aebaf`                          | Sales, Payments, Subscriptions y Renewals implementados.                                                        |
+| CI Recovery                              | `16503b9720a6033efb5ce9b64ce80395ab76168a`                          | CI recuperado y verificado.                                                                                     |
+| Architecture Review v1.0                 | `4bc0658942172f967a11b2e52f0bec338a7ee034`                          | Hallazgos HIGH/MEDIUM documentados.                                                                             |
+| Architecture v1.0 Remediation            | `d4ee72096edb6d691675a8a518a6ee3aeb610a18`                          | Hallazgos remediados; Commercial Core aprobado con follow-ups.                                                  |
+| Governance update                        | Este cambio documental                                              | v1.0 congelada y roadmap Revenue Intelligence registrado.                                                       |
+| Architecture v1.1 Operations             | `feat: implement operations and fulfillment core`                   | Implementación operativa pendiente de revisión formal.                                                          |
+| Architecture v2.0 Phase 1                | `feat: implement revenue intelligence phase 1`                      | KPIs, lectura analítica, funnels, cohortes, tendencias y forecast básico.                                       |
+| Architecture v2.1 Operational Workspace  | `feat: implement smart inbox operational workspace`                 | Smart Inbox operacional implementado; pendiente de revisión formal.                                             |
+| Architecture v2.2 Communication Layer    | `feat: implement communication layer and whatsapp foundation`       | Foundation de canales y provider WhatsApp implementado; go-live pendiente.                                      |
+| Architecture v2.3 WhatsApp Read Only     | `feat: implement whatsapp read-only synchronization`                | Read model, checkpoint, sincronización y métricas de lectura implementados.                                     |
+| Architecture v2.4 WhatsApp Web Read Only | `feat: connect whatsapp web qr read-only source`                    | Reader QR privado, sesión cifrada y mensajes inbound nuevos.                                                    |
+| Architecture v2.5 Financial Intelligence | `feat: implement financial intelligence phase 1`                    | Gastos, categorías, recurrencias y dashboard financiero implementados.                                          |
+| Architecture v2.6 Renewal Intelligence   | `feat: implement renewal intelligence and customer lifecycle`       | Centro de Renovaciones, ciclo de vida, recordatorios, CSV y reportes.                                           |
+| Architecture v2.7 Executive Intelligence | `feat: implement executive intelligence and CRM maturity`           | Dashboard, BI, Customer 360, agenda, pipeline avanzado y búsqueda global.                                       |
+| Architecture v2.9 Commercial Attribution | `feat: implement commercial attribution and campaign profitability` | Campañas, atribución, gasto, estados, rentabilidad e importaciones implementados; pendiente de revisión formal. |

@@ -240,3 +240,16 @@ no introducen un segundo modelo de ventas ni un almacén analítico transacciona
 calcula al leer y no se persiste. Customer 360, Agenda Operativa, búsqueda
 global y Business Intelligence aplican aislamiento por `organizationId` y
 excluyen secretos y campos internos.
+
+## Commercial Attribution, Performance & Profitability
+
+`Campaign` permanece como entidad canónica y se relaciona con
+`MarketingAdSet`, `MarketingAd` y `MarketingCreative`. `Attribution` conserva
+la fuente original o de conversión; `ProspectConversationState` y su historial
+representan el estado operacional sin sustituir Pipeline. `LossReason`,
+`ProspectReason`, `ProspectEngagementConfig`, `CommercialImport` y
+`CommercialImportRow` completan la operación de medición.
+
+El rendimiento usa `Expense`, `Payment`, snapshots de `SaleItem` y costos de
+`Fulfillment` como fuentes existentes. No se crea una entidad de ingresos ni
+se persiste un balance derivado nuevo.

@@ -41,3 +41,7 @@ fulfillment o trial. Las acciones no duplican las reglas del Commercial Core.
 Esta fase no conecta Meta Business, no registra webhooks reales, no usa tokens
 reales, no configura WABA y no migra conversaciones existentes. El envío real y
 la recepción real continúan bajo la integración WhatsApp ya implementada.
+
+Marketing v2.9 añade estados conversacionales, SLA y acciones de atribución
+para lectura operacional. No habilita composer nuevo, no envía mensajes y no
+mueve Pipeline automáticamente.

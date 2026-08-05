@@ -1005,3 +1005,129 @@ export interface SmartInboxDetailResponse {
   timeline: SmartInboxTimelineEvent[];
   panel: SmartInboxPanel;
 }
+
+export interface MarketingCampaign {
+  id: string;
+  name: string;
+  code: string | null;
+  platform: string;
+  source: string;
+  status: string;
+  active: boolean;
+  targetedCountry: string | null;
+  counts: { adSets: number; ads: number; creatives: number };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MarketingPerformanceMetric {
+  campaignId: string;
+  campaignName: string;
+  platform: string;
+  source: string;
+  currency: string;
+  spend: string;
+  conversations: number;
+  contacts: number;
+  demos: number;
+  sales: number;
+  grossRevenue: string;
+  netRevenue: string;
+  profit: string | null;
+  costPerConversation: string | null;
+  costPerContact: string | null;
+  costPerDemo: string | null;
+  cpa: string | null;
+  grossRoas: string | null;
+  netRoas: string | null;
+  conversationToDemoConversion: string | null;
+  demoToSaleConversion: string | null;
+  conversationToSaleConversion: string | null;
+  averageTicket: string | null;
+  averageTimeToSaleSeconds: number | null;
+  unansweredPercentage: string | null;
+  averageFollowUpsBeforePurchase: string | null;
+}
+
+export interface MarketingPerformanceResponse {
+  from: string;
+  to: string;
+  currencies: string[];
+  data: MarketingPerformanceMetric[];
+}
+
+export interface MarketingSpend {
+  id: string;
+  amount: string;
+  currency: string;
+  expenseDate: string;
+  source: string;
+  campaign: NamedRelation | null;
+  adSet: NamedRelation | null;
+  ad: NamedRelation | null;
+  creative: NamedRelation | null;
+  conversations: number | null;
+  contacts: number | null;
+  impressions: number | null;
+  reach: number | null;
+  clicks: number | null;
+  cpmInput: string | null;
+  cpcInput: string | null;
+  ctrInput: string | null;
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface MarketingAttribution {
+  id: string;
+  kind: string;
+  platform: string;
+  source: string;
+  targetedCountry: string | null;
+  actualCountry: string | null;
+  acquiredAt: string;
+  campaign: NamedRelation | null;
+  contact: {
+    id: string;
+    firstName: string | null;
+    lastName: string | null;
+    country: string | null;
+  } | null;
+}
+
+export interface ProspectConversationState {
+  id: string;
+  contactId: string;
+  state: string;
+  lastFollowUpAt: string | null;
+  nextFollowUpAt: string | null;
+  unansweredAttempts: number;
+  lastFollowUpResult: string | null;
+  changeReason: string | null;
+  updatedAt: string;
+  contact?: { id: string; firstName: string | null; lastName: string | null };
+}
+
+export interface MarketingLossReason {
+  id: string;
+  type: string;
+  systemKey: string;
+  name: string;
+  sortOrder: number;
+  active: boolean;
+}
+
+export interface CommercialImport {
+  id: string;
+  type: string;
+  status: string;
+  idempotencyKey: string;
+  fileName: string | null;
+  rowCount: number;
+  succeededCount: number;
+  skippedCount: number;
+  failedCount: number;
+  report: JsonRecord | null;
+  createdAt: string;
+  updatedAt: string;
+}

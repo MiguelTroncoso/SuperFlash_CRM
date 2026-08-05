@@ -31,6 +31,13 @@ import type {
   MyDayResponse,
   MyDaySummary,
   MessageTemplate,
+  CommercialImport,
+  MarketingAttribution,
+  MarketingCampaign,
+  MarketingLossReason,
+  MarketingPerformanceResponse,
+  MarketingSpend,
+  ProspectConversationState,
   Notification,
   Opportunity,
   Pagination,
@@ -499,6 +506,54 @@ export const api = {
   },
   getFinancialDashboard: (query = '') =>
     request<FinancialDashboard>(`/financial/dashboard${query}`),
+  getMarketingCampaigns: (query = '') =>
+    request<Paginated<MarketingCampaign>>(`/marketing/campaigns${query}`),
+  createMarketingCampaign: (body: JsonRecord) =>
+    request<MarketingCampaign>('/marketing/campaigns', { method: 'POST', ...jsonBody(body) }),
+  updateMarketingCampaign: (id: string, body: JsonRecord) =>
+    request<MarketingCampaign>(`/marketing/campaigns/${id}`, {
+      method: 'PATCH',
+      ...jsonBody(body),
+    }),
+  archiveMarketingCampaign: (id: string) =>
+    request<JsonRecord>(`/marketing/campaigns/${id}/archive`, { method: 'POST' }),
+  getMarketingSpend: (query = '') => request<Paginated<MarketingSpend>>(`/marketing/spend${query}`),
+  createMarketingSpend: (body: JsonRecord) =>
+    request<MarketingSpend>('/marketing/spend', { method: 'POST', ...jsonBody(body) }),
+  updateMarketingSpend: (id: string, body: JsonRecord) =>
+    request<MarketingSpend>(`/marketing/spend/${id}`, { method: 'PATCH', ...jsonBody(body) }),
+  archiveMarketingSpend: (id: string) =>
+    request<JsonRecord>(`/marketing/spend/${id}/archive`, { method: 'POST' }),
+  getMarketingPerformance: (query = '') =>
+    request<MarketingPerformanceResponse>(`/marketing/performance${query}`),
+  getMarketingAttribution: (query = '') =>
+    request<MarketingAttribution[]>(`/marketing/attribution${query}`),
+  createMarketingAttribution: (body: JsonRecord) =>
+    request<MarketingAttribution>('/marketing/attribution', { method: 'POST', ...jsonBody(body) }),
+  getMarketingLossReasons: (type?: string) =>
+    request<MarketingLossReason[]>(`/marketing/loss-reasons${queryString({ type })}`),
+  createMarketingLossReason: (body: JsonRecord) =>
+    request<MarketingLossReason>('/marketing/loss-reasons', { method: 'POST', ...jsonBody(body) }),
+  updateMarketingLossReason: (id: string, body: JsonRecord) =>
+    request<MarketingLossReason>(`/marketing/loss-reasons/${id}`, {
+      method: 'PATCH',
+      ...jsonBody(body),
+    }),
+  getProspectState: (contactId: string) =>
+    request<ProspectConversationState | null>(`/marketing/prospect-states/${contactId}`),
+  changeProspectState: (contactId: string, body: JsonRecord) =>
+    request<ProspectConversationState>(`/marketing/prospect-states/${contactId}`, {
+      method: 'POST',
+      ...jsonBody(body),
+    }),
+  getMarketingEngagementSettings: () => request<JsonRecord>('/marketing/settings/engagement'),
+  updateMarketingEngagementSettings: (body: JsonRecord) =>
+    request<JsonRecord>('/marketing/settings/engagement', { method: 'PATCH', ...jsonBody(body) }),
+  previewCommercialImport: (body: JsonRecord) =>
+    request<JsonRecord>('/marketing/imports/preview', { method: 'POST', ...jsonBody(body) }),
+  executeCommercialImport: (body: JsonRecord) =>
+    request<CommercialImport>('/marketing/imports', { method: 'POST', ...jsonBody(body) }),
+  getCommercialImports: () => request<CommercialImport[]>('/marketing/imports'),
   getRenewalDashboard: (query = '') =>
     request<RenewalCenterDashboard>(`/renewal-center/dashboard${query}`),
   getRenewals: (query = '') =>
