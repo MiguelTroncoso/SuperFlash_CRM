@@ -51,6 +51,11 @@ export class UpdateOpportunityDto {
   @ApiPropertyOptional({ format: 'uuid', nullable: true })
   @IsOptional()
   @IsUUID()
+  categoryId?: string | null;
+
+  @ApiPropertyOptional({ format: 'uuid', nullable: true })
+  @IsOptional()
+  @IsUUID()
   productId?: string | null;
 
   @ApiPropertyOptional({ enum: OpportunityPriority })

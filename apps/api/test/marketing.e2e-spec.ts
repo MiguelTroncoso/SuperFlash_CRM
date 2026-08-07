@@ -85,6 +85,10 @@ describe('Marketing attribution and campaign performance HTTP flow', () => {
         phoneNormalized: '+56912345678',
       },
     });
+    const today = new Date();
+    const dateOnly = (value: Date): string => value.toISOString().slice(0, 10);
+    const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1_000);
+    const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1_000);
     const campaign = await api
       .post('/api/v1/marketing/campaigns')
       .set('Authorization', authorization)
@@ -94,7 +98,7 @@ describe('Marketing attribution and campaign performance HTTP flow', () => {
       .post('/api/v1/marketing/spend')
       .set('Authorization', authorization)
       .send({
-        date: '2026-08-05',
+        date: dateOnly(today),
         campaignId: campaign.body.id,
         amount: '100.00',
         currency: 'USD',
@@ -112,7 +116,9 @@ describe('Marketing attribution and campaign performance HTTP flow', () => {
       });
     expect(attribution.status).toBe(201);
     const performance = await api
-      .get('/api/v1/marketing/performance?from=2026-08-01&to=2026-08-06&currency=USD')
+      .get(
+        `/api/v1/marketing/performance?from=${dateOnly(yesterday)}&to=${dateOnly(tomorrow)}&currency=USD`,
+      )
       .set('Authorization', authorization);
     expect(performance.status).toBe(200);
     expect(performance.body.data[0]).toMatchObject({

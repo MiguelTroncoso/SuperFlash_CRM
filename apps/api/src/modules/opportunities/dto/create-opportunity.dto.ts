@@ -53,6 +53,11 @@ export class CreateOpportunityDto {
   @ApiPropertyOptional({ format: 'uuid', nullable: true })
   @IsOptional()
   @IsUUID()
+  categoryId?: string | null;
+
+  @ApiPropertyOptional({ format: 'uuid', nullable: true })
+  @IsOptional()
+  @IsUUID()
   productId?: string | null;
 
   @ApiPropertyOptional({ example: '150000.00', nullable: true })

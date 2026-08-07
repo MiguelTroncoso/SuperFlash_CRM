@@ -63,6 +63,7 @@ const listInclude = {
         include: {
           pipelineStage: { select: { id: true, name: true, color: true, category: true } },
           campaign: { select: { id: true, name: true } },
+          category: { select: { id: true, name: true } },
           product: { select: { id: true, name: true } },
           owner: { select: { id: true, firstName: true, lastName: true } },
         },
@@ -131,6 +132,7 @@ const detailInclude = {
         include: {
           pipelineStage: { select: { id: true, name: true, color: true, category: true } },
           campaign: { select: { id: true, name: true } },
+          category: { select: { id: true, name: true } },
           product: { select: { id: true, name: true } },
           owner: { select: { id: true, firstName: true, lastName: true } },
           followUps: {
@@ -285,6 +287,7 @@ export class SmartInboxService {
           title: opportunity.title,
           pipelineStage: opportunity.pipelineStage,
           campaign: opportunity.campaign,
+          category: opportunity.category,
           product: opportunity.product,
           assignedTo: opportunity.owner,
         })),

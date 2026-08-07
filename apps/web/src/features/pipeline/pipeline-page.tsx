@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { PageHeader, PageGrid } from '@/components/shared/page-header';
@@ -11,11 +12,13 @@ import { KanbanBoard } from '@/components/ui/kanban-board';
 import { SearchBar } from '@/components/ui/search-bar';
 import { StatusBadge } from '@/components/ui/badge';
 import { useToastStore } from '@/components/ui/toast';
+import { LeadIntakeDrawer } from '@/features/leads/lead-intake-drawer';
 import { api, queryString } from '@/lib/api-client';
 import type { PipelineResponse } from '@/lib/types';
 
 export function PipelinePage(): React.ReactElement {
   const [search, setSearch] = useState('');
+  const [leadOpen, setLeadOpen] = useState(false);
   const queryClient = useQueryClient();
   const toast = useToastStore((state) => state.push);
   const pipeline = useQuery({
@@ -56,6 +59,10 @@ export function PipelinePage(): React.ReactElement {
             ? `${opportunity.currency ?? ''} ${opportunity.expectedAmount}`
             : null,
           status: opportunity.status,
+          category: opportunity.category,
+          product: opportunity.product,
+          campaign: opportunity.campaign,
+          assignedTo: opportunity.assignedTo,
         })),
       })),
     [pipeline.data],
@@ -77,7 +84,12 @@ export function PipelinePage(): React.ReactElement {
           title="Pipeline"
           description="Arrastra oportunidades entre etapas para mantener el proceso comercial en movimiento."
           actions={
-            <Button onClick={() => window.location.assign('/contacts')}>＋ Nuevo lead</Button>
+            <div className="flex flex-wrap gap-2">
+              <Link href="/sales">
+                <Button variant="outline">＋ Nueva venta</Button>
+              </Link>
+              <Button onClick={() => setLeadOpen(true)}>＋ Nuevo lead</Button>
+            </div>
           }
         />
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -109,6 +121,14 @@ export function PipelinePage(): React.ReactElement {
                 {item.subtitle ? (
                   <p className="mt-2 truncate text-xs text-slate-500">{item.subtitle}</p>
                 ) : null}
+                {item.category || item.product ? (
+                  <p className="mt-2 truncate text-xs text-content-secondary">
+                    Interés: {item.product?.name ?? item.category?.name}
+                  </p>
+                ) : null}
+                {item.campaign ? (
+                  <p className="mt-1 truncate text-xs text-content-muted">{item.campaign.name}</p>
+                ) : null}
                 {item.amount ? (
                   <p className="mt-3 text-sm font-bold text-brand-700 dark:text-brand-300">
                     {item.amount}
@@ -119,6 +139,7 @@ export function PipelinePage(): React.ReactElement {
           />
         </Card>
       </PageGrid>
+      <LeadIntakeDrawer onClose={() => setLeadOpen(false)} open={leadOpen} />
     </QueryState>
   );
 }

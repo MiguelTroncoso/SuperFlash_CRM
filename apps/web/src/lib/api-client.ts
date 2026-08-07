@@ -178,6 +178,8 @@ export const api = {
   getContactAssignees: () => request<Person[]>('/contacts/assignees'),
   createContact: (body: JsonRecord) =>
     request<ContactCreateResult>('/contacts', { method: 'POST', ...jsonBody(body) }),
+  createLead: (body: JsonRecord) =>
+    request<JsonRecord>('/contacts/leads', { method: 'POST', ...jsonBody(body) }),
   getContact: (id: string) => request<Contact>(`/contacts/${id}`),
   updateContact: (id: string, body: JsonRecord) =>
     request<Contact>(`/contacts/${id}`, { method: 'PATCH', ...jsonBody(body) }),
@@ -193,6 +195,12 @@ export const api = {
     request<Opportunity>(`/opportunities/${id}/move`, { method: 'POST', ...jsonBody(body) }),
   getSales: (query = '') => request<Paginated<Sale>>(`/sales${query}`),
   getSale: (id: string) => request<Sale>(`/sales/${id}`),
+  createSale: (body: JsonRecord) => request<Sale>('/sales', { method: 'POST', ...jsonBody(body) }),
+  confirmSale: (id: string) => request<Sale>(`/sales/${id}/confirm`, { method: 'POST' }),
+  createPayment: (saleId: string, body: JsonRecord) =>
+    request<JsonRecord>(`/sales/${saleId}/payments`, { method: 'POST', ...jsonBody(body) }),
+  confirmPayment: (id: string) =>
+    request<JsonRecord>(`/payments/${id}/confirm`, { method: 'POST' }),
   getOffers: (query = '') => request<{ data: ProductOffer[] }>(`/catalog/offers${query}`),
   getProducts: (query = '') => request<Paginated<Product>>(`/catalog/products${query}`),
   createProduct: (body: JsonRecord) =>
