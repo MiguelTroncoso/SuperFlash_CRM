@@ -17,14 +17,25 @@ import { api, queryString } from '@/lib/api-client';
 import type { PipelineResponse, PipelineStage } from '@/lib/types';
 
 const OPERATIONAL_STAGE_NAMES: Record<string, string> = {
+  NEW: 'Nuevo',
   NEW_LEAD: 'Nuevo',
+  MESSAGE_SENT: 'Mensaje enviado',
+  CONVERSATION: 'Conversando',
+  AWAITING_CREDIT_USAGE: 'Conversando',
+  WAITING_CUSTOMER: 'Esperando respuesta',
   LEFT_ON_READ: 'Esperando respuesta',
+  DEMO_SENT: 'Demo enviada',
   DEMO_DELIVERED: 'Demo enviada',
-  AWAITING_CREDIT_USAGE: 'Precio enviado',
-  AWAITING_MONEY: 'Debe pagar',
+  INTERESTED: 'Interesado',
   POTENTIAL_BUYER: 'Interesado',
+  PAYMENT_PENDING: 'Debe pagar',
+  AWAITING_MONEY: 'Debe pagar',
+  PAID: 'Pagó',
   WON: 'Pagó',
+  ACTIVATING: 'Activando',
+  ACTIVE: 'Activo',
   LOST: 'Perdido',
+  FUTURE_REACTIVATION: 'Reactivar',
 };
 
 function operationalStageName(stage: PipelineStage): string {
@@ -75,6 +86,7 @@ export function PipelinePage(): React.ReactElement {
           amount: null,
           status: operationalStageName(opportunity.pipelineStage),
           stageName: operationalStageName(opportunity.pipelineStage),
+          category: opportunity.category,
           product: opportunity.product,
           lastStageChangedAt: opportunity.lastStageChangedAt,
           nextFollowUp: opportunity.nextFollowUp,
@@ -135,6 +147,9 @@ export function PipelinePage(): React.ReactElement {
                   {item.status ? <StatusBadge status={item.status} /> : null}
                 </div>
                 <p className="mt-2 truncate text-xs text-slate-500">{item.subtitle}</p>
+                <p className="mt-2 truncate text-xs text-content-secondary">
+                  Categoría: {item.category?.name ?? 'Sin categoría'}
+                </p>
                 <p className="mt-2 truncate text-xs text-content-secondary">
                   Producto: {item.product?.name ?? 'Sin producto'}
                 </p>

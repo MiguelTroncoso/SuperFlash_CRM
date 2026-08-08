@@ -422,6 +422,211 @@ describe('Contacts and lead intake HTTP flow', () => {
     expect(audits).toHaveLength(1);
     expect(JSON.stringify(audits[0])).not.toContain('password');
   });
+
+  it('completa el flujo operativo de lead con estado, interés, seguimiento y trazabilidad', async () => {
+    const token = await login(fixture.ownerA);
+    const customState = await authorized('post', '/api/v1/pipeline/stages', token).send({
+      name: 'ChatGPT / Plus',
+      systemKey: 'CUSTOM_CHATGPT_PLUS',
+      color: '#64748B',
+      category: 'OPEN',
+      order: 2,
+    });
+    const categoryCreate = await authorized('post', '/api/v1/catalog/categories/quick', token).send(
+      {
+        name: 'ChatGPT',
+      },
+    );
+    const category = await prisma.productCategory.findFirstOrThrow({
+      where: { organizationId: fixture.organizationA.id, name: 'ChatGPT' },
+    });
+    const productCreate = await authorized('post', '/api/v1/catalog/products/quick', token).send({
+      name: 'Plus',
+      categoryId: category.id,
+      type: 'DIGITAL_ACCESS',
+      fulfillmentMode: 'MANUAL',
+      currency: 'USD',
+      status: 'ACTIVE',
+      active: true,
+    });
+    const product = await prisma.product.findFirstOrThrow({
+      where: { organizationId: fixture.organizationA.id, name: 'Plus' },
+    });
+    const demoStage = await prisma.pipelineStage.create({
+      data: {
+        organizationId: fixture.organizationA.id,
+        name: 'Demo enviada',
+        systemKey: 'DEMO_SENT',
+        order: 3,
+        color: '#3B82F6',
+        category: 'OPEN',
+      },
+    });
+    const waitingStage = await prisma.pipelineStage.create({
+      data: {
+        organizationId: fixture.organizationA.id,
+        name: 'Esperando respuesta',
+        systemKey: 'WAITING_CUSTOMER',
+        order: 4,
+        color: '#F59E0B',
+        category: 'OPEN',
+      },
+    });
+    const created = await authorized('post', '/api/v1/contacts/leads', token).send({
+      firstName: 'Test Lead',
+      phone: '9 1234 5678',
+      country: 'CL',
+      source: 'MANUAL',
+      categoryId: category.id,
+      productId: product.id,
+      pipelineStageId: demoStage.id,
+      note: 'Lead de prueba operativa',
+    });
+    const second = await authorized('post', '/api/v1/contacts/leads', token).send({
+      firstName: 'Segundo Lead',
+      phone: '+56999998888',
+      country: 'CL',
+      source: 'MANUAL',
+      categoryId: category.id,
+      productId: product.id,
+      pipelineStageId: customState.body.id,
+    });
+    const waiting = await authorized('post', '/api/v1/contacts/leads', token).send({
+      firstName: 'Waiting Lead',
+      phone: '+56977776666',
+      country: 'CL',
+      pipelineStageId: waitingStage.id,
+    });
+
+    expect(customState.status).toBe(201);
+    expect(categoryCreate.status).toBe(201);
+    expect(productCreate.status).toBe(201);
+    expect(created.status).toBe(201);
+    expect(created.body.state).toBe('DEMO_SENT');
+    expect(created.body.autoSuggested).toBe(true);
+    expect(
+      new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Santiago',
+        hour: '2-digit',
+        hour12: false,
+      }).format(new Date(created.body.nextFollowUpAt)),
+    ).toBe('10');
+    expect(second.status).toBe(201);
+    expect(second.body.state).toBe('CUSTOM_CHATGPT_PLUS');
+    expect(waiting.status).toBe(201);
+    expect(waiting.body.state).toBe('WAITING_CUSTOMER');
+    expect(
+      await prisma.productCategory.count({ where: { organizationId: fixture.organizationA.id } }),
+    ).toBe(1);
+    expect(
+      await prisma.product.count({ where: { organizationId: fixture.organizationA.id } }),
+    ).toBe(2);
+
+    const contactRecord = await prisma.contact.findFirstOrThrow({
+      where: { organizationId: fixture.organizationA.id, phoneNormalized: '+56912345678' },
+    });
+    const opportunity = await prisma.opportunity.findFirstOrThrow({
+      where: { organizationId: fixture.organizationA.id, contactId: contactRecord.id },
+    });
+    const followUp = await prisma.followUp.findFirstOrThrow({
+      where: { organizationId: fixture.organizationA.id, opportunityId: opportunity.id },
+    });
+    expect(opportunity.categoryId).toBe(category.id);
+    expect(opportunity.productId).toBe(product.id);
+    expect(followUp.autoSuggested).toBe(true);
+    expect(
+      new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Santiago',
+        hour: '2-digit',
+        hour12: false,
+      }).format(followUp.dueAt),
+    ).toBe('10');
+    expect(
+      await prisma.activity.findFirst({
+        where: { organizationId: fixture.organizationA.id, opportunityId: opportunity.id },
+      }),
+    ).not.toBeNull();
+    expect(
+      await prisma.auditLog.findFirst({
+        where: { organizationId: fixture.organizationA.id, action: 'LEAD_CREATED' },
+      }),
+    ).not.toBeNull();
+
+    const pipeline = await authorized('get', '/api/v1/pipeline', token);
+    const pipelineJson = JSON.stringify(pipeline.body);
+    expect(pipelineJson).toContain(opportunity.id);
+    const myDay = await authorized('get', '/api/v1/my-day', token);
+    expect(myDay.status).toBe(200);
+    const customer360 = await authorized('get', `/api/v1/customer-360/${contactRecord.id}`, token);
+    const categories = await authorized('get', '/api/v1/catalog/categories', token);
+    const products = await authorized('get', '/api/v1/catalog/products?limit=100', token);
+    expect(customer360.status).toBe(200);
+    expect(JSON.stringify(customer360.body)).toContain(category.id);
+    expect(categories.status).toBe(200);
+    expect(JSON.stringify(categories.body)).toContain('ChatGPT');
+    expect(products.status).toBe(200);
+    expect(JSON.stringify(products.body)).toContain('Plus');
+
+    const waitingContact = await prisma.contact.findFirstOrThrow({
+      where: { organizationId: fixture.organizationA.id, phoneNormalized: '+56977776666' },
+    });
+    const waitingOpportunity = await prisma.opportunity.findFirstOrThrow({
+      where: { organizationId: fixture.organizationA.id, contactId: waitingContact.id },
+    });
+    const waitingFollowUp = await prisma.followUp.findFirstOrThrow({
+      where: { organizationId: fixture.organizationA.id, opportunityId: waitingOpportunity.id },
+    });
+    expect(waitingFollowUp.autoSuggested).toBe(true);
+    expect(waitingFollowUp.dueAt.getTime()).toBeGreaterThan(Date.now() + 3 * 24 * 60 * 60 * 1000);
+    expect(waitingFollowUp.dueAt.getTime()).toBeLessThan(Date.now() + 5 * 24 * 60 * 60 * 1000);
+    expect(
+      new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Santiago',
+        hour: '2-digit',
+        hour12: false,
+      }).format(waitingFollowUp.dueAt),
+    ).toBe('10');
+
+    const manualDate = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
+    const manualLead = await authorized('post', '/api/v1/contacts/leads', token).send({
+      firstName: 'Manual Followup',
+      phone: '+56988887777',
+      country: 'CL',
+      nextFollowUpAt: manualDate.toISOString(),
+    });
+    const manualContact = await prisma.contact.findFirstOrThrow({
+      where: { organizationId: fixture.organizationA.id, phoneNormalized: '+56988887777' },
+    });
+    const manualOpportunity = await prisma.opportunity.findFirstOrThrow({
+      where: { organizationId: fixture.organizationA.id, contactId: manualContact.id },
+    });
+    const manualFollowUp = await prisma.followUp.findFirstOrThrow({
+      where: { organizationId: fixture.organizationA.id, opportunityId: manualOpportunity.id },
+    });
+    await authorized('patch', `/api/v1/contacts/${manualContact.id}`, token).send({
+      firstName: 'Manual Followup Updated',
+    });
+    const manualAfterUpdate = await prisma.followUp.findUniqueOrThrow({
+      where: {
+        organizationId_id: { organizationId: fixture.organizationA.id, id: manualFollowUp.id },
+      },
+    });
+    const movedManual = await authorized(
+      'post',
+      `/api/v1/opportunities/${manualOpportunity.id}/move`,
+      token,
+    ).send({ pipelineStageId: demoStage.id });
+    const manualAfterMove = await prisma.followUp.findUniqueOrThrow({
+      where: {
+        organizationId_id: { organizationId: fixture.organizationA.id, id: manualFollowUp.id },
+      },
+    });
+    expect(manualLead.status).toBe(201);
+    expect(movedManual.status).toBe(201);
+    expect(manualAfterUpdate.dueAt.getTime()).toBe(manualDate.getTime());
+    expect(manualAfterMove.dueAt.getTime()).toBe(manualDate.getTime());
+    expect(manualAfterUpdate.autoSuggested).toBe(false);
+  });
 });
 
 async function createFixture(database: PrismaClient): Promise<Fixture> {
@@ -430,6 +635,14 @@ async function createFixture(database: PrismaClient): Promise<Fixture> {
     'contacts.create',
     'contacts.update',
     'contacts.delete',
+    'opportunities.read',
+    'opportunities.create',
+    'opportunities.update',
+    'followups.read',
+    'followups.create',
+    'marketing.attribution.manage',
+    'catalog.read',
+    'catalog.create',
   ] as const;
   const permissions = await Promise.all(
     permissionKeys.map((key) => database.permission.create({ data: { key, name: key } })),

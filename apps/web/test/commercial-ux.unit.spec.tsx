@@ -46,7 +46,7 @@ describe('commercial lead intake frontend', () => {
   });
 
   it('exposes inline category creation from the lead drawer', async () => {
-    jest.spyOn(api, 'createCategory').mockResolvedValue({
+    jest.spyOn(api, 'createCategoryQuick').mockResolvedValue({
       id: 'category-1',
       name: 'Reseller',
       slug: 'reseller',
@@ -59,6 +59,6 @@ describe('commercial lead intake frontend', () => {
     fireEvent.click(await screen.findByRole('button', { name: '＋ Nueva categoría' }));
     fireEvent.change(screen.getByPlaceholderText('Nombre'), { target: { value: 'Reseller' } });
     fireEvent.click(screen.getByRole('button', { name: 'Crear' }));
-    await waitFor(() => expect(api.createCategory).toHaveBeenCalledWith({ name: 'Reseller' }));
+    await waitFor(() => expect(api.createCategoryQuick).toHaveBeenCalledWith({ name: 'Reseller' }));
   });
 });

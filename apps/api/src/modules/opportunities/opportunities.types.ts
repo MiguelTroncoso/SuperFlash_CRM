@@ -14,6 +14,7 @@ export interface PublicOpportunityStage {
   color: string;
   category: PipelineStageCategory;
   systemKey: string | null;
+  followUpDays: number | null;
   order: number;
   active: boolean;
 }
@@ -58,7 +59,13 @@ export interface PublicOpportunity {
   campaign: PublicOpportunityRelation | null;
   category: PublicOpportunityRelation | null;
   product: PublicOpportunityRelation | null;
-  nextFollowUp: { id: string; title: string; dueAt: Date; status: string } | null;
+  nextFollowUp: {
+    id: string;
+    title: string;
+    dueAt: Date;
+    status: string;
+    autoSuggested: boolean;
+  } | null;
   createdAt: Date;
   updatedAt: Date;
 }

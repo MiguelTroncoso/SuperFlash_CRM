@@ -994,6 +994,7 @@ model FollowUp {
   rescheduledFromId  String?          @db.Uuid
   rescheduledAt      DateTime?
   completionNote     String?
+  autoSuggested      Boolean          @default(false)
   result             FollowUpResult?
   completedAt        DateTime?
   completedByUserId  String?          @db.Uuid

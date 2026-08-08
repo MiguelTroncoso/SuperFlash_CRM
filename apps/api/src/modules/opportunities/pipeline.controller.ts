@@ -77,7 +77,7 @@ export class PipelineController {
   }
 
   @Post('stages')
-  @Permissions('settings.manage')
+  @Permissions('opportunities.create')
   @ApiOperation({ summary: 'Crea una etapa del pipeline' })
   async createStage(
     @Body() dto: CreatePipelineStageDto,

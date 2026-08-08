@@ -199,6 +199,13 @@ const pipelineStages = [
   },
 ] as const;
 
+const operationalPipelineStages = [
+  { name: 'Mensaje enviado', systemKey: 'MESSAGE_SENT', color: '#0EA5E9' },
+  { name: 'Activando', systemKey: 'ACTIVATING', color: '#14B8A6' },
+  { name: 'Activo', systemKey: 'ACTIVE', color: '#22C55E' },
+  { name: 'Reactivar', systemKey: 'FUTURE_REACTIVATION', color: '#A855F7' },
+] as const;
+
 const salesPermissionKeys = [
   'contacts.read',
   'contacts.create',
@@ -488,6 +495,28 @@ async function seed(): Promise<void> {
             order: index + 1,
             color: stage.color,
             category: stage.category,
+          },
+        });
+      }
+
+      for (const stage of operationalPipelineStages) {
+        const existing = await transaction.pipelineStage.findFirst({
+          where: { organizationId: organization.id, systemKey: stage.systemKey, deletedAt: null },
+          select: { id: true },
+        });
+        if (existing) continue;
+        const maxOrder = await transaction.pipelineStage.aggregate({
+          where: { organizationId: organization.id, deletedAt: null },
+          _max: { order: true },
+        });
+        await transaction.pipelineStage.create({
+          data: {
+            organizationId: organization.id,
+            name: stage.name,
+            systemKey: stage.systemKey,
+            order: (maxOrder._max.order ?? 0) + 1,
+            color: stage.color,
+            category: PipelineStageCategory.OPEN,
           },
         });
       }

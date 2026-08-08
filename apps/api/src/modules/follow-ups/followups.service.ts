@@ -855,6 +855,7 @@ export class FollowUpsService {
       reminderAt: record.reminderAt,
       priority: record.priority,
       status: record.status,
+      autoSuggested: record.autoSuggested,
       isOverdue: isFollowUpOverdue(record.status, record.dueAt, now),
       note: record.note,
       completedAt: record.completedAt,
@@ -1231,6 +1232,7 @@ export interface PublicFollowUp {
   reminderAt: Date | null;
   priority: FollowUpPriority;
   status: FollowUpStatus;
+  autoSuggested: boolean;
   isOverdue: boolean;
   note: string | null;
   completedAt: Date | null;

@@ -1,7 +1,16 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { ActivityType, PipelineStageCategory, Prisma } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
+import {
+  ActivityType,
+  FollowUpHistoryAction,
+  FollowUpPriority,
+  FollowUpStatus,
+  PipelineStageCategory,
+  Prisma,
+} from '@prisma/client';
 
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import { AppConfiguration } from '../../config/configuration';
 import { OutboxService } from '../../infrastructure/outbox/outbox.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser, RequestMetadata } from '../auth/auth.types';
@@ -43,6 +52,7 @@ import { ReorderPipelineStageDto } from './dto/reorder-pipeline-stage.dto';
 import { StageHistoryQueryDto } from './dto/stage-history-query.dto';
 import { UpdateOpportunityDto } from './dto/update-opportunity.dto';
 import { UpdatePipelineStageDto } from './dto/update-pipeline-stage.dto';
+import { followUpDaysForState, suggestedFollowUpAt } from './operational-states';
 
 interface OpportunityRequestContext {
   user: AuthenticatedUser;
@@ -74,6 +84,8 @@ function asInputJson(value: Record<string, string | null>): Prisma.InputJsonObje
 
 @Injectable()
 export class OpportunitiesService {
+  private readonly configuration: AppConfiguration;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly repository: OpportunitiesRepository,
@@ -81,7 +93,10 @@ export class OpportunitiesService {
     private readonly outbox: OutboxService,
     private readonly accessPolicy: OpportunityAccessPolicy,
     private readonly contactAccessPolicy: ContactAccessPolicy,
-  ) {}
+    configService: ConfigService,
+  ) {
+    this.configuration = configService.getOrThrow<AppConfiguration>('app');
+  }
 
   async create(
     dto: CreateOpportunityDto,
@@ -616,6 +631,7 @@ export class OpportunitiesService {
           reason,
           'OPPORTUNITY_STAGE_CHANGED',
         );
+        await this.syncOperationalFollowUp(transaction, current, target, context, now);
       });
     } catch (error: unknown) {
       this.rethrowDatabaseConflict(error);
@@ -711,6 +727,7 @@ export class OpportunitiesService {
           dto.reason?.trim() || null,
           'OPPORTUNITY_REOPENED',
         );
+        await this.syncOperationalFollowUp(transaction, current, target, context, now);
       });
     } catch (error: unknown) {
       this.rethrowDatabaseConflict(error);
@@ -962,9 +979,13 @@ export class OpportunitiesService {
   ): Promise<PublicOpportunityStage> {
     const organizationId = context.user.organizationId;
     const name = dto.name.trim().replace(/\s+/g, ' ');
+    const systemKey = dto.systemKey?.trim().toUpperCase() || null;
     try {
       const created = await this.withPipelineLock(organizationId, async (transaction) => {
         await this.assertStageNameAvailable(transaction, organizationId, name);
+        if (systemKey) {
+          await this.assertStageSystemKeyAvailable(transaction, organizationId, systemKey);
+        }
         const count = await transaction.pipelineStage.count({
           where: { organizationId, deletedAt: null },
         });
@@ -985,8 +1006,17 @@ export class OpportunitiesService {
             color: dto.color,
             category: dto.category,
             order: dto.order,
+            ...(systemKey ? { systemKey } : {}),
           },
-          select: { id: true, name: true, color: true, category: true, order: true, active: true },
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            category: true,
+            systemKey: true,
+            order: true,
+            active: true,
+          },
         });
         await this.audit.recordWithClient(transaction, {
           organizationId,
@@ -994,7 +1024,13 @@ export class OpportunitiesService {
           action: 'PIPELINE_STAGE_CREATED',
           tableName: 'PipelineStage',
           recordId: stage.id,
-          newValue: { name, color: dto.color, category: dto.category, order: dto.order },
+          newValue: {
+            name,
+            color: dto.color,
+            category: dto.category,
+            order: dto.order,
+            systemKey,
+          },
           ip: context.metadata.ipAddress,
         });
         return stage;
@@ -1465,6 +1501,7 @@ export class OpportunitiesService {
             title: opportunity.followUps[0].title,
             dueAt: opportunity.followUps[0].dueAt,
             status: opportunity.followUps[0].status,
+            autoSuggested: opportunity.followUps[0].autoSuggested,
           }
         : null,
       createdAt: opportunity.createdAt,
@@ -1492,6 +1529,7 @@ export class OpportunitiesService {
       color: stage.color,
       category: stage.category,
       systemKey: stage.systemKey ?? null,
+      followUpDays: followUpDaysForState(stage.systemKey ?? stage.name),
       order: stage.order,
       active: stage.active ?? true,
     };
@@ -1690,6 +1728,150 @@ export class OpportunitiesService {
       select: { id: true },
     });
     if (existing) throw this.stageNameConflict();
+  }
+
+  private async assertStageSystemKeyAvailable(
+    transaction: Prisma.TransactionClient,
+    organizationId: string,
+    systemKey: string,
+    excludedId?: string,
+  ): Promise<void> {
+    const existing = await transaction.pipelineStage.findFirst({
+      where: {
+        organizationId,
+        systemKey,
+        deletedAt: null,
+        ...(excludedId ? { id: { not: excludedId } } : {}),
+      },
+      select: { id: true },
+    });
+    if (existing) throw this.stageNameConflict();
+  }
+
+  private async syncOperationalFollowUp(
+    transaction: Prisma.TransactionClient,
+    current: OpportunityMutationRecord,
+    target: PipelineStageRecord,
+    context: OpportunityRequestContext,
+    now: Date,
+  ): Promise<void> {
+    const suggestedAt = suggestedFollowUpAt(
+      target.systemKey ?? target.name,
+      this.configuration.defaultTimezone,
+      now,
+    );
+    const existing = await transaction.followUp.findFirst({
+      where: {
+        organizationId: context.user.organizationId,
+        opportunityId: current.id,
+        deletedAt: null,
+        archivedAt: null,
+        status: { in: [FollowUpStatus.PENDING, FollowUpStatus.RESCHEDULED] },
+      },
+      orderBy: [{ autoSuggested: 'asc' }, { dueAt: 'asc' }],
+      select: {
+        id: true,
+        dueAt: true,
+        status: true,
+        autoSuggested: true,
+        title: true,
+        note: true,
+        userId: true,
+        priority: true,
+      },
+    });
+
+    if (existing && !existing.autoSuggested) return;
+
+    if (suggestedAt === null) {
+      if (!existing) return;
+      await transaction.followUp.update({
+        where: {
+          organizationId_id: { organizationId: context.user.organizationId, id: existing.id },
+        },
+        data: {
+          status: FollowUpStatus.CANCELLED,
+          cancelledAt: now,
+          cancellationReason: 'Estado sin seguimiento automático',
+          cancelledByUserId: context.user.userId,
+          autoSuggested: true,
+        },
+      });
+      await transaction.followUpHistory.create({
+        data: {
+          organizationId: context.user.organizationId,
+          followUpId: existing.id,
+          action: FollowUpHistoryAction.CANCELLED,
+          changedByUserId: context.user.userId,
+          previousDueAt: existing.dueAt,
+          previousStatus: existing.status,
+          newStatus: FollowUpStatus.CANCELLED,
+          note: 'Estado sin seguimiento automático',
+          metadata: { automatic: true },
+        },
+      });
+      return;
+    }
+
+    if (existing) {
+      if (existing.dueAt.getTime() === suggestedAt.getTime()) return;
+      await transaction.followUp.update({
+        where: {
+          organizationId_id: { organizationId: context.user.organizationId, id: existing.id },
+        },
+        data: {
+          dueAt: suggestedAt,
+          status: FollowUpStatus.PENDING,
+          autoSuggested: true,
+          cancelledAt: null,
+          cancellationReason: null,
+          cancelledByUserId: null,
+        },
+      });
+      await transaction.followUpHistory.create({
+        data: {
+          organizationId: context.user.organizationId,
+          followUpId: existing.id,
+          action: FollowUpHistoryAction.RESCHEDULED,
+          changedByUserId: context.user.userId,
+          previousDueAt: existing.dueAt,
+          newDueAt: suggestedAt,
+          previousStatus: existing.status,
+          newStatus: FollowUpStatus.PENDING,
+          note: 'Seguimiento automático actualizado por cambio de estado',
+          metadata: { automatic: true },
+        },
+      });
+      return;
+    }
+
+    const userId = current.userId ?? context.user.userId;
+    const created = await transaction.followUp.create({
+      data: {
+        organizationId: context.user.organizationId,
+        userId,
+        opportunityId: current.id,
+        title: `Contactar lead: ${current.title}`,
+        dueAt: suggestedAt,
+        priority: FollowUpPriority.NORMAL,
+        status: FollowUpStatus.PENDING,
+        autoSuggested: true,
+        createdByUserId: context.user.userId,
+      },
+      select: { id: true },
+    });
+    await transaction.followUpHistory.create({
+      data: {
+        organizationId: context.user.organizationId,
+        followUpId: created.id,
+        action: FollowUpHistoryAction.CREATED,
+        changedByUserId: context.user.userId,
+        newDueAt: suggestedAt,
+        newStatus: FollowUpStatus.PENDING,
+        note: 'Seguimiento automático por estado comercial',
+        metadata: { automatic: true },
+      },
+    });
   }
 
   private notFound(): Error {
