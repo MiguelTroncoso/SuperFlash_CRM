@@ -24,6 +24,7 @@ import { ContactsService } from './contacts.service';
 import { ArchiveContactDto } from './dto/archive-contact.dto';
 import { AssignContactDto } from './dto/assign-contact.dto';
 import { CreateContactDto } from './dto/create-contact.dto';
+import { CreateLeadDto } from './dto/create-lead.dto';
 import { ListContactsQueryDto } from './dto/list-contacts-query.dto';
 import { UpdateContactDto } from './dto/update-contact.dto';
 
@@ -57,6 +58,17 @@ export class ContactsController {
     @Req() request: Request,
   ): Promise<unknown> {
     return this.contactsService.create(dto, { user, metadata: requestMetadata(request) });
+  }
+
+  @Post('leads')
+  @Permissions('contacts.create')
+  @ApiOperation({ summary: 'Crea un lead comercial con oportunidad y trazabilidad' })
+  async createLead(
+    @Body() dto: CreateLeadDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ): Promise<unknown> {
+    return this.contactsService.createLead(dto, { user, metadata: requestMetadata(request) });
   }
 
   @Get()

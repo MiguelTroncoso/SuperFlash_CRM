@@ -201,7 +201,13 @@ export class OpportunitiesService {
             'Una oportunidad nueva debe comenzar en una etapa abierta.',
           );
         }
-        await this.assertRelations(transaction, organizationId, dto.campaignId, dto.productId);
+        const interest = await this.resolveInterest(
+          transaction,
+          organizationId,
+          dto.categoryId,
+          dto.productId,
+        );
+        await this.assertRelations(transaction, organizationId, dto.campaignId);
 
         const now = new Date();
         const opportunity = await transaction.opportunity.create({
@@ -217,11 +223,24 @@ export class OpportunitiesService {
             probability: dto.probability ?? 50,
             priority: dto.priority ?? 'NORMAL',
             ...(dto.campaignId ? { campaignId: dto.campaignId } : {}),
-            ...(dto.productId ? { productId: dto.productId } : {}),
+            ...(interest.categoryId ? { categoryId: interest.categoryId } : {}),
+            ...(interest.productId ? { productId: interest.productId } : {}),
             lastStageChangedAt: now,
           },
           select: { id: true },
         });
+        if (interest.categoryId || interest.productId) {
+          await transaction.opportunityInterestHistory.create({
+            data: {
+              organizationId,
+              opportunityId: opportunity.id,
+              categoryId: interest.categoryId,
+              productId: interest.productId,
+              changedByUserId: context.user.userId,
+              reason: 'Oportunidad creada',
+            },
+          });
+        }
 
         await transaction.opportunityStageHistory.create({
           data: {
@@ -362,17 +381,38 @@ export class OpportunitiesService {
       if (dto.campaignId) await this.assertCampaign(context.user.organizationId, dto.campaignId);
       data.campaignId = dto.campaignId ?? null;
     }
-    if (dto.productId !== undefined) {
-      if (dto.productId) await this.assertProduct(context.user.organizationId, dto.productId);
-      data.productId = dto.productId ?? null;
-    }
+    let interest: { categoryId: string | null; productId: string | null } | null = null;
 
     try {
       await this.prisma.$transaction(async (transaction) => {
+        interest = await this.resolveInterest(
+          transaction,
+          context.user.organizationId,
+          dto.categoryId !== undefined ? dto.categoryId : current.categoryId,
+          dto.productId !== undefined ? dto.productId : current.productId,
+        );
+        if (dto.categoryId !== undefined) data.categoryId = interest.categoryId;
+        if (dto.productId !== undefined) data.productId = interest.productId;
         await transaction.opportunity.update({
           where: { organizationId_id: { organizationId: context.user.organizationId, id } },
           data,
         });
+        if (
+          interest &&
+          (dto.categoryId !== undefined || dto.productId !== undefined) &&
+          (interest.categoryId !== current.categoryId || interest.productId !== current.productId)
+        ) {
+          await transaction.opportunityInterestHistory.create({
+            data: {
+              organizationId: context.user.organizationId,
+              opportunityId: id,
+              categoryId: interest.categoryId,
+              productId: interest.productId,
+              changedByUserId: context.user.userId,
+              reason: 'Interés comercial actualizado',
+            },
+          });
+        }
         const now = new Date();
         await transaction.contact.update({
           where: {
@@ -1187,7 +1227,6 @@ export class OpportunitiesService {
     transaction: Prisma.TransactionClient,
     organizationId: string,
     campaignId: string | null | undefined,
-    productId: string | null | undefined,
   ): Promise<void> {
     if (campaignId) {
       const campaign = await transaction.campaign.findFirst({
@@ -1201,18 +1240,47 @@ export class OpportunitiesService {
           'La campaña no existe en la organización actual.',
         );
     }
+  }
+
+  private async resolveInterest(
+    transaction: Prisma.TransactionClient,
+    organizationId: string,
+    categoryId: string | null | undefined,
+    productId: string | null | undefined,
+  ): Promise<{ categoryId: string | null; productId: string | null }> {
+    let resolvedCategoryId = categoryId ?? null;
+    if (resolvedCategoryId) {
+      const category = await transaction.productCategory.findFirst({
+        where: { organizationId, id: resolvedCategoryId, active: true, deletedAt: null },
+        select: { id: true },
+      });
+      if (!category)
+        throw opportunityException(
+          HttpStatus.NOT_FOUND,
+          OPPORTUNITY_ERROR_CODES.CATEGORY_NOT_FOUND,
+          'La categoría no existe o no está activa.',
+        );
+    }
     if (productId) {
       const product = await transaction.product.findFirst({
         where: { organizationId, id: productId, active: true, deletedAt: null },
-        select: { id: true },
+        select: { id: true, categoryId: true },
       });
       if (!product)
         throw opportunityException(
           HttpStatus.NOT_FOUND,
           OPPORTUNITY_ERROR_CODES.PRODUCT_NOT_FOUND,
-          'El producto no existe en la organización actual.',
+          'El producto no existe o no está activo.',
         );
+      if (resolvedCategoryId && product.categoryId && resolvedCategoryId !== product.categoryId)
+        throw opportunityException(
+          HttpStatus.BAD_REQUEST,
+          OPPORTUNITY_ERROR_CODES.CATEGORY_PRODUCT_MISMATCH,
+          'La categoría no corresponde al producto seleccionado.',
+        );
+      resolvedCategoryId = resolvedCategoryId ?? product.categoryId;
     }
+    return { categoryId: resolvedCategoryId, productId: productId ?? null };
   }
 
   private async assertCampaign(organizationId: string, id: string): Promise<void> {
@@ -1221,15 +1289,6 @@ export class OpportunitiesService {
         HttpStatus.NOT_FOUND,
         OPPORTUNITY_ERROR_CODES.CAMPAIGN_NOT_FOUND,
         'La campaña no existe en la organización actual.',
-      );
-  }
-
-  private async assertProduct(organizationId: string, id: string): Promise<void> {
-    if (!(await this.repository.findProduct(organizationId, id)))
-      throw opportunityException(
-        HttpStatus.NOT_FOUND,
-        OPPORTUNITY_ERROR_CODES.PRODUCT_NOT_FOUND,
-        'El producto no existe en la organización actual.',
       );
   }
 
@@ -1398,6 +1457,7 @@ export class OpportunitiesService {
       pipelineStage: this.mapStage(opportunity.pipelineStage),
       assignedTo: opportunity.owner ? this.mapUser(opportunity.owner) : null,
       campaign: opportunity.campaign ? this.mapRelation(opportunity.campaign) : null,
+      category: opportunity.category ? this.mapRelation(opportunity.category) : null,
       product: opportunity.product ? this.mapRelation(opportunity.product) : null,
       createdAt: opportunity.createdAt,
       updatedAt: opportunity.updatedAt,

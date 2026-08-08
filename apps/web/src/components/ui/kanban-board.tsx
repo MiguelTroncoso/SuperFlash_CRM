@@ -13,6 +13,10 @@ interface KanbanItem {
   subtitle?: string;
   amount?: string | null;
   status?: string;
+  category?: { id: string; name: string } | null;
+  product?: { id: string; name: string } | null;
+  campaign?: { id: string; name: string } | null;
+  assignedTo?: { id: string; firstName: string; lastName: string | null } | null;
 }
 interface KanbanColumn {
   id: string;

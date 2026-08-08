@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'next/navigation';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 
 import { PageHeader, PageGrid } from '@/components/shared/page-header';
@@ -13,17 +14,40 @@ import { Drawer } from '@/components/ui/drawer';
 import { Pagination } from '@/components/ui/pagination';
 import { SearchBar } from '@/components/ui/search-bar';
 import { StatusBadge } from '@/components/ui/badge';
+import { useToastStore } from '@/components/ui/toast';
+import { NewSaleDrawer } from '@/features/sales/new-sale-drawer';
 import { api, queryString } from '@/lib/api-client';
 import type { Sale } from '@/lib/types';
 
 export function SalesPage(): React.ReactElement {
+  const searchParams = useSearchParams();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Sale | null>(null);
+  const [newSaleOpen, setNewSaleOpen] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const queryClient = useQueryClient();
   const sales = useQuery({
     queryKey: ['sales', page, search],
     queryFn: () => api.getSales(queryString({ page, limit: 25, search })),
   });
+  const confirm = async (): Promise<void> => {
+    if (!selected) return;
+    setConfirming(true);
+    try {
+      const updated = await api.confirmSale(selected.id);
+      setSelected(updated);
+      await queryClient.invalidateQueries({ queryKey: ['sales'] });
+    } catch (error: unknown) {
+      useToastStore.getState().push({
+        title: 'No fue posible confirmar',
+        description: error instanceof Error ? error.message : 'Error inesperado.',
+        tone: 'error',
+      });
+    } finally {
+      setConfirming(false);
+    }
+  };
   const columns: ColumnDef<Sale, unknown>[] = [
     {
       accessorKey: 'id',
@@ -80,11 +104,7 @@ export function SalesPage(): React.ReactElement {
           eyebrow="Commercial core"
           title="Ventas"
           description="Consulta acuerdos comerciales, estados y snapshots desde el backend."
-          actions={
-            <Button onClick={() => window.location.assign('/contacts')} variant="outline">
-              Ir a contactos
-            </Button>
-          }
+          actions={<Button onClick={() => setNewSaleOpen(true)}>＋ Nueva venta</Button>}
         />
         <SearchBar
           className="max-w-sm"
@@ -137,6 +157,11 @@ export function SalesPage(): React.ReactElement {
                   {selected.contact?.name ?? 'Sin contacto'}
                 </p>
               </div>
+              {selected.status === 'DRAFT' ? (
+                <Button disabled={confirming} onClick={() => void confirm()}>
+                  {confirming ? 'Confirmando…' : 'Confirmar venta'}
+                </Button>
+              ) : null}
               <div>
                 <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Notas</p>
                 <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
@@ -148,6 +173,11 @@ export function SalesPage(): React.ReactElement {
           ) : null}
         </Drawer>
       </PageGrid>
+      <NewSaleDrawer
+        defaultContactId={searchParams.get('contactId') ?? ''}
+        onClose={() => setNewSaleOpen(false)}
+        open={newSaleOpen}
+      />
     </QueryState>
   );
 }

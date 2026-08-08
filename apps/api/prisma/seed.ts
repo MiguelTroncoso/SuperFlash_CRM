@@ -242,6 +242,7 @@ const marketingSalesPermissionKeys = [
   'marketing.spend.read',
   'marketing.analytics.read',
   'marketing.attribution.read',
+  'marketing.attribution.manage',
   'marketing.loss-reasons.read',
   'commercial.net-values.read',
 ] as const;

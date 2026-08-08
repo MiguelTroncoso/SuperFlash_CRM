@@ -87,6 +87,7 @@ export interface Opportunity {
   pipelineStage: PipelineStage;
   assignedTo: Person | null;
   campaign: NamedRelation | null;
+  category: NamedRelation | null;
   product: NamedRelation | null;
   createdAt: string;
   updatedAt: string;

@@ -54,6 +54,7 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
     await transaction.followUp.deleteMany();
     await transaction.sale.deleteMany();
     await transaction.opportunityStageHistory.deleteMany();
+    await transaction.opportunityInterestHistory.deleteMany();
     await transaction.opportunity.deleteMany();
     await transaction.contactTag.deleteMany();
     await transaction.campaign.deleteMany();

@@ -25,6 +25,7 @@ const summaryInclude = Prisma.validator<Prisma.ContactInclude>()({
     include: {
       pipelineStage: { select: { id: true, name: true, color: true, category: true } },
       campaign: { select: { id: true, name: true } },
+      category: { select: { id: true, name: true } },
       product: { select: { id: true, name: true } },
     },
   },
@@ -44,6 +45,7 @@ const detailInclude = Prisma.validator<Prisma.ContactInclude>()({
     include: {
       pipelineStage: { select: { id: true, name: true, color: true, category: true } },
       campaign: { select: { id: true, name: true } },
+      category: { select: { id: true, name: true } },
       product: { select: { id: true, name: true } },
     },
   },

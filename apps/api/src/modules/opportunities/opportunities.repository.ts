@@ -18,6 +18,7 @@ const listInclude = Prisma.validator<Prisma.OpportunityInclude>()({
   },
   owner: { select: { id: true, firstName: true, lastName: true } },
   campaign: { select: { id: true, name: true } },
+  category: { select: { id: true, name: true } },
   product: { select: { id: true, name: true } },
 });
 
@@ -55,6 +56,7 @@ const mutationSelect = Prisma.validator<Prisma.OpportunitySelect>()({
   contactId: true,
   pipelineStageId: true,
   campaignId: true,
+  categoryId: true,
   productId: true,
   userId: true,
   title: true,

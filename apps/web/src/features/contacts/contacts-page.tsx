@@ -259,15 +259,20 @@ export function ContactsPage(): React.ReactElement {
           title="Contactos"
           description="Gestiona leads, clientes y la información que alimenta tu pipeline."
           actions={
-            <Button
-              onClick={() => {
-                setSelected(null);
-                setDrawer('create');
-                setDrawerTab('details');
-              }}
-            >
-              ＋ Nuevo contacto
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Link href="/sales">
+                <Button variant="outline">＋ Nueva venta</Button>
+              </Link>
+              <Button
+                onClick={() => {
+                  setSelected(null);
+                  setDrawer('create');
+                  setDrawerTab('details');
+                }}
+              >
+                ＋ Nuevo contacto
+              </Button>
+            </div>
           }
         />
         <div className="flex flex-col gap-3 sm:flex-row">

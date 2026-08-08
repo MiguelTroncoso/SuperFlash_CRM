@@ -15,7 +15,7 @@ import { PermissionGate } from '@/components/ui/permission-gate';
 import { SearchBar } from '@/components/ui/search-bar';
 import { StatusBadge } from '@/components/ui/badge';
 import { useToastStore } from '@/components/ui/toast';
-import { api, queryString } from '@/lib/api-client';
+import { ApiClientError, api, queryString } from '@/lib/api-client';
 import type {
   Category,
   PriceBook,
@@ -27,8 +27,22 @@ import type {
 
 type CatalogTab = 'products' | 'categories' | 'pricing';
 
-const PRODUCT_TYPES = ['DIGITAL', 'SERVICE', 'PHYSICAL', 'SUBSCRIPTION', 'OTHER'];
-const FULFILLMENT_MODES = ['MANUAL', 'AUTOMATIC', 'HYBRID', 'DIGITAL_DELIVERY'];
+const PRODUCT_TYPES = [
+  ['SUBSCRIPTION', 'Suscripción'],
+  ['CREDIT_PACKAGE', 'Paquete de créditos'],
+  ['LICENSE', 'Licencia'],
+  ['SERVICE', 'Servicio'],
+  ['DIGITAL_ACCESS', 'Acceso digital'],
+  ['OTHER', 'Otro'],
+] as const;
+const FULFILLMENT_MODES = [
+  ['MANUAL', 'Manual'],
+  ['API', 'API'],
+  ['INVITATION', 'Invitación'],
+  ['CREDENTIALS', 'Credenciales'],
+  ['DOWNLOAD', 'Descarga'],
+  ['OTHER', 'Otro'],
+] as const;
 const BILLING_UNITS = [
   'TRIAL',
   'WEEKLY',
@@ -38,6 +52,23 @@ const BILLING_UNITS = [
   'ANNUAL',
   'CUSTOM',
 ];
+
+function catalogErrorMessage(error: unknown): string {
+  if (error instanceof ApiClientError) {
+    const messages: Record<string, string> = {
+      PRODUCT_SLUG_ALREADY_EXISTS: 'Ya existe un producto con ese slug.',
+      PRODUCT_SKU_ALREADY_EXISTS: 'Ya existe un producto con ese SKU.',
+      CATEGORY_NAME_ALREADY_EXISTS: 'Ya existe una categoría con ese nombre.',
+      PRODUCT_INVALID_TYPE: 'El tipo de producto no es válido.',
+      PRODUCT_INVALID_FULFILLMENT_MODE: 'El modo de entrega no es válido.',
+    };
+    return (
+      (error.code && messages[error.code]) ||
+      'Revisa los datos del catálogo e inténtalo nuevamente.'
+    );
+  }
+  return 'No fue posible completar la operación del catálogo.';
+}
 
 function Field({
   label,
@@ -75,7 +106,7 @@ function ProductForm({
       description: '',
       currency: 'USD',
       categoryId: '',
-      type: 'DIGITAL',
+      type: 'OTHER',
       fulfillmentMode: 'MANUAL',
       publicVisible: false,
       stockTrackingEnabled: false,
@@ -90,7 +121,7 @@ function ProductForm({
       description: product?.description ?? '',
       currency: product?.currency ?? 'USD',
       categoryId: product?.category?.id ?? '',
-      type: product?.type ?? 'DIGITAL',
+      type: product?.type ?? 'OTHER',
       fulfillmentMode: product?.fulfillmentMode ?? 'MANUAL',
       publicVisible: product?.publicVisible ?? false,
       stockTrackingEnabled: product?.stock.trackingEnabled ?? false,
@@ -107,7 +138,7 @@ function ProductForm({
       name,
       ...(slug ? { slug } : {}),
       ...(sku ? { sku } : {}),
-      ...(categoryId ? { categoryId } : {}),
+      categoryId: categoryId || null,
       displayOrder: product?.displayOrder ?? 0,
       stockMinimum: Number(values.stockMinimum ?? 0),
     });
@@ -129,15 +160,19 @@ function ProductForm({
         </Field>
         <Field label="Tipo">
           <Select {...form.register('type')}>
-            {PRODUCT_TYPES.map((type) => (
-              <option key={type}>{type}</option>
+            {PRODUCT_TYPES.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
             ))}
           </Select>
         </Field>
         <Field label="Modo de fulfillment">
           <Select {...form.register('fulfillmentMode')}>
-            {FULFILLMENT_MODES.map((mode) => (
-              <option key={mode}>{mode}</option>
+            {FULFILLMENT_MODES.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
             ))}
           </Select>
         </Field>
@@ -501,7 +536,11 @@ export function CatalogPage(): React.ReactElement {
       toast({ title: 'Producto guardado', tone: 'success' });
     },
     onError: (error: Error) =>
-      toast({ title: 'No fue posible guardar', description: error.message, tone: 'error' }),
+      toast({
+        title: 'No fue posible guardar',
+        description: catalogErrorMessage(error),
+        tone: 'error',
+      }),
   });
   const status = useMutation({
     mutationFn: (input: { id: string; action: 'activate' | 'deactivate' | 'archive' }) =>
@@ -515,7 +554,11 @@ export function CatalogPage(): React.ReactElement {
       toast({ title: 'Estado actualizado', tone: 'success' });
     },
     onError: (error: Error) =>
-      toast({ title: 'No fue posible actualizar', description: error.message, tone: 'error' }),
+      toast({
+        title: 'No fue posible actualizar',
+        description: catalogErrorMessage(error),
+        tone: 'error',
+      }),
   });
   const duplicate = useMutation({
     mutationFn: (item: Product) =>
@@ -540,7 +583,11 @@ export function CatalogPage(): React.ReactElement {
       toast({ title: 'Producto duplicado', tone: 'success' });
     },
     onError: (error: Error) =>
-      toast({ title: 'No fue posible duplicar', description: error.message, tone: 'error' }),
+      toast({
+        title: 'No fue posible duplicar',
+        description: catalogErrorMessage(error),
+        tone: 'error',
+      }),
   });
   const saveCategory = useMutation({
     mutationFn: (input: { id?: string; body: JsonRecord }) =>
@@ -551,7 +598,11 @@ export function CatalogPage(): React.ReactElement {
       toast({ title: 'Categoría guardada', tone: 'success' });
     },
     onError: (error: Error) =>
-      toast({ title: 'No fue posible guardar', description: error.message, tone: 'error' }),
+      toast({
+        title: 'No fue posible guardar',
+        description: catalogErrorMessage(error),
+        tone: 'error',
+      }),
   });
   const categoryStatus = useMutation({
     mutationFn: (input: { id: string; action: 'archive' | 'restore' }) =>
@@ -561,7 +612,11 @@ export function CatalogPage(): React.ReactElement {
       toast({ title: 'Categoría actualizada', tone: 'success' });
     },
     onError: (error: Error) =>
-      toast({ title: 'No fue posible actualizar', description: error.message, tone: 'error' }),
+      toast({
+        title: 'No fue posible actualizar',
+        description: catalogErrorMessage(error),
+        tone: 'error',
+      }),
   });
   const savePlan = useMutation({
     mutationFn: (input: { body: JsonRecord; id?: string }) =>
@@ -576,7 +631,11 @@ export function CatalogPage(): React.ReactElement {
       toast({ title: 'Plan guardado', tone: 'success' });
     },
     onError: (error: Error) =>
-      toast({ title: 'No fue posible guardar', description: error.message, tone: 'error' }),
+      toast({
+        title: 'No fue posible guardar',
+        description: catalogErrorMessage(error),
+        tone: 'error',
+      }),
   });
   const archivePlan = useMutation({
     mutationFn: (id: string) =>
@@ -588,7 +647,11 @@ export function CatalogPage(): React.ReactElement {
       toast({ title: 'Plan archivado', tone: 'success' });
     },
     onError: (error: Error) =>
-      toast({ title: 'No fue posible archivar', description: error.message, tone: 'error' }),
+      toast({
+        title: 'No fue posible archivar',
+        description: catalogErrorMessage(error),
+        tone: 'error',
+      }),
   });
   const saveBook = useMutation({
     mutationFn: (input: { id?: string; body: JsonRecord }) =>
@@ -599,7 +662,11 @@ export function CatalogPage(): React.ReactElement {
       toast({ title: 'Price book guardado', tone: 'success' });
     },
     onError: (error: Error) =>
-      toast({ title: 'No fue posible guardar', description: error.message, tone: 'error' }),
+      toast({
+        title: 'No fue posible guardar',
+        description: catalogErrorMessage(error),
+        tone: 'error',
+      }),
   });
   const bookStatus = useMutation({
     mutationFn: (input: { id: string; action: 'activate' | 'deactivate' | 'archive' }) =>
@@ -613,7 +680,11 @@ export function CatalogPage(): React.ReactElement {
       toast({ title: 'Price book actualizado', tone: 'success' });
     },
     onError: (error: Error) =>
-      toast({ title: 'No fue posible actualizar', description: error.message, tone: 'error' }),
+      toast({
+        title: 'No fue posible actualizar',
+        description: catalogErrorMessage(error),
+        tone: 'error',
+      }),
   });
   const saveEntry = useMutation({
     mutationFn: (input: { id?: string; body: JsonRecord }) =>
@@ -628,7 +699,11 @@ export function CatalogPage(): React.ReactElement {
       toast({ title: 'Precio guardado', tone: 'success' });
     },
     onError: (error: Error) =>
-      toast({ title: 'No fue posible guardar', description: error.message, tone: 'error' }),
+      toast({
+        title: 'No fue posible guardar',
+        description: catalogErrorMessage(error),
+        tone: 'error',
+      }),
   });
   const adjustStock = useMutation({
     mutationFn: () =>
@@ -642,7 +717,11 @@ export function CatalogPage(): React.ReactElement {
       toast({ title: 'Stock ajustado', tone: 'success' });
     },
     onError: (error: Error) =>
-      toast({ title: 'No fue posible ajustar stock', description: error.message, tone: 'error' }),
+      toast({
+        title: 'No fue posible ajustar stock',
+        description: catalogErrorMessage(error),
+        tone: 'error',
+      }),
   });
   const close = (): void => {
     setDrawer(null);

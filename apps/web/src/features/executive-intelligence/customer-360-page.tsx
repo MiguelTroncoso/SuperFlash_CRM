@@ -51,9 +51,14 @@ export function Customer360Page({ contactId }: { readonly contactId: string }): 
             title={customerName(data.contact)}
             description="Contexto comercial, operativo y de relación del cliente, sin exponer secretos."
             actions={
-              <Link href="/contacts">
-                <Button variant="outline">Volver a contactos</Button>
-              </Link>
+              <div className="flex flex-wrap gap-2">
+                <Link href={`/sales?contactId=${encodeURIComponent(contactId)}`}>
+                  <Button>Nueva venta</Button>
+                </Link>
+                <Link href="/contacts">
+                  <Button variant="outline">Volver a contactos</Button>
+                </Link>
+              </div>
             }
           />
           <Card>
@@ -177,6 +182,41 @@ export function Customer360Page({ contactId }: { readonly contactId: string }): 
               </CardContent>
             </Card>
           </div>
+          <Card>
+            <CardHeader>
+              <CardTitle>Interés comercial</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {data.opportunities.length ? (
+                data.opportunities.slice(0, 10).map((opportunity) => {
+                  const item = opportunity as JsonRecord;
+                  const category = item.category as JsonRecord | null | undefined;
+                  const product = item.product as JsonRecord | null | undefined;
+                  const campaign = item.campaign as JsonRecord | null | undefined;
+                  return (
+                    <div
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-subtle p-3"
+                      key={text(item.id)}
+                    >
+                      <div>
+                        <p className="text-sm font-bold text-content-primary">{text(item.title)}</p>
+                        <p className="mt-1 text-xs text-content-secondary">
+                          {text(product?.name ?? category?.name)} · {text(campaign?.name)}
+                        </p>
+                      </div>
+                      <Link href="/pipeline">
+                        <Button size="sm" variant="outline">
+                          Ver pipeline
+                        </Button>
+                      </Link>
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="text-sm text-content-muted">Sin oportunidades registradas.</p>
+              )}
+            </CardContent>
+          </Card>
         </PageGrid>
       ) : null}
     </QueryState>

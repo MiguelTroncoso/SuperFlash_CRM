@@ -1,5 +1,13 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { ActivityType, PipelineStageCategory, Prisma } from '@prisma/client';
+import {
+  ActivityType,
+  FollowUpHistoryAction,
+  FollowUpPriority,
+  FollowUpStatus,
+  PipelineStageCategory,
+  Prisma,
+  ProspectConversationStateType,
+} from '@prisma/client';
 
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { OutboxService } from '../../infrastructure/outbox/outbox.service';
@@ -24,6 +32,7 @@ import {
 import { ArchiveContactDto } from './dto/archive-contact.dto';
 import { AssignContactDto } from './dto/assign-contact.dto';
 import { CreateContactDto } from './dto/create-contact.dto';
+import { CreateLeadDto } from './dto/create-lead.dto';
 import { ContactSortBy, ListContactsQueryDto } from './dto/list-contacts-query.dto';
 import { UpdateContactDto } from './dto/update-contact.dto';
 import { PhoneNormalizerService } from './phone/phone-normalizer.service';
@@ -39,6 +48,7 @@ interface PublicOpportunity {
   title: string;
   pipelineStage: { id: string; name: string; color: string; category: string };
   campaign: { id: string; name: string } | null;
+  category: { id: string; name: string } | null;
   product: { id: string; name: string } | null;
 }
 
@@ -347,6 +357,450 @@ export class ContactsService {
       return { ...this.mapSummary(summary), warnings };
     } catch (error: unknown) {
       throw await this.mapDatabaseError(error, context.user.organizationId, values.phoneNormalized);
+    }
+  }
+
+  async createLead(
+    dto: CreateLeadDto,
+    context: ContactRequestContext,
+  ): Promise<Record<string, unknown>> {
+    this.assertLeadPermission(context.user, 'opportunities.create');
+    const values = this.normalizeCreateValues({
+      ...(dto.firstName !== undefined ? { firstName: dto.firstName } : {}),
+      ...(dto.lastName !== undefined ? { lastName: dto.lastName } : {}),
+      ...(dto.email !== undefined ? { email: dto.email } : {}),
+      ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
+      ...(dto.country !== undefined ? { country: dto.country } : {}),
+      source: dto.source ?? 'MANUAL',
+      ...(dto.note !== undefined ? { notes: dto.note } : {}),
+    });
+    this.assertIdentity(values);
+    const organizationId = context.user.organizationId;
+    const now = new Date();
+    const followUpAt = dto.nextFollowUpAt ? new Date(dto.nextFollowUpAt) : null;
+    if (followUpAt && (Number.isNaN(followUpAt.getTime()) || followUpAt <= now)) {
+      throw contactException(
+        HttpStatus.BAD_REQUEST,
+        CONTACT_ERROR_CODES.FOLLOW_UP_DATE_INVALID,
+        'El próximo seguimiento debe estar en el futuro.',
+      );
+    }
+    if (followUpAt) this.assertLeadPermission(context.user, 'followups.create');
+    this.assertLeadPermission(context.user, 'marketing.attribution.manage');
+
+    try {
+      const result = await this.prisma.$transaction(async (transaction) => {
+        const assignedUserId =
+          dto.assignedUserId ?? (context.user.roleName === 'Sales' ? context.user.userId : null);
+        if (assignedUserId) {
+          const assignee = await transaction.user.findFirst({
+            where: {
+              organizationId,
+              id: assignedUserId,
+              status: 'ACTIVE',
+              deletedAt: null,
+              role: { deletedAt: null },
+            },
+            select: { id: true },
+          });
+          if (!assignee)
+            throw contactException(
+              HttpStatus.NOT_FOUND,
+              CONTACT_ERROR_CODES.ASSIGNEE_NOT_FOUND,
+              'El responsable no existe o no está activo.',
+            );
+        }
+        if (context.user.roleName === 'Sales' && assignedUserId !== context.user.userId) {
+          throw contactException(
+            HttpStatus.FORBIDDEN,
+            CONTACT_ERROR_CODES.LEAD_PERMISSION_REQUIRED,
+            'Sales solo puede asignar leads a sí mismo.',
+          );
+        }
+
+        const campaign = dto.campaignId
+          ? await transaction.campaign.findFirst({
+              where: { organizationId, id: dto.campaignId, active: true, deletedAt: null },
+              select: { id: true },
+            })
+          : null;
+        if (dto.campaignId && !campaign)
+          throw contactException(
+            HttpStatus.NOT_FOUND,
+            CONTACT_ERROR_CODES.CAMPAIGN_NOT_FOUND,
+            'La campaña no existe o no está activa.',
+          );
+
+        if (dto.adSetId) {
+          if (!dto.campaignId)
+            throw contactException(
+              HttpStatus.BAD_REQUEST,
+              CONTACT_ERROR_CODES.AD_SET_NOT_FOUND,
+              'El conjunto de anuncios requiere una campaña.',
+            );
+          const adSet = await transaction.marketingAdSet.findFirst({
+            where: { organizationId, id: dto.adSetId, campaignId: dto.campaignId, deletedAt: null },
+            select: { id: true },
+          });
+          if (!adSet)
+            throw contactException(
+              HttpStatus.NOT_FOUND,
+              CONTACT_ERROR_CODES.AD_SET_NOT_FOUND,
+              'El conjunto de anuncios no existe.',
+            );
+        }
+        if (dto.adId) {
+          if (!dto.campaignId)
+            throw contactException(
+              HttpStatus.BAD_REQUEST,
+              CONTACT_ERROR_CODES.AD_NOT_FOUND,
+              'El anuncio requiere una campaña.',
+            );
+          const ad = await transaction.marketingAd.findFirst({
+            where: { organizationId, id: dto.adId, campaignId: dto.campaignId, deletedAt: null },
+            select: { id: true },
+          });
+          if (!ad)
+            throw contactException(
+              HttpStatus.NOT_FOUND,
+              CONTACT_ERROR_CODES.AD_NOT_FOUND,
+              'El anuncio no existe.',
+            );
+        }
+        if (dto.creativeId) {
+          if (!dto.campaignId)
+            throw contactException(
+              HttpStatus.BAD_REQUEST,
+              CONTACT_ERROR_CODES.CREATIVE_NOT_FOUND,
+              'La creatividad requiere una campaña.',
+            );
+          const creative = await transaction.marketingCreative.findFirst({
+            where: {
+              organizationId,
+              id: dto.creativeId,
+              campaignId: dto.campaignId,
+              deletedAt: null,
+            },
+            select: { id: true },
+          });
+          if (!creative)
+            throw contactException(
+              HttpStatus.NOT_FOUND,
+              CONTACT_ERROR_CODES.CREATIVE_NOT_FOUND,
+              'La creatividad no existe.',
+            );
+        }
+
+        const category = dto.categoryId
+          ? await transaction.productCategory.findFirst({
+              where: { organizationId, id: dto.categoryId, active: true, deletedAt: null },
+              select: { id: true },
+            })
+          : null;
+        if (dto.categoryId && !category)
+          throw contactException(
+            HttpStatus.NOT_FOUND,
+            CONTACT_ERROR_CODES.CATEGORY_NOT_FOUND,
+            'La categoría no existe o no está activa.',
+          );
+
+        const product = dto.productId
+          ? await transaction.product.findFirst({
+              where: {
+                organizationId,
+                id: dto.productId,
+                active: true,
+                status: 'ACTIVE',
+                deletedAt: null,
+              },
+              select: { id: true, categoryId: true },
+            })
+          : null;
+        if (dto.productId && !product)
+          throw contactException(
+            HttpStatus.NOT_FOUND,
+            CONTACT_ERROR_CODES.PRODUCT_NOT_FOUND,
+            'El producto no existe o no está activo.',
+          );
+        if (category?.id && product?.categoryId && category.id !== product.categoryId)
+          throw contactException(
+            HttpStatus.BAD_REQUEST,
+            CONTACT_ERROR_CODES.INTEREST_INVALID,
+            'El producto no pertenece a la categoría seleccionada.',
+          );
+        const categoryId = category?.id ?? product?.categoryId ?? null;
+
+        const existing = values.phoneNormalized
+          ? await transaction.contact.findFirst({
+              where: { organizationId, phoneNormalized: values.phoneNormalized },
+              orderBy: [{ deletedAt: 'asc' }, { archivedAt: 'asc' }, { createdAt: 'asc' }],
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                phoneNormalized: true,
+                deletedAt: true,
+                archivedAt: true,
+                userId: true,
+              },
+            })
+          : values.email
+            ? await transaction.contact.findFirst({
+                where: { organizationId, email: values.email, deletedAt: null },
+                orderBy: { createdAt: 'asc' },
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  phoneNormalized: true,
+                  deletedAt: true,
+                  archivedAt: true,
+                  userId: true,
+                },
+              })
+            : null;
+        if (existing?.deletedAt || existing?.archivedAt)
+          throw contactException(
+            HttpStatus.CONFLICT,
+            CONTACT_ERROR_CODES.PHONE_ARCHIVED,
+            'Ya existe un contacto archivado con este teléfono.',
+            { existingContactId: existing.id },
+          );
+
+        const contact = existing
+          ? existing
+          : await transaction.contact.create({
+              data: {
+                organizationId,
+                userId: assignedUserId,
+                firstName: values.firstName,
+                lastName: values.lastName,
+                email: values.email,
+                phone: values.phone,
+                phoneNormalized: values.phoneNormalized,
+                country: values.country,
+                source: values.source,
+                notes: values.notes,
+                lastActivityAt: now,
+                isCustomer: false,
+              },
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                phoneNormalized: true,
+                deletedAt: true,
+                archivedAt: true,
+                userId: true,
+              },
+            });
+        const stage = await transaction.pipelineStage.findFirst({
+          where: {
+            organizationId,
+            active: true,
+            deletedAt: null,
+            category: PipelineStageCategory.OPEN,
+          },
+          orderBy: { order: 'asc' },
+          select: { id: true, name: true },
+        });
+        if (!stage)
+          throw contactException(
+            HttpStatus.NOT_FOUND,
+            CONTACT_ERROR_CODES.INITIAL_STAGE_NOT_FOUND,
+            'No existe una etapa inicial activa.',
+          );
+        const title = buildInitialOpportunityTitle(
+          contact.firstName,
+          contact.lastName,
+          contact.phoneNormalized,
+        );
+        const opportunity = await transaction.opportunity.create({
+          data: {
+            organizationId,
+            contactId: contact.id,
+            pipelineStageId: stage.id,
+            campaignId: campaign?.id ?? null,
+            categoryId,
+            productId: product?.id ?? null,
+            userId: assignedUserId ?? existing?.userId ?? null,
+            title,
+            notes: values.notes,
+            priority: dto.priority ?? 'NORMAL',
+            probability: dto.probability ?? 50,
+            lastStageChangedAt: now,
+          },
+          select: { id: true, title: true, userId: true },
+        });
+        await transaction.opportunityStageHistory.create({
+          data: {
+            organizationId,
+            opportunityId: opportunity.id,
+            toStageId: stage.id,
+            changedByUserId: context.user.userId,
+            reason: 'Lead creado',
+            changedAt: now,
+          },
+        });
+        if (categoryId || product?.id) {
+          await transaction.opportunityInterestHistory.create({
+            data: {
+              organizationId,
+              opportunityId: opportunity.id,
+              categoryId,
+              productId: product?.id ?? null,
+              changedByUserId: context.user.userId,
+              reason: 'Lead creado',
+            },
+          });
+        }
+        const originalAttribution = await transaction.attribution.findFirst({
+          where: { organizationId, contactId: contact.id, kind: 'ORIGINAL', deletedAt: null },
+          select: { id: true },
+        });
+        if (!originalAttribution) {
+          await transaction.attribution.create({
+            data: {
+              organizationId,
+              kind: 'ORIGINAL',
+              contactId: contact.id,
+              opportunityId: opportunity.id,
+              campaignId: campaign?.id ?? null,
+              adSetId: dto.adSetId ?? null,
+              adId: dto.adId ?? null,
+              creativeId: dto.creativeId ?? null,
+              platform: dto.platform?.trim() || 'DIRECT',
+              source: dto.source?.trim() || 'MANUAL',
+              targetedCountry: values.country,
+              actualCountry: values.country,
+              acquiredAt: now,
+              createdByUserId: context.user.userId,
+              requestId: context.metadata.requestId ?? null,
+            },
+          });
+        }
+        const prospectState = await transaction.prospectConversationState.findUnique({
+          where: { organizationId_contactId: { organizationId, contactId: contact.id } },
+          select: { id: true, state: true },
+        });
+        if (!prospectState) {
+          await transaction.prospectConversationState.create({
+            data: {
+              organizationId,
+              contactId: contact.id,
+              state: ProspectConversationStateType.NEW_UNANSWERED,
+              changedByUserId: context.user.userId,
+              changeReason: 'Lead creado',
+              requestId: context.metadata.requestId ?? null,
+            },
+          });
+          await transaction.prospectConversationStateHistory.create({
+            data: {
+              organizationId,
+              contactId: contact.id,
+              state: ProspectConversationStateType.NEW_UNANSWERED,
+              source: 'LEAD_INTAKE',
+              changedByUserId: context.user.userId,
+              requestId: context.metadata.requestId ?? null,
+            },
+          });
+        }
+        let followUpId: string | null = null;
+        if (followUpAt) {
+          const followUp = await transaction.followUp.create({
+            data: {
+              organizationId,
+              userId: opportunity.userId ?? context.user.userId,
+              opportunityId: opportunity.id,
+              title: `Contactar lead: ${title}`,
+              dueAt: followUpAt,
+              priority: FollowUpPriority.NORMAL,
+              status: FollowUpStatus.PENDING,
+              note: values.notes,
+              createdByUserId: context.user.userId,
+            },
+            select: { id: true },
+          });
+          followUpId = followUp.id;
+          await transaction.followUpHistory.create({
+            data: {
+              organizationId,
+              followUpId: followUp.id,
+              action: FollowUpHistoryAction.CREATED,
+              changedByUserId: context.user.userId,
+              newDueAt: followUpAt,
+              newStatus: FollowUpStatus.PENDING,
+              note: values.notes,
+            },
+          });
+        }
+        await transaction.activity.create({
+          data: {
+            organizationId,
+            userId: context.user.userId,
+            contactId: contact.id,
+            opportunityId: opportunity.id,
+            ...(followUpId ? { followUpId } : {}),
+            type: ActivityType.SYSTEM,
+            title: 'Lead creado',
+            description: values.notes,
+            occurredAt: now,
+            metadata: {
+              source: values.source ?? 'MANUAL',
+              platform: dto.platform?.trim() || 'DIRECT',
+              categoryId,
+              productId: product?.id ?? null,
+              createdBy: 'LEAD_INTAKE',
+            },
+            requestId: context.metadata.requestId ?? null,
+          },
+        });
+        await transaction.contact.update({
+          where: { organizationId_id: { organizationId, id: contact.id } },
+          data: { lastActivityAt: now },
+        });
+        await this.audit.recordWithClient(transaction, {
+          organizationId,
+          userId: context.user.userId,
+          action: 'LEAD_CREATED',
+          tableName: 'Opportunity',
+          recordId: opportunity.id,
+          newValue: {
+            contactId: contact.id,
+            categoryId,
+            productId: product?.id ?? null,
+            campaignId: campaign?.id ?? null,
+            followUpId,
+          },
+          ip: context.metadata.ipAddress,
+          requestId: context.metadata.requestId,
+        });
+        await this.outbox.enqueueWithClient(transaction, {
+          eventType: 'LeadCreated',
+          organizationId,
+          aggregateType: 'Opportunity',
+          aggregateId: opportunity.id,
+          actorId: context.user.userId,
+          requestId: context.metadata.requestId ?? opportunity.id,
+          payload: {
+            contactId: contact.id,
+            opportunityId: opportunity.id,
+            categoryId,
+            productId: product?.id ?? null,
+            followUpId,
+          },
+        });
+        return {
+          contactId: contact.id,
+          opportunityId: opportunity.id,
+          title: opportunity.title,
+          reusedContact: Boolean(existing),
+          followUpId,
+        };
+      });
+      return result;
+    } catch (error: unknown) {
+      throw await this.mapDatabaseError(error, organizationId, values.phoneNormalized);
     }
   }
 
@@ -808,6 +1262,16 @@ export class ContactsService {
     };
   }
 
+  private assertLeadPermission(user: AuthenticatedUser, permission: string): void {
+    if (!user.permissions.includes(permission)) {
+      throw contactException(
+        HttpStatus.FORBIDDEN,
+        CONTACT_ERROR_CODES.LEAD_PERMISSION_REQUIRED,
+        `No tienes permisos para completar el flujo de lead (${permission}).`,
+      );
+    }
+  }
+
   private async mergeUpdatedValues(
     contact: ContactMutation,
     dto: UpdateContactDto,
@@ -1024,6 +1488,7 @@ export class ContactsService {
       title: opportunity.title,
       pipelineStage: opportunity.pipelineStage,
       campaign: opportunity.campaign,
+      category: opportunity.category,
       product: opportunity.product,
     };
   }

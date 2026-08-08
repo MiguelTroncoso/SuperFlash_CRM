@@ -56,6 +56,7 @@ export interface PublicOpportunity {
   pipelineStage: PublicOpportunityStage;
   assignedTo: PublicOpportunityUser | null;
   campaign: PublicOpportunityRelation | null;
+  category: PublicOpportunityRelation | null;
   product: PublicOpportunityRelation | null;
   createdAt: Date;
   updatedAt: Date;
