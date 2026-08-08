@@ -28,7 +28,7 @@ const listInclude = Prisma.validator<Prisma.OpportunityInclude>()({
     },
     orderBy: { dueAt: 'asc' },
     take: 1,
-    select: { id: true, title: true, dueAt: true, status: true },
+    select: { id: true, title: true, dueAt: true, status: true, autoSuggested: true },
   },
 });
 

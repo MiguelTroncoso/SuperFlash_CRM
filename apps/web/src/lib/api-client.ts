@@ -44,6 +44,7 @@ import type {
   Paginated,
   Person,
   PipelineResponse,
+  PipelineStage,
   PriceBook,
   PriceEntry,
   Product,
@@ -190,6 +191,8 @@ export const api = {
     }),
   getTags: () => request<Tag[]>('/tags'),
   getPipeline: (query = '') => request<PipelineResponse>(`/pipeline${query}`),
+  createPipelineStage: (body: JsonRecord) =>
+    request<PipelineStage>('/pipeline/stages', { method: 'POST', ...jsonBody(body) }),
   getPipelineSummary: (query = '') => request<JsonRecord>(`/pipeline/summary${query}`),
   moveOpportunity: (id: string, body: { pipelineStageId: string; reason?: string }) =>
     request<Opportunity>(`/opportunities/${id}/move`, { method: 'POST', ...jsonBody(body) }),
@@ -207,6 +210,8 @@ export const api = {
   getProducts: (query = '') => request<Paginated<Product>>(`/catalog/products${query}`),
   createProduct: (body: JsonRecord) =>
     request<Product>('/catalog/products', { method: 'POST', ...jsonBody(body) }),
+  createProductQuick: (body: JsonRecord) =>
+    request<Product>('/catalog/products/quick', { method: 'POST', ...jsonBody(body) }),
   updateProduct: (id: string, body: JsonRecord) =>
     request<Product>(`/catalog/products/${id}`, { method: 'PATCH', ...jsonBody(body) }),
   activateProduct: (id: string) =>
@@ -218,6 +223,8 @@ export const api = {
   getCategories: () => request<Category[]>('/catalog/categories'),
   createCategory: (body: JsonRecord) =>
     request<Category>('/catalog/categories', { method: 'POST', ...jsonBody(body) }),
+  createCategoryQuick: (body: JsonRecord) =>
+    request<Category>('/catalog/categories/quick', { method: 'POST', ...jsonBody(body) }),
   updateCategory: (id: string, body: JsonRecord) =>
     request<Category>(`/catalog/categories/${id}`, { method: 'PATCH', ...jsonBody(body) }),
   archiveCategory: (id: string) =>

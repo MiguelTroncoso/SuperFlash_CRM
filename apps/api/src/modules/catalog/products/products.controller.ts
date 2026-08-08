@@ -45,6 +45,16 @@ export class ProductsController {
   ): Promise<Record<string, unknown>> {
     return this.service.create(dto, this.context(user, request));
   }
+
+  @Post('quick')
+  @Permissions('opportunities.create')
+  createQuick(
+    @Body() dto: CreateProductDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ): Promise<Record<string, unknown>> {
+    return this.service.createQuick(dto, this.context(user, request));
+  }
   @Get()
   @Permissions('catalog.read')
   list(

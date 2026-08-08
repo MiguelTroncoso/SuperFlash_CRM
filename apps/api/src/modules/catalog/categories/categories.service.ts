@@ -26,6 +26,21 @@ export class CategoriesService {
     context: CatalogRequestContext,
   ): Promise<Record<string, unknown>> {
     this.access.assertCreate(context.user);
+    return this.createRecord(dto, context);
+  }
+
+  async createQuick(
+    dto: CreateCategoryDto,
+    context: CatalogRequestContext,
+  ): Promise<Record<string, unknown>> {
+    this.access.assertQuickCreate(context.user);
+    return this.createRecord(dto, context);
+  }
+
+  private async createRecord(
+    dto: CreateCategoryDto,
+    context: CatalogRequestContext,
+  ): Promise<Record<string, unknown>> {
     const name = normalizeName(dto.name);
     const slug = normalizeSlug(dto.slug ?? name);
     try {

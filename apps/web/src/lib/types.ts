@@ -73,6 +73,7 @@ export interface PipelineStage {
   order: number;
   active: boolean;
   systemKey: string | null;
+  followUpDays?: number | null;
 }
 
 export interface Opportunity {
@@ -90,7 +91,13 @@ export interface Opportunity {
   campaign: NamedRelation | null;
   category: NamedRelation | null;
   product: NamedRelation | null;
-  nextFollowUp: { id: string; title: string; dueAt: string; status: string } | null;
+  nextFollowUp: {
+    id: string;
+    title: string;
+    dueAt: string;
+    status: string;
+    autoSuggested?: boolean;
+  } | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -1,4 +1,5 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   ActivityType,
   FollowUpHistoryAction,
@@ -10,6 +11,7 @@ import {
 } from '@prisma/client';
 
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import { AppConfiguration } from '../../config/configuration';
 import { OutboxService } from '../../infrastructure/outbox/outbox.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser, RequestMetadata } from '../auth/auth.types';
@@ -36,6 +38,7 @@ import { CreateLeadDto } from './dto/create-lead.dto';
 import { ContactSortBy, ListContactsQueryDto } from './dto/list-contacts-query.dto';
 import { UpdateContactDto } from './dto/update-contact.dto';
 import { PhoneNormalizerService } from './phone/phone-normalizer.service';
+import { suggestedFollowUpAt } from '../opportunities/operational-states';
 
 interface PublicTag {
   id: string;
@@ -91,6 +94,8 @@ interface ContactRequestContext {
 
 @Injectable()
 export class ContactsService {
+  private readonly configuration: AppConfiguration;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly repository: ContactsRepository,
@@ -98,7 +103,10 @@ export class ContactsService {
     private readonly audit: AuditService,
     private readonly outbox: OutboxService,
     private readonly accessPolicy: ContactAccessPolicy,
-  ) {}
+    configService: ConfigService,
+  ) {
+    this.configuration = configService.getOrThrow<AppConfiguration>('app');
+  }
 
   async listAssignees(
     user: AuthenticatedUser,
@@ -377,15 +385,14 @@ export class ContactsService {
     this.assertIdentity(values);
     const organizationId = context.user.organizationId;
     const now = new Date();
-    const followUpAt = dto.nextFollowUpAt ? new Date(dto.nextFollowUpAt) : null;
-    if (followUpAt && (Number.isNaN(followUpAt.getTime()) || followUpAt <= now)) {
+    const manualFollowUpAt = dto.nextFollowUpAt ? new Date(dto.nextFollowUpAt) : null;
+    if (manualFollowUpAt && (Number.isNaN(manualFollowUpAt.getTime()) || manualFollowUpAt <= now)) {
       throw contactException(
         HttpStatus.BAD_REQUEST,
         CONTACT_ERROR_CODES.FOLLOW_UP_DATE_INVALID,
         'El próximo seguimiento debe estar en el futuro.',
       );
     }
-    if (followUpAt) this.assertLeadPermission(context.user, 'followups.create');
     this.assertLeadPermission(context.user, 'marketing.attribution.manage');
 
     try {
@@ -601,7 +608,13 @@ export class ContactsService {
                 id: dto.pipelineStageId,
                 active: true,
                 deletedAt: null,
-                category: PipelineStageCategory.OPEN,
+                category: {
+                  in: [
+                    PipelineStageCategory.OPEN,
+                    PipelineStageCategory.WON,
+                    PipelineStageCategory.LOST,
+                  ],
+                },
               }
             : {
                 organizationId,
@@ -610,7 +623,7 @@ export class ContactsService {
                 category: PipelineStageCategory.OPEN,
               },
           orderBy: { order: 'asc' },
-          select: { id: true, name: true },
+          select: { id: true, name: true, color: true, category: true, systemKey: true },
         });
         if (!stage)
           throw contactException(
@@ -618,6 +631,16 @@ export class ContactsService {
             CONTACT_ERROR_CODES.INITIAL_STAGE_NOT_FOUND,
             'No existe una etapa inicial activa.',
           );
+        const automaticFollowUpAt = manualFollowUpAt
+          ? null
+          : suggestedFollowUpAt(
+              stage.systemKey ?? stage.name,
+              this.configuration.defaultTimezone,
+              now,
+            );
+        const followUpAt = manualFollowUpAt ?? automaticFollowUpAt;
+        const autoSuggested = Boolean(automaticFollowUpAt);
+        if (followUpAt) this.assertLeadPermission(context.user, 'followups.create');
         const title = buildInitialOpportunityTitle(
           contact.firstName,
           contact.lastName,
@@ -722,6 +745,7 @@ export class ContactsService {
               opportunityId: opportunity.id,
               title: `Contactar lead: ${title}`,
               dueAt: followUpAt,
+              autoSuggested,
               priority: FollowUpPriority.NORMAL,
               status: FollowUpStatus.PENDING,
               note: values.notes,
@@ -779,6 +803,9 @@ export class ContactsService {
             productId: product?.id ?? null,
             campaignId: campaign?.id ?? null,
             followUpId,
+            state: stage.systemKey,
+            nextFollowUpAt: followUpAt,
+            autoSuggested,
           },
           ip: context.metadata.ipAddress,
           requestId: context.metadata.requestId,
@@ -796,6 +823,9 @@ export class ContactsService {
             categoryId,
             productId: product?.id ?? null,
             followUpId,
+            state: stage.systemKey,
+            nextFollowUpAt: followUpAt,
+            autoSuggested,
           },
         });
         return {
@@ -804,6 +834,9 @@ export class ContactsService {
           title: opportunity.title,
           reusedContact: Boolean(existing),
           followUpId,
+          autoSuggested,
+          state: stage.systemKey,
+          nextFollowUpAt: followUpAt,
         };
       });
       return result;

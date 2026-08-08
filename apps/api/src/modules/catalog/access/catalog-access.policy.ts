@@ -13,6 +13,15 @@ export class CatalogAccessPolicy {
     if (!user.permissions.includes('catalog.create')) this.forbidden();
   }
 
+  assertQuickCreate(user: AuthenticatedUser): void {
+    if (
+      !user.permissions.includes('catalog.create') &&
+      !user.permissions.includes('opportunities.create')
+    ) {
+      this.forbidden();
+    }
+  }
+
   assertUpdate(user: AuthenticatedUser): void {
     if (!user.permissions.includes('catalog.update')) this.forbidden();
   }

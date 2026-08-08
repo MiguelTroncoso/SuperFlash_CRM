@@ -39,6 +39,16 @@ export class CategoriesController {
     return this.service.create(dto, this.context(user, request));
   }
 
+  @Post('quick')
+  @Permissions('opportunities.create')
+  createQuick(
+    @Body() dto: CreateCategoryDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ): Promise<Record<string, unknown>> {
+    return this.service.createQuick(dto, this.context(user, request));
+  }
+
   @Get()
   @Permissions('catalog.read')
   list(@CurrentUser() user: AuthenticatedUser): Promise<Record<string, unknown>[]> {

@@ -1,7 +1,17 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { PipelineStageCategory } from '@prisma/client';
 import { Transform } from 'class-transformer';
-import { IsEnum, IsInt, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 const trim = ({ value }: { value: unknown }): unknown =>
   typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : value;
@@ -32,4 +42,11 @@ export class CreatePipelineStageDto {
   @Min(1)
   @Max(1000)
   order!: number;
+
+  @ApiProperty({ required: false, description: 'Clave estable para estados operativos.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  @Matches(/^[A-Z][A-Z0-9_]*$/)
+  systemKey?: string;
 }

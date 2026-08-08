@@ -71,6 +71,21 @@ export class ProductsService {
     context: CatalogRequestContext,
   ): Promise<Record<string, unknown>> {
     this.access.assertCreate(context.user);
+    return this.createRecord(dto, context);
+  }
+
+  async createQuick(
+    dto: CreateProductDto,
+    context: CatalogRequestContext,
+  ): Promise<Record<string, unknown>> {
+    this.access.assertQuickCreate(context.user);
+    return this.createRecord(dto, context);
+  }
+
+  private async createRecord(
+    dto: CreateProductDto,
+    context: CatalogRequestContext,
+  ): Promise<Record<string, unknown>> {
     const organizationId = context.user.organizationId;
     const name = normalizeName(dto.name);
     const slug = normalizeSlug(dto.slug ?? name);

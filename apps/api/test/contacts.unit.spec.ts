@@ -9,6 +9,11 @@ import {
 } from '../src/modules/contacts/contacts.types';
 import { PhoneNormalizerService } from '../src/modules/contacts/phone/phone-normalizer.service';
 import { AuthenticatedUser } from '../src/modules/auth/auth.types';
+import {
+  followUpDaysForState,
+  operationalStateLabel,
+  suggestedFollowUpAt,
+} from '../src/modules/opportunities/operational-states';
 
 function user(
   roleName: string,
@@ -54,6 +59,15 @@ describe('contacts domain primitives', () => {
     );
     expect(buildInitialOpportunityTitle(null, null, '+56912345678')).toBe('Lead +56912345678');
     expect(buildInitialOpportunityTitle(null, null, null)).toBe('Nuevo lead');
+  });
+
+  it('maps operational states and suggests follow-ups at 10:00 in the configured timezone', () => {
+    expect(operationalStateLabel('DEMO_DELIVERED')).toBe('Demo enviada');
+    expect(followUpDaysForState('LEFT_ON_READ')).toBe(4);
+    expect(followUpDaysForState('PAID')).toBeNull();
+    expect(
+      suggestedFollowUpAt('DEMO_SENT', 'America/Santiago', new Date('2026-08-07T15:00:00Z')),
+    ).toEqual(new Date('2026-08-08T14:00:00.000Z'));
   });
 
   it('applies the seller ownership policy on the server', () => {
