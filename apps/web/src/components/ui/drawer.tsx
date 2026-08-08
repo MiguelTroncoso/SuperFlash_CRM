@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { useEffect } from 'react';
 
 import { cn } from '@/lib/utils';
 
@@ -21,6 +22,15 @@ export function Drawer({
   readonly children: ReactNode;
   readonly className?: string;
 }): React.ReactElement | null {
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [onClose, open]);
+
   if (!open) return null;
   return (
     <div

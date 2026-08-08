@@ -14,7 +14,26 @@ import { StatusBadge } from '@/components/ui/badge';
 import { useToastStore } from '@/components/ui/toast';
 import { LeadIntakeDrawer } from '@/features/leads/lead-intake-drawer';
 import { api, queryString } from '@/lib/api-client';
-import type { PipelineResponse } from '@/lib/types';
+import type { PipelineResponse, PipelineStage } from '@/lib/types';
+
+const OPERATIONAL_STAGE_NAMES: Record<string, string> = {
+  NEW_LEAD: 'Nuevo',
+  LEFT_ON_READ: 'Esperando respuesta',
+  DEMO_DELIVERED: 'Demo enviada',
+  AWAITING_CREDIT_USAGE: 'Precio enviado',
+  AWAITING_MONEY: 'Debe pagar',
+  POTENTIAL_BUYER: 'Interesado',
+  WON: 'Pagó',
+  LOST: 'Perdido',
+};
+
+function operationalStageName(stage: PipelineStage): string {
+  return (stage.systemKey && OPERATIONAL_STAGE_NAMES[stage.systemKey]) || stage.name;
+}
+
+function date(value: string | null | undefined): string {
+  return value ? new Date(value).toLocaleDateString('es-CL') : '—';
+}
 
 export function PipelinePage(): React.ReactElement {
   const [search, setSearch] = useState('');
@@ -48,22 +67,19 @@ export function PipelinePage(): React.ReactElement {
     () =>
       (pipeline.data?.stages ?? []).map((stage) => ({
         id: stage.id,
-        title: stage.name,
         color: stage.color,
         items: stage.opportunities.map((opportunity) => ({
           id: opportunity.id,
-          title: opportunity.title,
-          subtitle:
-            opportunity.contact.displayName ?? opportunity.contact.phone ?? 'Lead sin nombre',
-          amount: opportunity.expectedAmount
-            ? `${opportunity.currency ?? ''} ${opportunity.expectedAmount}`
-            : null,
-          status: opportunity.status,
-          category: opportunity.category,
+          title: opportunity.contact.displayName ?? opportunity.contact.phone ?? 'Lead sin nombre',
+          subtitle: opportunity.contact.country ?? 'País no informado',
+          amount: null,
+          status: operationalStageName(opportunity.pipelineStage),
+          stageName: operationalStageName(opportunity.pipelineStage),
           product: opportunity.product,
-          campaign: opportunity.campaign,
-          assignedTo: opportunity.assignedTo,
+          lastStageChangedAt: opportunity.lastStageChangedAt,
+          nextFollowUp: opportunity.nextFollowUp,
         })),
+        title: operationalStageName(stage),
       })),
     [pipeline.data],
   );
@@ -88,7 +104,7 @@ export function PipelinePage(): React.ReactElement {
               <Link href="/sales">
                 <Button variant="outline">＋ Nueva venta</Button>
               </Link>
-              <Button onClick={() => setLeadOpen(true)}>＋ Nuevo lead</Button>
+              <Button onClick={() => setLeadOpen(true)}>＋ Registrar Lead</Button>
             </div>
           }
         />
@@ -118,22 +134,14 @@ export function PipelinePage(): React.ReactElement {
                   </p>
                   {item.status ? <StatusBadge status={item.status} /> : null}
                 </div>
-                {item.subtitle ? (
-                  <p className="mt-2 truncate text-xs text-slate-500">{item.subtitle}</p>
-                ) : null}
-                {item.category || item.product ? (
-                  <p className="mt-2 truncate text-xs text-content-secondary">
-                    Interés: {item.product?.name ?? item.category?.name}
-                  </p>
-                ) : null}
-                {item.campaign ? (
-                  <p className="mt-1 truncate text-xs text-content-muted">{item.campaign.name}</p>
-                ) : null}
-                {item.amount ? (
-                  <p className="mt-3 text-sm font-bold text-brand-700 dark:text-brand-300">
-                    {item.amount}
-                  </p>
-                ) : null}
+                <p className="mt-2 truncate text-xs text-slate-500">{item.subtitle}</p>
+                <p className="mt-2 truncate text-xs text-content-secondary">
+                  Producto: {item.product?.name ?? 'Sin producto'}
+                </p>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-content-muted">
+                  <span>Movimiento: {date(item.lastStageChangedAt)}</span>
+                  <span>Seguimiento: {date(item.nextFollowUp?.dueAt)}</span>
+                </div>
               </>
             )}
           />

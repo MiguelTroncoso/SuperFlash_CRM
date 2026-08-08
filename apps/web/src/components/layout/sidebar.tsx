@@ -17,146 +17,21 @@ interface NavItem {
 }
 const sections: { label: string; items: NavItem[] }[] = [
   {
-    label: 'Workspace',
+    label: 'Operación diaria',
     items: [
       { label: 'Dashboard', href: '/', icon: '⌂' },
       { label: 'Mi Día', href: '/my-day', icon: '◷', permission: 'followups.read' },
-      { label: 'Agenda operativa', href: '/agenda', icon: '▤', permission: 'followups.read' },
-      {
-        label: 'Business Intelligence',
-        href: '/business-intelligence',
-        icon: '◫',
-        permission: 'reports.read',
-        children: [
-          { label: 'Resumen', href: '/business-intelligence' },
-          { label: 'Países', href: '/business-intelligence/countries' },
-          { label: 'Productos', href: '/business-intelligence/products' },
-          { label: 'Campañas', href: '/business-intelligence/campaigns' },
-          { label: 'Vendedores', href: '/business-intelligence/sellers' },
-          { label: 'Providers', href: '/business-intelligence/providers' },
-          { label: 'Renovaciones', href: '/business-intelligence/renewals' },
-        ],
-      },
-      { label: 'Revenue Intelligence', href: '/revenue', icon: '▥', permission: 'reports.read' },
-      {
-        label: 'Marketing y atribución',
-        href: '/marketing',
-        icon: '◉',
-        permission: 'marketing.analytics.read',
-        children: [
-          { label: 'Rendimiento', href: '/marketing' },
-          { label: 'Campañas', href: '/marketing/campaigns' },
-          { label: 'Gasto', href: '/marketing/spend' },
-          { label: 'Atribución', href: '/marketing/attribution' },
-          { label: 'Prospectos', href: '/marketing/prospects' },
-          { label: 'Importaciones', href: '/marketing/imports' },
-        ],
-      },
-      {
-        label: 'Finanzas',
-        href: '/financial',
-        icon: '$',
-        permission: 'financial.read',
-        children: [
-          { label: 'Dashboard', href: '/financial' },
-          { label: 'Gastos', href: '/financial/expenses' },
-          { label: 'Categorías', href: '/financial/categories' },
-        ],
-      },
-    ],
-  },
-  {
-    label: 'Comercial',
-    items: [
-      { label: 'Contactos', href: '/contacts', icon: '◎', permission: 'contacts.read' },
-      {
-        label: 'Pipeline',
-        href: '/pipeline',
-        icon: '◇',
-        permission: 'opportunities.read',
-        children: [
-          { label: 'Kanban', href: '/pipeline' },
-          { label: 'Intelligence', href: '/pipeline/intelligence' },
-        ],
-      },
+      { label: 'Leads', href: '/leads', icon: '✦', permission: 'contacts.read' },
+      { label: 'Pipeline', href: '/pipeline', icon: '◇', permission: 'opportunities.read' },
       { label: 'Ventas', href: '/sales', icon: '↗', permission: 'sales.read' },
-      {
-        label: 'Renovaciones',
-        href: '/renewals',
-        icon: '↻',
-        permission: 'renewals.read',
-        children: [
-          { label: 'Dashboard', href: '/renewals' },
-          { label: 'Próximas', href: '/renewals/upcoming' },
-          { label: 'Hoy', href: '/renewals/today' },
-          { label: 'Vencidas', href: '/renewals/overdue' },
-          { label: 'Calendario', href: '/renewals/calendar' },
-          { label: 'Historial', href: '/renewals/history' },
-        ],
-      },
+      { label: 'Cobros', href: '/collections', icon: '$', permission: 'payments.read' },
+      { label: 'Renovaciones', href: '/renewals', icon: '↻', permission: 'renewals.read' },
       { label: 'Catálogo', href: '/catalog', icon: '▦', permission: 'catalog.read' },
     ],
   },
   {
-    label: 'Operaciones',
-    items: [
-      { label: 'Providers', href: '/providers', icon: '◈', permission: 'providers.read' },
-      { label: 'Fulfillment', href: '/fulfillment', icon: '⚙', permission: 'fulfillments.read' },
-      { label: 'Credenciales', href: '/credentials', icon: '▣', permission: 'credentials.read' },
-      { label: 'Trials', href: '/trials', icon: '◌', permission: 'trials.read' },
-      { label: 'Activaciones', href: '/activations', icon: '✓', permission: 'activations.read' },
-    ],
-  },
-  {
-    label: 'Comunicaciones',
-    items: [
-      {
-        label: 'WhatsApp',
-        href: '/whatsapp',
-        icon: '◉',
-        permission: 'whatsapp.read',
-        children: [
-          { label: 'Inbox', href: '/whatsapp' },
-          { label: 'Sin asignar', href: '/whatsapp?view=UNASSIGNED' },
-          { label: 'Mis conversaciones', href: '/whatsapp?view=MINE' },
-          { label: 'Pendientes', href: '/whatsapp?view=PENDING' },
-          { label: 'Renovaciones', href: '/whatsapp?view=RENEWALS' },
-          { label: 'Cerradas', href: '/whatsapp?view=CLOSED' },
-          { label: 'Archivadas', href: '/whatsapp?view=ARCHIVED' },
-          { label: 'Papelera', href: '/whatsapp?view=TRASH' },
-        ],
-      },
-      {
-        label: 'Automatizaciones',
-        href: '/automations',
-        icon: '↯',
-        permission: 'automations.read',
-      },
-      { label: 'Plantillas', href: '/templates', icon: '✎', permission: 'templates.read' },
-      {
-        label: 'Notificaciones',
-        href: '/notifications',
-        icon: '●',
-        permission: 'notifications.read',
-      },
-      {
-        label: 'Ejecuciones',
-        href: '/automation-executions',
-        icon: '↻',
-        permission: 'automation_executions.read',
-      },
-    ],
-  },
-  {
-    label: 'Configuración',
-    items: [
-      {
-        label: 'Canales',
-        href: '/settings/integrations/whatsapp',
-        icon: '⚑',
-        permission: 'whatsapp.manage',
-      },
-    ],
+    label: 'Administración',
+    items: [{ label: 'Configuración', href: '/settings', icon: '⚙' }],
   },
 ];
 

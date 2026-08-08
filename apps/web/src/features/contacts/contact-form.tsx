@@ -49,7 +49,7 @@ export function ContactForm({
   onCancel,
   tags = [],
 }: {
-  readonly contact?: Contact | null;
+  readonly contact: Contact;
   readonly submitting: boolean;
   readonly onSubmit: (values: ContactFormValues) => void;
   readonly onCancel: () => void;
@@ -87,12 +87,12 @@ export function ContactForm({
 
   useEffect(() => {
     reset({
-      firstName: contact?.firstName ?? '',
-      lastName: contact?.lastName ?? '',
-      email: contact?.email ?? '',
-      phone: contact?.phone ?? '',
-      country: contact?.country ?? '',
-      source: contact?.source ?? 'MANUAL',
+      firstName: contact.firstName ?? '',
+      lastName: contact.lastName ?? '',
+      email: contact.email ?? '',
+      phone: contact.phone ?? '',
+      country: contact.country ?? '',
+      source: contact.source ?? 'MANUAL',
       notes: '',
       tagIds: [],
     });
@@ -181,7 +181,7 @@ export function ContactForm({
           Cancelar
         </Button>
         <Button disabled={submitting} type="submit">
-          {submitting ? 'Guardando…' : contact ? 'Guardar cambios' : 'Crear contacto'}
+          {submitting ? 'Guardando…' : 'Guardar cambios'}
         </Button>
       </div>
     </form>

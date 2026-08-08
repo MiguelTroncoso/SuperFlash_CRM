@@ -35,6 +35,14 @@ const statusStyles: Record<string, string> = {
   SUSPENDED: 'bg-orange-50 text-orange-700 dark:bg-orange-500/10 dark:text-orange-300',
   EXPIRED: 'bg-orange-50 text-orange-700 dark:bg-orange-500/10 dark:text-orange-300',
   REVOKED: 'bg-surface-muted text-content-secondary',
+  Nuevo: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300',
+  'Precio enviado': 'bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300',
+  'Demo enviada': 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300',
+  'Esperando respuesta': 'bg-slate-100 text-slate-700 dark:bg-slate-500/10 dark:text-slate-300',
+  Interesado: 'bg-orange-50 text-orange-700 dark:bg-orange-500/10 dark:text-orange-300',
+  'Debe pagar': 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300',
+  Pagó: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
+  Perdido: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300',
 };
 
 export function StatusBadge({ status }: { readonly status: string }): React.ReactElement {

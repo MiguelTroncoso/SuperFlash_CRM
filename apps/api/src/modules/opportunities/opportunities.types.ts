@@ -58,6 +58,7 @@ export interface PublicOpportunity {
   campaign: PublicOpportunityRelation | null;
   category: PublicOpportunityRelation | null;
   product: PublicOpportunityRelation | null;
+  nextFollowUp: { id: string; title: string; dueAt: Date; status: string } | null;
   createdAt: Date;
   updatedAt: Date;
 }

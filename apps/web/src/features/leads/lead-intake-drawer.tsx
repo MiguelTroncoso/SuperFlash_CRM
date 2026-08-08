@@ -13,21 +13,27 @@ import type { JsonRecord } from '@/lib/types';
 
 interface LeadFormValues {
   firstName: string;
-  lastName: string;
   phone: string;
-  email: string;
   country: string;
   source: string;
-  platform: string;
-  campaignId: string;
   categoryId: string;
   productId: string;
   assignedUserId: string;
-  priority: string;
-  probability: string;
+  pipelineStageId: string;
   note: string;
   nextFollowUpAt: string;
 }
+
+const STAGE_LABELS: Record<string, string> = {
+  NEW_LEAD: 'Nuevo',
+  LEFT_ON_READ: 'Esperando respuesta',
+  DEMO_DELIVERED: 'Demo enviada',
+  AWAITING_CREDIT_USAGE: 'Precio enviado',
+  AWAITING_MONEY: 'Debe pagar',
+  POTENTIAL_BUYER: 'Interesado',
+  WON: 'Pagó',
+  LOST: 'Perdido',
+};
 
 function Field({
   label,
@@ -48,18 +54,15 @@ function toBody(values: LeadFormValues): JsonRecord {
   const optional = (value: string): string | undefined => value.trim() || undefined;
   return {
     ...(optional(values.firstName) ? { firstName: optional(values.firstName) } : {}),
-    ...(optional(values.lastName) ? { lastName: optional(values.lastName) } : {}),
     ...(optional(values.phone) ? { phone: optional(values.phone) } : {}),
-    ...(optional(values.email) ? { email: optional(values.email) } : {}),
     ...(optional(values.country) ? { country: values.country.trim().toUpperCase() } : {}),
     source: optional(values.source) ?? 'MANUAL',
-    ...(optional(values.platform) ? { platform: optional(values.platform) } : {}),
-    ...(optional(values.campaignId) ? { campaignId: optional(values.campaignId) } : {}),
     ...(optional(values.categoryId) ? { categoryId: optional(values.categoryId) } : {}),
     ...(optional(values.productId) ? { productId: optional(values.productId) } : {}),
     ...(optional(values.assignedUserId) ? { assignedUserId: optional(values.assignedUserId) } : {}),
-    priority: values.priority,
-    probability: Number(values.probability),
+    ...(optional(values.pipelineStageId)
+      ? { pipelineStageId: optional(values.pipelineStageId) }
+      : {}),
     ...(optional(values.note) ? { note: optional(values.note) } : {}),
     ...(optional(values.nextFollowUpAt)
       ? { nextFollowUpAt: new Date(values.nextFollowUpAt).toISOString() }
@@ -77,18 +80,13 @@ export function LeadIntakeDrawer({
   const form = useForm<LeadFormValues>({
     defaultValues: {
       firstName: '',
-      lastName: '',
       phone: '',
-      email: '',
       country: 'CL',
       source: 'MANUAL',
-      platform: '',
-      campaignId: '',
       categoryId: '',
       productId: '',
       assignedUserId: '',
-      priority: 'NORMAL',
-      probability: '50',
+      pipelineStageId: '',
       note: '',
       nextFollowUpAt: '',
     },
@@ -109,9 +107,9 @@ export function LeadIntakeDrawer({
     queryFn: () => api.getProducts(queryString({ page: 1, limit: 100 })),
   });
   const assignees = useQuery({ queryKey: ['contact-assignees'], queryFn: api.getContactAssignees });
-  const campaigns = useQuery({
-    queryKey: ['marketing-campaigns', 'lead-intake'],
-    queryFn: () => api.getMarketingCampaigns(queryString({ page: 1, limit: 100 })),
+  const pipeline = useQuery({
+    queryKey: ['pipeline', 'lead-intake'],
+    queryFn: () => api.getPipeline(queryString({ limit: 100 })),
   });
   const createCategory = useMutation({
     mutationFn: () => api.createCategory({ name: newCategoryName.trim() }),
@@ -183,30 +181,21 @@ export function LeadIntakeDrawer({
       description="Registra el contacto y su oportunidad inicial sin perder trazabilidad."
       onClose={onClose}
       open={open}
-      title="Nuevo lead"
+      title="Registrar Lead"
     >
       <form className="space-y-5" onSubmit={form.handleSubmit((values) => create.mutate(values))}>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Nombre">
-            <Input {...form.register('firstName')} placeholder="Juan" />
-          </Field>
-          <Field label="Apellido">
-            <Input {...form.register('lastName')} placeholder="Pérez" />
+            <Input autoFocus {...form.register('firstName')} placeholder="Juan" />
           </Field>
           <Field label="Teléfono">
             <Input {...form.register('phone')} placeholder="+56912345678" />
-          </Field>
-          <Field label="Correo">
-            <Input type="email" {...form.register('email')} placeholder="juan@empresa.com" />
           </Field>
           <Field label="País">
             <Input maxLength={2} {...form.register('country')} placeholder="CL" />
           </Field>
           <Field label="Fuente">
             <Input {...form.register('source')} placeholder="META_ADS" />
-          </Field>
-          <Field label="Plataforma">
-            <Input {...form.register('platform')} placeholder="META" />
           </Field>
           <Field label="Responsable">
             <Select {...form.register('assignedUserId')}>
@@ -218,14 +207,16 @@ export function LeadIntakeDrawer({
               ))}
             </Select>
           </Field>
-          <Field label="Campaña">
-            <Select {...form.register('campaignId')}>
-              <option value="">Sin campaña</option>
-              {(campaigns.data?.data ?? []).map((campaign) => (
-                <option key={campaign.id} value={campaign.id}>
-                  {campaign.name}
-                </option>
-              ))}
+          <Field label="Estado comercial inicial">
+            <Select {...form.register('pipelineStageId')}>
+              <option value="">Nuevo</option>
+              {(pipeline.data?.stages ?? [])
+                .filter((stage) => stage.active && stage.category === 'OPEN')
+                .map((stage) => (
+                  <option key={stage.id} value={stage.id}>
+                    {STAGE_LABELS[stage.systemKey ?? ''] ?? stage.name}
+                  </option>
+                ))}
             </Select>
           </Field>
           <Field label="Categoría de interés">
@@ -346,17 +337,6 @@ export function LeadIntakeDrawer({
               </div>
             ) : null}
           </Field>
-          <Field label="Prioridad">
-            <Select {...form.register('priority')}>
-              <option value="LOW">Baja</option>
-              <option value="NORMAL">Normal</option>
-              <option value="HIGH">Alta</option>
-              <option value="URGENT">Urgente</option>
-            </Select>
-          </Field>
-          <Field label="Probabilidad (%)">
-            <Input max={100} min={0} type="number" {...form.register('probability')} />
-          </Field>
           <Field label="Próximo seguimiento">
             <Input type="datetime-local" {...form.register('nextFollowUpAt')} />
           </Field>
@@ -369,7 +349,7 @@ export function LeadIntakeDrawer({
             Cancelar
           </Button>
           <Button disabled={create.isPending} type="submit">
-            {create.isPending ? 'Creando…' : 'Crear lead'}
+            {create.isPending ? 'Registrando…' : 'Registrar Lead'}
           </Button>
         </div>
       </form>

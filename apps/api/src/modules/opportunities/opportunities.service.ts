@@ -1459,6 +1459,14 @@ export class OpportunitiesService {
       campaign: opportunity.campaign ? this.mapRelation(opportunity.campaign) : null,
       category: opportunity.category ? this.mapRelation(opportunity.category) : null,
       product: opportunity.product ? this.mapRelation(opportunity.product) : null,
+      nextFollowUp: opportunity.followUps[0]
+        ? {
+            id: opportunity.followUps[0].id,
+            title: opportunity.followUps[0].title,
+            dueAt: opportunity.followUps[0].dueAt,
+            status: opportunity.followUps[0].status,
+          }
+        : null,
       createdAt: opportunity.createdAt,
       updatedAt: opportunity.updatedAt,
     };
