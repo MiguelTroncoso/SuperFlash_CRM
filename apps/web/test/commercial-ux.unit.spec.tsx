@@ -21,8 +21,8 @@ describe('commercial lead intake frontend', () => {
       pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
     });
     jest.spyOn(api, 'getContactAssignees').mockResolvedValue([]);
-    jest.spyOn(api, 'getMarketingCampaigns').mockResolvedValue({
-      data: [],
+    jest.spyOn(api, 'getPipeline').mockResolvedValue({
+      stages: [],
       pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
     });
   });
@@ -39,7 +39,7 @@ describe('commercial lead intake frontend', () => {
     fireEvent.change(await screen.findByPlaceholderText('+56912345678'), {
       target: { value: '+56912345678' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Crear lead' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar Lead' }));
     await waitFor(() =>
       expect(createLead).toHaveBeenCalledWith(expect.objectContaining({ phone: '+56912345678' })),
     );

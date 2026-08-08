@@ -20,6 +20,16 @@ const listInclude = Prisma.validator<Prisma.OpportunityInclude>()({
   campaign: { select: { id: true, name: true } },
   category: { select: { id: true, name: true } },
   product: { select: { id: true, name: true } },
+  followUps: {
+    where: {
+      deletedAt: null,
+      archivedAt: null,
+      status: { in: ['PENDING', 'RESCHEDULED'] },
+    },
+    orderBy: { dueAt: 'asc' },
+    take: 1,
+    select: { id: true, title: true, dueAt: true, status: true },
+  },
 });
 
 const detailInclude = Prisma.validator<Prisma.OpportunityInclude>()({

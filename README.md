@@ -137,6 +137,15 @@ Las métricas de comunicación entrante están disponibles en
 ejecutivo. Son consultas de lectura: no mueven pipeline ni crean acciones
 comerciales.
 
+## Operación comercial diaria
+
+La interfaz principal está organizada alrededor del flujo
+`Registrar Lead → Demo → Seguimiento → Cobro → Activación → Renovación`.
+El menú diario contiene Dashboard, Mi Día, Leads, Pipeline, Ventas, Cobros,
+Renovaciones, Catálogo y Configuración. Las herramientas avanzadas permanecen
+disponibles desde Configuración sin modificar sus APIs ni reglas de negocio.
+Consulta [docs/operational-reset.md](docs/operational-reset.md).
+
 ## Calidad y verificación
 
 ```bash

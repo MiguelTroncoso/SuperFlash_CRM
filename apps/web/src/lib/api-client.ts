@@ -199,6 +199,8 @@ export const api = {
   confirmSale: (id: string) => request<Sale>(`/sales/${id}/confirm`, { method: 'POST' }),
   createPayment: (saleId: string, body: JsonRecord) =>
     request<JsonRecord>(`/sales/${saleId}/payments`, { method: 'POST', ...jsonBody(body) }),
+  getPayments: (query = '') =>
+    request<{ data: JsonRecord[]; pagination: Pagination }>(`/payments${query}`),
   confirmPayment: (id: string) =>
     request<JsonRecord>(`/payments/${id}/confirm`, { method: 'POST' }),
   getOffers: (query = '') => request<{ data: ProductOffer[] }>(`/catalog/offers${query}`),

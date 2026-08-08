@@ -1,15 +1,28 @@
 'use client';
 
 import Link from 'next/link';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { PageGrid, PageHeader } from '@/components/shared/page-header';
 import { QueryState } from '@/components/shared/query-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import { MetricCard } from '@/components/ui/metric-card';
 import { api } from '@/lib/api-client';
 import type { JsonRecord } from '@/lib/types';
+
+type CustomerTab = 'summary' | 'conversation' | 'followUps' | 'sales' | 'payments' | 'renewals';
+
+const TABS: Array<[CustomerTab, string]> = [
+  ['summary', 'Resumen'],
+  ['conversation', 'Conversación'],
+  ['followUps', 'Seguimientos'],
+  ['sales', 'Ventas'],
+  ['payments', 'Pagos'],
+  ['renewals', 'Renovaciones'],
+];
 
 function text(value: unknown): string {
   if (value === null || value === undefined || value === '') return '—';
@@ -32,7 +45,44 @@ function customerName(contact: JsonRecord): string {
   );
 }
 
+function RecordList({
+  records,
+  empty,
+}: {
+  readonly records: JsonRecord[];
+  readonly empty: string;
+}): React.ReactElement {
+  if (!records.length) return <EmptyState description={empty} title="Sin registros" />;
+  return (
+    <div className="space-y-2">
+      {records.slice(0, 30).map((record, index) => (
+        <div
+          className="rounded-xl border border-border-subtle p-3"
+          key={text(record.id) !== '—' ? text(record.id) : index}
+        >
+          <p className="text-sm font-semibold text-content-primary">
+            {text(record.title) !== '—'
+              ? text(record.title)
+              : text(record.name) !== '—'
+                ? text(record.name)
+                : text(record.productNameSnapshot) !== '—'
+                  ? text(record.productNameSnapshot)
+                  : text(record.status)}
+          </p>
+          <p className="mt-1 text-xs text-content-muted">
+            {text(record.dueAt) !== '—' ? text(record.dueAt) : text(record.createdAt)}
+            {text(record.amount) !== '—'
+              ? ` · ${text(record.currency)} ${text(record.amount)}`
+              : ''}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function Customer360Page({ contactId }: { readonly contactId: string }): React.ReactElement {
+  const [tab, setTab] = useState<CustomerTab>('summary');
   const result = useQuery({
     queryKey: ['customer-360', contactId],
     queryFn: () => api.getCustomer360(contactId),
@@ -49,7 +99,7 @@ export function Customer360Page({ contactId }: { readonly contactId: string }): 
           <PageHeader
             eyebrow="Customer 360"
             title={customerName(data.contact)}
-            description="Contexto comercial, operativo y de relación del cliente, sin exponer secretos."
+            description="Resumen comercial del cliente para decidir la siguiente acción."
             actions={
               <div className="flex flex-wrap gap-2">
                 <Link href={`/sales?contactId=${encodeURIComponent(contactId)}`}>
@@ -63,160 +113,158 @@ export function Customer360Page({ contactId }: { readonly contactId: string }): 
           />
           <Card>
             <CardContent className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4">
-              <div>
-                <p className="text-xs text-content-muted">Correo</p>
-                <p className="mt-1 text-sm font-semibold text-content-primary">
-                  {text(data.contact.email)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-content-muted">Teléfono</p>
-                <p className="mt-1 text-sm font-semibold text-content-primary">
-                  {text(data.contact.phone)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-content-muted">País / origen</p>
-                <p className="mt-1 text-sm font-semibold text-content-primary">
-                  {text(data.contact.country)} · {text(data.contact.source)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-content-muted">Responsable</p>
-                <p className="mt-1 text-sm font-semibold text-content-primary">
-                  {data.contact.assignedTo
+              <InfoRow label="Correo" value={text(data.contact.email)} />
+              <InfoRow label="Teléfono" value={text(data.contact.phone)} />
+              <InfoRow
+                label="País / origen"
+                value={`${text(data.contact.country)} · ${text(data.contact.source)}`}
+              />
+              <InfoRow
+                label="Responsable"
+                value={
+                  data.contact.assignedTo
                     ? `${text((data.contact.assignedTo as JsonRecord).firstName)} ${text((data.contact.assignedTo as JsonRecord).lastName)}`
-                    : 'Sin asignar'}
-                </p>
-              </div>
+                    : 'Sin asignar'
+                }
+              />
             </CardContent>
           </Card>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <MetricCard
-              icon="↗"
-              label="Ventas"
-              value={data.sales.length}
-              trend={`${data.payments.length} pagos`}
-            />
-            <MetricCard
-              icon="◉"
-              label="MRR"
-              value={metricText(data.metrics.mrr)}
-              trend="Suscripciones activas"
-            />
-            <MetricCard
-              icon="◎"
-              label="LTV"
-              value={metricText(data.metrics.ltv)}
-              trend={`Ticket promedio ${text(data.metrics.averageTicket)}`}
-            />
-            <MetricCard
-              icon="◷"
-              label="Próxima renovación"
-              value={text(data.metrics.nextRenewalAt).slice(0, 10)}
-              trend={`Saldo pendiente ${text(data.metrics.pendingBalance)}`}
-            />
-          </div>
-          <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
-            <Card>
-              <CardHeader>
-                <CardTitle>Timeline unificada</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {data.timeline.length ? (
-                  data.timeline.slice(0, 30).map((item, index) => (
-                    <div
-                      className="flex gap-3 border-b border-border-subtle pb-3 last:border-0"
-                      key={`${text(item.id)}-${index}`}
-                    >
-                      <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-brand-500" />
-                      <div>
-                        <p className="text-sm font-semibold text-content-primary">
-                          {text(item.title) !== '—'
-                            ? text(item.title)
-                            : text(item.text) !== '—'
-                              ? text(item.text)
-                              : text(item.kind)}
-                        </p>
-                        <p className="text-xs text-content-muted">{text(item.occurredAt)}</p>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-content-muted">Sin actividad registrada.</p>
-                )}
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle>Relación comercial</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <InfoRow label="Oportunidades" value={data.opportunities.length} />
-                <InfoRow label="Suscripciones" value={data.subscriptions.length} />
-                <InfoRow label="Renovaciones" value={data.renewals.length} />
-                <InfoRow label="Fulfillments" value={data.fulfillments.length} />
-                <InfoRow
-                  label="Credenciales"
-                  value={`${data.credentials.length} · siempre enmascaradas`}
+          <nav
+            aria-label="Customer 360"
+            className="-mx-3 overflow-x-auto px-3 pb-1 sm:mx-0 sm:px-0"
+          >
+            <div className="flex min-w-max gap-2">
+              {TABS.map(([value, label]) => (
+                <Button
+                  key={value}
+                  onClick={() => setTab(value)}
+                  size="sm"
+                  variant={tab === value ? 'primary' : 'outline'}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+          </nav>
+          {tab === 'summary' ? (
+            <>
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricCard
+                  icon="↗"
+                  label="Ventas"
+                  value={data.sales.length}
+                  trend={`${data.payments.length} pagos`}
                 />
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-content-muted">
-                    Etiquetas
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {Array.isArray(data.contact.tags) && data.contact.tags.length ? (
-                      (data.contact.tags as JsonRecord[]).map((tag) => (
-                        <span
-                          className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 dark:bg-brand-500/10 dark:text-brand-300"
-                          key={text(tag.id)}
+                <MetricCard
+                  icon="◉"
+                  label="MRR"
+                  value={metricText(data.metrics.mrr)}
+                  trend="Suscripciones activas"
+                />
+                <MetricCard
+                  icon="◎"
+                  label="LTV"
+                  value={metricText(data.metrics.ltv)}
+                  trend={`Ticket promedio ${text(data.metrics.averageTicket)}`}
+                />
+                <MetricCard
+                  icon="↻"
+                  label="Próxima renovación"
+                  value={text(data.metrics.nextRenewalAt).slice(0, 10)}
+                  trend={`Saldo ${text(data.metrics.pendingBalance)}`}
+                />
+              </div>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Interés comercial</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {data.opportunities.length ? (
+                    data.opportunities.slice(0, 10).map((item) => {
+                      const opportunity = item as JsonRecord;
+                      const product = opportunity.product as JsonRecord | null | undefined;
+                      const category = opportunity.category as JsonRecord | null | undefined;
+                      return (
+                        <div
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-subtle p-3"
+                          key={text(opportunity.id)}
                         >
-                          {text(tag.name)}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-sm text-content-muted">Sin etiquetas</span>
-                    )}
-                  </div>
-                </div>
+                          <div>
+                            <p className="text-sm font-bold text-content-primary">
+                              {text(opportunity.title)}
+                            </p>
+                            <p className="mt-1 text-xs text-content-secondary">
+                              {text(product?.name ?? category?.name)}
+                            </p>
+                          </div>
+                          <Link href="/pipeline">
+                            <Button size="sm" variant="outline">
+                              Ver pipeline
+                            </Button>
+                          </Link>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <p className="text-sm text-content-muted">Sin oportunidades registradas.</p>
+                  )}
+                </CardContent>
+              </Card>
+            </>
+          ) : null}
+          {tab === 'conversation' ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Conversación y actividad</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <RecordList
+                  empty="No hay conversación registrada."
+                  records={data.conversations.length ? data.conversations : data.timeline}
+                />
               </CardContent>
             </Card>
-          </div>
-          <Card>
-            <CardHeader>
-              <CardTitle>Interés comercial</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {data.opportunities.length ? (
-                data.opportunities.slice(0, 10).map((opportunity) => {
-                  const item = opportunity as JsonRecord;
-                  const category = item.category as JsonRecord | null | undefined;
-                  const product = item.product as JsonRecord | null | undefined;
-                  const campaign = item.campaign as JsonRecord | null | undefined;
-                  return (
-                    <div
-                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-subtle p-3"
-                      key={text(item.id)}
-                    >
-                      <div>
-                        <p className="text-sm font-bold text-content-primary">{text(item.title)}</p>
-                        <p className="mt-1 text-xs text-content-secondary">
-                          {text(product?.name ?? category?.name)} · {text(campaign?.name)}
-                        </p>
-                      </div>
-                      <Link href="/pipeline">
-                        <Button size="sm" variant="outline">
-                          Ver pipeline
-                        </Button>
-                      </Link>
-                    </div>
-                  );
-                })
-              ) : (
-                <p className="text-sm text-content-muted">Sin oportunidades registradas.</p>
-              )}
-            </CardContent>
-          </Card>
+          ) : null}
+          {tab === 'followUps' ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Seguimientos</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <RecordList empty="No hay seguimientos pendientes." records={data.followUps} />
+              </CardContent>
+            </Card>
+          ) : null}
+          {tab === 'sales' ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Ventas</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <RecordList empty="No hay ventas registradas." records={data.sales} />
+              </CardContent>
+            </Card>
+          ) : null}
+          {tab === 'payments' ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Pagos</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <RecordList empty="No hay pagos registrados." records={data.payments} />
+              </CardContent>
+            </Card>
+          ) : null}
+          {tab === 'renewals' ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Renovaciones</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <RecordList empty="No hay renovaciones registradas." records={data.renewals} />
+              </CardContent>
+            </Card>
+          ) : null}
         </PageGrid>
       ) : null}
     </QueryState>
@@ -228,12 +276,12 @@ function InfoRow({
   value,
 }: {
   readonly label: string;
-  readonly value: string | number;
+  readonly value: string;
 }): React.ReactElement {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-border-subtle pb-2 last:border-0">
-      <span className="text-sm text-content-secondary">{label}</span>
-      <span className="text-sm font-bold text-content-primary">{value}</span>
+    <div>
+      <p className="text-xs text-content-muted">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-content-primary">{value}</p>
     </div>
   );
 }

@@ -17,6 +17,7 @@ import { Pagination } from '@/components/ui/pagination';
 import { SearchBar } from '@/components/ui/search-bar';
 import { StatusBadge } from '@/components/ui/badge';
 import { useToastStore } from '@/components/ui/toast';
+import { LeadIntakeDrawer } from '@/features/leads/lead-intake-drawer';
 import { ContactForm, type ContactFormValues } from './contact-form';
 import { api, queryString } from '@/lib/api-client';
 import type { Contact } from '@/lib/types';
@@ -65,7 +66,11 @@ function ContactWhatsAppTab({ contact }: { readonly contact: Contact }): React.R
   );
 }
 
-export function ContactsPage(): React.ReactElement {
+export function ContactsPage({
+  operational = false,
+}: {
+  readonly operational?: boolean;
+}): React.ReactElement {
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -74,7 +79,8 @@ export function ContactsPage(): React.ReactElement {
   const [assignedUserId, setAssignedUserId] = useState('');
   const [sortBy, setSortBy] = useState('createdAt');
   const [sortOrder, setSortOrder] = useState('desc');
-  const [drawer, setDrawer] = useState<'create' | 'edit' | null>(null);
+  const [drawer, setDrawer] = useState<'edit' | null>(null);
+  const [leadOpen, setLeadOpen] = useState(false);
   const [drawerTab, setDrawerTab] = useState<'details' | 'whatsapp'>('details');
   const [selected, setSelected] = useState<Contact | null>(null);
   const queryClient = useQueryClient();
@@ -149,23 +155,6 @@ export function ContactsPage(): React.ReactElement {
       }),
     );
   }, [assignedUserId, country, page, search, searchInput, sortBy, sortOrder, tagId]);
-  const create = useMutation({
-    mutationFn: (values: ContactFormValues) =>
-      api.createContact({ ...values, createOpportunity: true }),
-    onSuccess: (result) => {
-      void queryClient.invalidateQueries({ queryKey: ['contacts'] });
-      setDrawer(null);
-      toast({
-        title: 'Contacto creado',
-        description: result.warnings?.length
-          ? 'El lead fue registrado. El correo coincide con otro contacto activo.'
-          : 'El lead fue registrado correctamente.',
-        tone: 'success',
-      });
-    },
-    onError: (error: Error) =>
-      toast({ title: 'No fue posible guardar', description: error.message, tone: 'error' }),
-  });
   const update = useMutation({
     mutationFn: (values: ContactFormValues) => {
       const { tagIds: _tagIds, ...editable } = values;
@@ -255,25 +244,14 @@ export function ContactsPage(): React.ReactElement {
     >
       <PageGrid>
         <PageHeader
-          eyebrow="CRM"
-          title="Contactos"
-          description="Gestiona leads, clientes y la información que alimenta tu pipeline."
-          actions={
-            <div className="flex flex-wrap gap-2">
-              <Link href="/sales">
-                <Button variant="outline">＋ Nueva venta</Button>
-              </Link>
-              <Button
-                onClick={() => {
-                  setSelected(null);
-                  setDrawer('create');
-                  setDrawerTab('details');
-                }}
-              >
-                ＋ Nuevo contacto
-              </Button>
-            </div>
+          eyebrow={operational ? 'Operación comercial' : 'Base maestra'}
+          title={operational ? 'Leads' : 'Contactos'}
+          description={
+            operational
+              ? 'Registra y mueve oportunidades sin salir del flujo comercial.'
+              : 'Consulta la base maestra de clientes y su historial comercial.'
           }
+          actions={<Button onClick={() => setLeadOpen(true)}>＋ Registrar Lead</Button>}
         />
         <div className="flex flex-col gap-3 sm:flex-row">
           <SearchBar
@@ -353,15 +331,8 @@ export function ContactsPage(): React.ReactElement {
             emptyDescription="Crea tu primer contacto para comenzar a construir relaciones comerciales."
             emptyTitle="No hay contactos"
             emptyAction={
-              <Button
-                onClick={() => {
-                  setSelected(null);
-                  setDrawer('create');
-                  setDrawerTab('details');
-                }}
-                size="sm"
-              >
-                Crear primer contacto
+              <Button onClick={() => setLeadOpen(true)} size="sm">
+                Registrar primer lead
               </Button>
             }
             virtualize
@@ -373,16 +344,12 @@ export function ContactsPage(): React.ReactElement {
           />
         </Card>
         <Drawer
-          description={
-            drawer === 'create'
-              ? 'Registra un nuevo lead en tu organización.'
-              : 'Actualiza los datos públicos del contacto.'
-          }
+          description="Actualiza los datos públicos del contacto."
           onClose={() => setDrawer(null)}
           open={drawer !== null}
-          title={drawer === 'create' ? 'Nuevo contacto' : 'Editar contacto'}
+          title="Editar contacto"
         >
-          {drawer === 'edit' && selected ? (
+          {selected ? (
             <div className="mb-5 flex gap-2 border-b border-slate-200 pb-3 dark:border-slate-800">
               <Button
                 onClick={() => setDrawerTab('details')}
@@ -402,19 +369,17 @@ export function ContactsPage(): React.ReactElement {
           ) : null}
           {drawerTab === 'whatsapp' && selected ? (
             <ContactWhatsAppTab contact={selected} />
-          ) : (
+          ) : selected ? (
             <ContactForm
               contact={selected}
               onCancel={() => setDrawer(null)}
-              onSubmit={(values) => {
-                if (drawer === 'create') create.mutate(values);
-                else update.mutate(values);
-              }}
+              onSubmit={(values) => update.mutate(values)}
               tags={tags.data ?? []}
-              submitting={create.isPending || update.isPending}
+              submitting={update.isPending}
             />
-          )}
+          ) : null}
         </Drawer>
+        <LeadIntakeDrawer onClose={() => setLeadOpen(false)} open={leadOpen} />
       </PageGrid>
     </QueryState>
   );

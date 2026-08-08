@@ -103,8 +103,12 @@ export function SalesPage(): React.ReactElement {
         <PageHeader
           eyebrow="Commercial core"
           title="Ventas"
-          description="Consulta acuerdos comerciales, estados y snapshots desde el backend."
-          actions={<Button onClick={() => setNewSaleOpen(true)}>＋ Nueva venta</Button>}
+          description="Crea la venta, registra el pago y deja el saldo claro en un solo drawer."
+          actions={
+            <Button className="px-6 py-3 text-base" onClick={() => setNewSaleOpen(true)} size="lg">
+              ＋ Nueva Venta
+            </Button>
+          }
         />
         <SearchBar
           className="max-w-sm"

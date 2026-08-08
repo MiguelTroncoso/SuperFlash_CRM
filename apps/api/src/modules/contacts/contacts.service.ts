@@ -595,12 +595,20 @@ export class ContactsService {
               },
             });
         const stage = await transaction.pipelineStage.findFirst({
-          where: {
-            organizationId,
-            active: true,
-            deletedAt: null,
-            category: PipelineStageCategory.OPEN,
-          },
+          where: dto.pipelineStageId
+            ? {
+                organizationId,
+                id: dto.pipelineStageId,
+                active: true,
+                deletedAt: null,
+                category: PipelineStageCategory.OPEN,
+              }
+            : {
+                organizationId,
+                active: true,
+                deletedAt: null,
+                category: PipelineStageCategory.OPEN,
+              },
           orderBy: { order: 'asc' },
           select: { id: true, name: true },
         });

@@ -105,6 +105,11 @@ export class CreateLeadDto {
   @IsUUID()
   assignedUserId?: string | null;
 
+  @ApiPropertyOptional({ format: 'uuid', description: 'Etapa comercial inicial opcional.' })
+  @IsOptional()
+  @IsUUID()
+  pipelineStageId?: string;
+
   @ApiPropertyOptional({ enum: OpportunityPriority })
   @IsOptional()
   @IsEnum(OpportunityPriority)

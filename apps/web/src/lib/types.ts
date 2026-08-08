@@ -83,12 +83,14 @@ export interface Opportunity {
   currency: string | null;
   status: string;
   archivedAt: string | null;
+  lastStageChangedAt: string | null;
   contact: { id: string; displayName: string | null; phone: string | null; country: string | null };
   pipelineStage: PipelineStage;
   assignedTo: Person | null;
   campaign: NamedRelation | null;
   category: NamedRelation | null;
   product: NamedRelation | null;
+  nextFollowUp: { id: string; title: string; dueAt: string; status: string } | null;
   createdAt: string;
   updatedAt: string;
 }

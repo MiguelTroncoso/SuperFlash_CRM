@@ -124,6 +124,15 @@ El canal de commerce público permanece fuera de las arquitecturas implementadas
 y está registrado como roadmap no implementado en
 [docs/public-commerce-roadmap.md](../public-commerce-roadmap.md).
 
+### Operational Reset
+
+Sprint 32 reorganiza exclusivamente la capa de experiencia para la operación
+diaria. No agrega una versión arquitectónica, dominios, tablas ni reglas de
+negocio. El frontend prioriza Registrar Lead, Pipeline, Ventas, Cobros,
+Renovaciones y Catálogo; las capacidades avanzadas continúan accesibles desde
+Configuración. La decisión y sus límites están documentados en
+[docs/operational-reset.md](../operational-reset.md).
+
 ## Reglas de versionado
 
 - Una versión de arquitectura se identifica como `vMAJOR.MINOR`.
