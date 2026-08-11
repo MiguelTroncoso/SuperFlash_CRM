@@ -126,6 +126,26 @@ describe('Catalog and pricing HTTP flow', () => {
     return authorized('get', `/api/v1/catalog/pricing/resolve?${params.toString()}`, token);
   }
 
+  it('allows a catalog-only owner to create inline categories and products', async () => {
+    const token = await login(fixture.ownerA);
+    const category = await authorized('post', '/api/v1/catalog/categories/quick', token).send({
+      name: 'IA',
+    });
+    const product = await authorized('post', '/api/v1/catalog/products/quick', token).send({
+      name: 'ChatGPT Plus',
+      categoryId: category.body.id,
+      type: 'SUBSCRIPTION',
+      fulfillmentMode: 'MANUAL',
+      currency: 'CLP',
+      status: 'ACTIVE',
+      active: true,
+    });
+
+    expect(category.status).toBe(201);
+    expect(product.status).toBe(201);
+    expect(product.body.category.id).toBe(category.body.id);
+  });
+
   it('creates the catalog hierarchy and resolves current price without exposing cost by default', async () => {
     const token = await login(fixture.ownerA);
     const category = await authorized('post', '/api/v1/catalog/categories', token).send({

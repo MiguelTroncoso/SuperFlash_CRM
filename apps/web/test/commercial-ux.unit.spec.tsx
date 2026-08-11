@@ -2,7 +2,9 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { LeadIntakeDrawer } from '@/features/leads/lead-intake-drawer';
+import { CatalogPage } from '@/features/catalog/catalog-page';
 import { api } from '@/lib/api-client';
+import { useAuthStore } from '@/lib/auth-store';
 
 function renderDrawer(): void {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -60,5 +62,60 @@ describe('commercial lead intake frontend', () => {
     fireEvent.change(screen.getByPlaceholderText('Nombre'), { target: { value: 'Reseller' } });
     fireEvent.click(screen.getByRole('button', { name: 'Crear' }));
     await waitFor(() => expect(api.createCategoryQuick).toHaveBeenCalledWith({ name: 'Reseller' }));
+  });
+
+  it('creates and selects a category inline without leaving the new product drawer', async () => {
+    useAuthStore.getState().setSession('catalog-test-token', {
+      id: 'user-1',
+      email: 'owner@example.com',
+      firstName: 'Owner',
+      lastName: 'Test',
+      phone: null,
+      timezone: 'America/Santiago',
+      organization: { id: 'org-1', name: 'Demo', slug: 'demo' },
+      role: { id: 'role-1', name: 'Owner' },
+      permissions: ['catalog.create', 'catalog.read', 'catalog.update', 'catalog.delete'],
+    });
+    const category = {
+      id: 'category-1',
+      name: 'IA',
+      slug: 'ia',
+      description: null,
+      active: true,
+      order: 1,
+      archivedAt: null,
+    };
+    jest.spyOn(api, 'createCategoryQuick').mockResolvedValue(category);
+    jest.spyOn(api, 'createProduct').mockResolvedValue({ id: 'product-1' } as never);
+    render(
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <CatalogPage />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: '＋ Nuevo producto' }));
+    fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'ChatGPT Plus' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Categoría' }), {
+      target: { value: 'IA' },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: '＋ Crear categoría “IA”' }));
+    await waitFor(() => expect(api.createCategoryQuick).toHaveBeenCalledWith({ name: 'IA' }));
+    expect(screen.getByDisplayValue('ChatGPT Plus')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('SKU'), { target: { value: 'chatgpt-test' } });
+    fireEvent.change(screen.getByLabelText('Moneda'), { target: { value: 'CLP' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Crear producto' }));
+    await waitFor(() =>
+      expect(api.createProduct).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'ChatGPT Plus',
+          sku: 'chatgpt-test',
+          currency: 'CLP',
+          categoryId: 'category-1',
+          type: 'OTHER',
+          fulfillmentMode: 'MANUAL',
+        }),
+      ),
+    );
   });
 });

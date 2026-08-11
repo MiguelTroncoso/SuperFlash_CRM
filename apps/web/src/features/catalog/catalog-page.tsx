@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { PageGrid, PageHeader } from '@/components/shared/page-header';
+import { CreatableCombobox } from '@/components/shared/creatable-combobox';
 import { QueryState } from '@/components/shared/query-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -81,13 +82,17 @@ function ProductForm({
   categories,
   onSubmit,
   onCancel,
+  onCreateCategory,
   submitting,
+  categoryCreatePending,
 }: {
   readonly product: Product | null;
   readonly categories: Category[];
   readonly onSubmit: (body: JsonRecord) => void;
   readonly onCancel: () => void;
+  readonly onCreateCategory: (name: string) => Promise<Category>;
   readonly submitting: boolean;
+  readonly categoryCreatePending: boolean;
 }): React.ReactElement {
   const form = useForm<ProductFormValues>({
     defaultValues: {
@@ -100,6 +105,7 @@ function ProductForm({
       fulfillmentMode: 'MANUAL',
     },
   });
+  const [categorySearch, setCategorySearch] = useState('');
   useEffect(() => {
     form.reset({
       name: product?.name ?? '',
@@ -110,7 +116,20 @@ function ProductForm({
       type: product?.type ?? 'OTHER',
       fulfillmentMode: product?.fulfillmentMode ?? 'MANUAL',
     });
+    setCategorySearch(product?.category?.name ?? '');
   }, [form, product]);
+  const categoryOptions = categories
+    .filter((category) => category.active && !category.archivedAt)
+    .map((category) => ({ id: category.id, label: category.name }));
+  const selectedCategory = categories.find((category) => category.id === form.watch('categoryId'));
+  const createCategory = (name: string): void => {
+    void onCreateCategory(name)
+      .then((category) => {
+        form.setValue('categoryId', category.id, { shouldDirty: true, shouldValidate: true });
+        setCategorySearch(category.name);
+      })
+      .catch(() => undefined);
+  };
   const submit = (values: ProductFormValues): void => {
     const sku = values.sku.trim();
     const categoryId = values.categoryId.trim();
@@ -136,18 +155,21 @@ function ProductForm({
         <Field label="Moneda">
           <Input maxLength={3} {...form.register('currency', { required: true })} />
         </Field>
-        <Field label="Categoría">
-          <Select {...form.register('categoryId')}>
-            <option value="">Sin categoría</option>
-            {categories
-              .filter((category) => category.active && !category.archivedAt)
-              .map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-          </Select>
-        </Field>
+        <CreatableCombobox
+          createLabel="Crear categoría"
+          emptyLabel="Sin categoría"
+          isLoading={categoryCreatePending}
+          label="Categoría"
+          onCreate={createCategory}
+          onSearch={setCategorySearch}
+          onSelect={(option) =>
+            form.setValue('categoryId', option?.id ?? '', { shouldDirty: true })
+          }
+          options={categoryOptions}
+          placeholder="Buscar o crear categoría..."
+          search={categorySearch}
+          selectedLabel={selectedCategory?.name}
+        />
         <Field label="Tipo">
           <Select {...form.register('type')}>
             {PRODUCT_TYPES.map(([value, label]) => (
@@ -242,6 +264,19 @@ export function CatalogPage(): React.ReactElement {
     queryFn: () => api.getProducts(queryString({ page: 1, limit: 100, search })),
   });
   const categories = useQuery({ queryKey: ['catalog-categories'], queryFn: api.getCategories });
+  const createCategoryQuick = useMutation({
+    mutationFn: (name: string) => api.createCategoryQuick({ name }),
+    onSuccess: (created) => {
+      void queryClient.invalidateQueries({ queryKey: ['catalog-categories'] });
+      toast({ title: 'Categoría lista', description: created.name, tone: 'success' });
+    },
+    onError: (error: Error) =>
+      toast({
+        title: 'No fue posible crear la categoría',
+        description: catalogErrorMessage(error),
+        tone: 'error',
+      }),
+  });
   const saveProduct = useMutation({
     mutationFn: (input: { id?: string; body: JsonRecord }) =>
       input.id
@@ -508,7 +543,9 @@ export function CatalogPage(): React.ReactElement {
       >
         <ProductForm
           categories={categories.data ?? []}
+          categoryCreatePending={createCategoryQuick.isPending}
           onCancel={close}
+          onCreateCategory={(name) => createCategoryQuick.mutateAsync(name)}
           onSubmit={(body) => saveProduct.mutate(product ? { id: product.id, body } : { body })}
           product={product}
           submitting={saveProduct.isPending}

@@ -11,6 +11,7 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
 import { AuthenticatedUser } from '../../auth/auth.types';
+import { AnyPermissions } from '../../auth/decorators/any-permissions.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Permissions } from '../../auth/decorators/permissions.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -40,7 +41,7 @@ export class CategoriesController {
   }
 
   @Post('quick')
-  @Permissions('opportunities.create')
+  @AnyPermissions('opportunities.create', 'catalog.create')
   createQuick(
     @Body() dto: CreateCategoryDto,
     @CurrentUser() user: AuthenticatedUser,

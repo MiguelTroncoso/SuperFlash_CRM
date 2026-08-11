@@ -26,7 +26,7 @@ export class CategoriesService {
     context: CatalogRequestContext,
   ): Promise<Record<string, unknown>> {
     this.access.assertCreate(context.user);
-    return this.createRecord(dto, context);
+    return this.createRecord(dto, context, false);
   }
 
   async createQuick(
@@ -34,17 +34,47 @@ export class CategoriesService {
     context: CatalogRequestContext,
   ): Promise<Record<string, unknown>> {
     this.access.assertQuickCreate(context.user);
-    return this.createRecord(dto, context);
+    return this.createRecord(dto, context, true);
   }
 
   private async createRecord(
     dto: CreateCategoryDto,
     context: CatalogRequestContext,
+    reuseExisting: boolean,
   ): Promise<Record<string, unknown>> {
     const name = normalizeName(dto.name);
     const slug = normalizeSlug(dto.slug ?? name);
     try {
       const category = await this.prisma.$transaction(async (transaction) => {
+        const existing = await transaction.productCategory.findFirst({
+          where: { organizationId: context.user.organizationId, slug },
+          orderBy: [{ deletedAt: 'asc' }, { createdAt: 'asc' }],
+        });
+        if (existing && reuseExisting) {
+          if (existing.deletedAt === null && existing.active) return existing;
+
+          const restored = await transaction.productCategory.update({
+            where: {
+              organizationId_id: {
+                organizationId: context.user.organizationId,
+                id: existing.id,
+              },
+            },
+            data: { active: true, deletedAt: null },
+          });
+          await this.audit.recordWithClient(transaction, {
+            organizationId: context.user.organizationId,
+            userId: context.user.userId,
+            action: 'CATALOG_CATEGORY_RESTORED',
+            tableName: 'ProductCategory',
+            recordId: restored.id,
+            previousValue: { name: existing.name, slug: existing.slug },
+            newValue: { name: restored.name, slug: restored.slug, reason: 'INLINE_REUSE' },
+            ip: context.metadata.ipAddress,
+          });
+          return restored;
+        }
+
         const max = await transaction.productCategory.aggregate({
           where: { organizationId: context.user.organizationId },
           _max: { order: true },
@@ -72,6 +102,17 @@ export class CategoriesService {
       });
       return this.map(category);
     } catch (error: unknown) {
+      if (isUniqueConstraint(error)) {
+        const existing = await this.prisma.productCategory.findFirst({
+          where: {
+            organizationId: context.user.organizationId,
+            slug,
+            deletedAt: null,
+            active: true,
+          },
+        });
+        if (reuseExisting && existing) return this.map(existing);
+      }
       this.rethrowConflict(error, CATALOG_ERROR_CODES.CATEGORY_SLUG_ALREADY_EXISTS);
     }
   }
