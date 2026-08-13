@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { Button } from '@/components/ui/button';
+import { CreatableCombobox } from '@/components/shared/creatable-combobox';
 import { Drawer } from '@/components/ui/drawer';
 import { Input, Select, Textarea } from '@/components/ui/input';
 import { useToastStore } from '@/components/ui/toast';
@@ -22,12 +23,6 @@ interface LeadFormValues {
   pipelineStageId: string;
   note: string;
   nextFollowUpAt: string;
-}
-
-interface ComboboxOption {
-  id: string;
-  label: string;
-  secondary?: string | undefined;
 }
 
 const STAGE_LABELS: Record<string, string> = {
@@ -114,115 +109,6 @@ function toBody(values: LeadFormValues): JsonRecord {
       ? { nextFollowUpAt: new Date(values.nextFollowUpAt).toISOString() }
       : {}),
   };
-}
-
-function CreatableCombobox({
-  label,
-  placeholder,
-  search,
-  options,
-  selectedLabel,
-  onSearch,
-  onSelect,
-  onCreate,
-  createLabel,
-  emptyLabel,
-}: {
-  readonly label: string;
-  readonly placeholder: string;
-  readonly search: string;
-  readonly options: ComboboxOption[];
-  readonly selectedLabel?: string | undefined;
-  readonly onSearch: (value: string) => void;
-  readonly onSelect: (option: ComboboxOption | null) => void;
-  readonly onCreate?: (value: string) => void;
-  readonly createLabel: string;
-  readonly emptyLabel: string;
-}): React.ReactElement {
-  const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-  const normalizedSearch = search.trim().toLocaleLowerCase();
-  const filtered = options.filter((option) =>
-    `${option.label} ${option.secondary ?? ''}`.toLocaleLowerCase().includes(normalizedSearch),
-  );
-  const exact = options.some((option) => option.label.toLocaleLowerCase() === normalizedSearch);
-
-  useEffect(() => {
-    const close = (event: PointerEvent): void => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener('pointerdown', close);
-    return () => document.removeEventListener('pointerdown', close);
-  }, []);
-
-  return (
-    <div className="relative space-y-1" ref={root}>
-      <span className="block text-sm font-semibold text-content-primary">{label}</span>
-      <Input
-        aria-expanded={open}
-        aria-label={label}
-        autoComplete="off"
-        onChange={(event) => {
-          onSearch(event.target.value);
-          setOpen(true);
-        }}
-        onFocus={() => setOpen(true)}
-        placeholder={placeholder}
-        role="combobox"
-        value={search}
-      />
-      {open ? (
-        <div className="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-border-subtle bg-surface-raised p-1 shadow-xl">
-          <button
-            className="w-full rounded-lg px-3 py-2 text-left text-xs font-semibold text-content-muted hover:bg-surface-inset"
-            onClick={() => {
-              onSelect(null);
-              onSearch('');
-              setOpen(false);
-            }}
-            type="button"
-          >
-            {emptyLabel}
-          </button>
-          {filtered.map((option) => (
-            <button
-              className="w-full rounded-lg px-3 py-2 text-left text-sm text-content-primary hover:bg-surface-inset"
-              key={option.id}
-              onClick={() => {
-                onSelect(option);
-                onSearch(option.label);
-                setOpen(false);
-              }}
-              type="button"
-            >
-              <span className="block font-semibold">{option.label}</span>
-              {option.secondary ? (
-                <span className="block text-xs text-content-muted">{option.secondary}</span>
-              ) : null}
-            </button>
-          ))}
-          {onCreate && search.trim() && !exact ? (
-            <button
-              className="w-full rounded-lg px-3 py-2 text-left text-sm font-bold text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-500/10"
-              onClick={() => {
-                onCreate(search.trim());
-                setOpen(false);
-              }}
-              type="button"
-            >
-              ＋ {createLabel} “{search.trim()}”
-            </button>
-          ) : null}
-          {!filtered.length && !onCreate ? (
-            <p className="px-3 py-2 text-xs text-content-muted">No hay coincidencias.</p>
-          ) : null}
-        </div>
-      ) : null}
-      {selectedLabel && selectedLabel !== search ? (
-        <span className="block text-xs text-content-muted">Seleccionado: {selectedLabel}</span>
-      ) : null}
-    </div>
-  );
 }
 
 export function LeadIntakeDrawer({

@@ -409,6 +409,10 @@ describe('Contacts and lead intake HTTP flow', () => {
     const deniedCreate = await authorized('post', '/api/v1/contacts', viewerToken).send({
       email: 'denied@example.com',
     });
+    const deniedLead = await authorized('post', '/api/v1/contacts/leads', viewerToken).send({
+      phone: '+56911112222',
+      country: 'CL',
+    });
     const unauthenticated = await api.get('/api/v1/contacts').set('X-Forwarded-For', nextIp());
     const ownerToken = await login(fixture.ownerA);
     const created = await authorized('post', '/api/v1/contacts', ownerToken).send({
@@ -417,6 +421,7 @@ describe('Contacts and lead intake HTTP flow', () => {
     const audits = await prisma.auditLog.findMany({ where: { action: 'CONTACT_CREATED' } });
 
     expect(deniedCreate.status).toBe(403);
+    expect(deniedLead.status).toBe(403);
     expect(unauthenticated.status).toBe(401);
     expect(created.status).toBe(201);
     expect(audits).toHaveLength(1);
@@ -437,6 +442,9 @@ describe('Contacts and lead intake HTTP flow', () => {
         name: 'ChatGPT',
       },
     );
+    const categoryReuse = await authorized('post', '/api/v1/catalog/categories/quick', token).send({
+      name: ' chatgpt ',
+    });
     const category = await prisma.productCategory.findFirstOrThrow({
       where: { organizationId: fixture.organizationA.id, name: 'ChatGPT' },
     });
@@ -500,6 +508,8 @@ describe('Contacts and lead intake HTTP flow', () => {
 
     expect(customState.status).toBe(201);
     expect(categoryCreate.status).toBe(201);
+    expect(categoryReuse.status).toBe(201);
+    expect(categoryReuse.body.id).toBe(categoryCreate.body.id);
     expect(productCreate.status).toBe(201);
     expect(created.status).toBe(201);
     expect(created.body.state).toBe('DEMO_SENT');

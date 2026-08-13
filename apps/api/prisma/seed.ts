@@ -5,6 +5,7 @@ import {
   CustomerSegment,
   FulfillmentMode,
   PipelineStageCategory,
+  Prisma,
   PrismaClient,
   ProductStatus,
   ProductType,
@@ -352,6 +353,38 @@ function permissionsForRole(roleName: string): readonly string[] {
     .map((permission) => permission.key);
 }
 
+async function synchronizeSystemRolePermissions(
+  transaction: Prisma.TransactionClient,
+): Promise<void> {
+  const organizations = await transaction.organization.findMany({
+    where: { deletedAt: null },
+    select: { id: true },
+  });
+
+  for (const organization of organizations) {
+    const systemRoles = await transaction.role.findMany({
+      where: {
+        organizationId: organization.id,
+        name: { in: roles.map((role) => role.name) },
+        deletedAt: null,
+      },
+      select: { id: true, name: true },
+    });
+
+    for (const role of systemRoles) {
+      await transaction.role.update({
+        where: { id: role.id },
+        data: {
+          // Connect is intentionally additive: existing custom permissions remain intact.
+          permissions: {
+            connect: permissionsForRole(role.name).map((key) => ({ key })),
+          },
+        },
+      });
+    }
+  }
+}
+
 async function seed(): Promise<void> {
   try {
     if (hasCompleteOwnerCredentials() && !isStrongPassword(ownerCredentials.password)) {
@@ -457,20 +490,7 @@ async function seed(): Promise<void> {
         });
       }
 
-      for (const role of roles) {
-        const roleId = roleRecords.get(role.name);
-        if (!roleId) {
-          throw new Error(`No se encontró el rol ${role.name} durante el seed.`);
-        }
-        await transaction.role.update({
-          where: { id: roleId },
-          data: {
-            permissions: {
-              set: permissionsForRole(role.name).map((key) => ({ key })),
-            },
-          },
-        });
-      }
+      await synchronizeSystemRolePermissions(transaction);
 
       for (const [index, stage] of pipelineStages.entries()) {
         await transaction.pipelineStage.upsert({

@@ -174,4 +174,11 @@ describe('catalog domain primitives', () => {
     expect(() => policy.assertCostsRead(user('Owner', ['catalog.costs.read']))).not.toThrow();
     expect(CustomerSegment.ANY).toBe('ANY');
   });
+
+  it('allows inline catalog creation for catalog users without widening the full catalog policy', () => {
+    const policy = new CatalogAccessPolicy();
+    expect(() => policy.assertQuickCreate(user('Owner', ['catalog.create']))).not.toThrow();
+    expect(() => policy.assertQuickCreate(user('Sales', ['opportunities.create']))).not.toThrow();
+    expect(() => policy.assertQuickCreate(user('Viewer', ['catalog.read']))).toThrow(HttpException);
+  });
 });
