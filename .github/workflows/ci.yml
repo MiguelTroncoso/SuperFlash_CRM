@@ -108,7 +108,7 @@ jobs:
             -e 's/replace-with-a-long-random-password/ci-production-postgres-password-012345678901234567890123456789/' \
             -e 's/replace-with-a-unique-secret-of-at-least-32-characters/ci-production-secret-012345678901234567890123456789/' \
             -e 's/replace-with-a-unique-key-of-at-least-32-characters/ci-production-key-012345678901234567890123456789/' \
-            -e 's/replace-with-a-strong-owner-password/ci-owner-password-012345678901234567890123456789/' \
+            -e 's/replace-with-a-strong-owner-password/CiOwner-Password-012345678901234567890123456789!/' \
             -e 's#WEB_URL=https://app.superflash.site#WEB_URL=http://127.0.0.1:3000#' \
             -e 's#NEXT_PUBLIC_API_URL=https://api.superflash.site#NEXT_PUBLIC_API_URL=http://127.0.0.1:3001#' \
             .env.production.ci
