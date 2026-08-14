@@ -61,6 +61,12 @@ export class CreateSaleItemDto {
   @IsString()
   @MaxLength(500)
   priceOverrideReason?: string;
+
+  @IsOptional()
+  @IsInt()
+  @IsIn([30, 90, 180, 365])
+  @ApiPropertyOptional({ enum: [30, 90, 180, 365], description: 'Duración de una suscripción.' })
+  subscriptionDurationDays?: number;
 }
 
 export class CreateSaleDto {

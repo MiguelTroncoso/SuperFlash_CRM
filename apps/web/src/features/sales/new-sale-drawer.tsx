@@ -14,6 +14,8 @@ import type { JsonRecord } from '@/lib/types';
 interface SaleFormValues {
   contactId: string;
   productId: string;
+  planId: string;
+  subscriptionDurationDays: string;
   quantity: string;
   currency: string;
   note: string;
@@ -35,6 +37,8 @@ export function NewSaleDrawer({
     defaultValues: {
       contactId: '',
       productId: '',
+      planId: '',
+      subscriptionDurationDays: '30',
       quantity: '1',
       currency: 'USD',
       note: '',
@@ -59,12 +63,24 @@ export function NewSaleDrawer({
   const selectedOffer = (offers.data?.data ?? []).find(
     (offer) => offer.id === form.watch('productId'),
   );
+  const selectedPlan = (selectedOffer?.plans ?? []).find(
+    (plan) => typeof plan.id === 'string' && plan.id === form.watch('planId'),
+  );
   const create = useMutation({
     mutationFn: async (values: SaleFormValues) => {
       const body: JsonRecord = {
         contactId: values.contactId,
         currency: values.currency.trim().toUpperCase(),
-        items: [{ productId: values.productId, quantity: values.quantity }],
+        items: [
+          {
+            productId: values.productId,
+            ...(values.planId ? { planId: values.planId } : {}),
+            quantity: values.quantity,
+            ...(selectedOffer?.type === 'SUBSCRIPTION' || selectedOffer?.requiresSubscription
+              ? { subscriptionDurationDays: Number(values.subscriptionDurationDays) }
+              : {}),
+          },
+        ],
         ...(values.note.trim() ? { note: values.note.trim() } : {}),
       };
       const sale = await api.createSale(body);
@@ -117,7 +133,12 @@ export function NewSaleDrawer({
         </label>
         <label className="space-y-1 text-sm font-semibold text-content-primary">
           <span>Producto</span>
-          <Select {...form.register('productId', { required: true })}>
+          <Select
+            {...form.register('productId', {
+              required: true,
+              onChange: () => form.setValue('planId', ''),
+            })}
+          >
             <option value="">Seleccionar producto</option>
             {(offers.data?.data ?? []).map((offer) => (
               <option key={offer.id} value={offer.id}>
@@ -129,6 +150,24 @@ export function NewSaleDrawer({
             ))}
           </Select>
         </label>
+        {(selectedOffer?.plans?.length ?? 0) > 0 ? (
+          <label className="space-y-1 text-sm font-semibold text-content-primary">
+            <span>Plan</span>
+            <Select {...form.register('planId')}>
+              <option value="">Seleccionar plan</option>
+              {(selectedOffer?.plans ?? []).map((plan) =>
+                typeof plan.id === 'string' ? (
+                  <option key={plan.id} value={plan.id}>
+                    {typeof plan.name === 'string' ? plan.name : plan.id}
+                  </option>
+                ) : null,
+              )}
+            </Select>
+            {selectedPlan && typeof selectedPlan.name === 'string' ? (
+              <span className="text-xs font-normal text-content-muted">{selectedPlan.name}</span>
+            ) : null}
+          </label>
+        ) : null}
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="space-y-1 text-sm font-semibold text-content-primary">
             <span>Precio</span>
@@ -141,6 +180,22 @@ export function NewSaleDrawer({
               }
             />
           </label>
+          {selectedOffer?.type === 'SUBSCRIPTION' || selectedOffer?.requiresSubscription ? (
+            <label className="space-y-1 text-sm font-semibold text-content-primary">
+              <span>Duración de suscripción</span>
+              <Select {...form.register('subscriptionDurationDays')}>
+                <option value="30">30 días</option>
+                <option value="90">3 meses</option>
+                <option value="180">6 meses</option>
+                <option value="365">12 meses</option>
+              </Select>
+            </label>
+          ) : null}
+          {selectedOffer?.stock?.trackingEnabled ? (
+            <p className="text-xs text-content-muted">
+              Stock disponible: {selectedOffer.stock.available}
+            </p>
+          ) : null}
           <label className="space-y-1 text-sm font-semibold text-content-primary">
             <span>Cantidad</span>
             <Input

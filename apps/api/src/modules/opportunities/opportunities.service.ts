@@ -52,7 +52,13 @@ import { ReorderPipelineStageDto } from './dto/reorder-pipeline-stage.dto';
 import { StageHistoryQueryDto } from './dto/stage-history-query.dto';
 import { UpdateOpportunityDto } from './dto/update-opportunity.dto';
 import { UpdatePipelineStageDto } from './dto/update-pipeline-stage.dto';
-import { followUpDaysForState, suggestedFollowUpAt } from './operational-states';
+import {
+  followUpDaysForState,
+  isPurchasedState,
+  operationalStateKey,
+  stateRequiresManualFollowUp,
+  suggestedFollowUpAt,
+} from './operational-states';
 
 interface OpportunityRequestContext {
   user: AuthenticatedUser;
@@ -184,6 +190,7 @@ export class OpportunitiesService {
                 color: true,
                 category: true,
                 order: true,
+                systemKey: true,
               },
             })
           : await transaction.pipelineStage.findFirst({
@@ -200,6 +207,7 @@ export class OpportunitiesService {
                 color: true,
                 category: true,
                 order: true,
+                systemKey: true,
               },
             });
         if (!stage) {
@@ -216,6 +224,13 @@ export class OpportunitiesService {
             'Una oportunidad nueva debe comenzar en una etapa abierta.',
           );
         }
+        const estimatedPurchaseAt = this.parseFutureDate(dto.estimatedPurchaseAt);
+        const manualFollowUpAt = this.parseFutureDate(dto.nextFollowUpAt);
+        this.assertCommercialStateRequirements(
+          stage.systemKey ?? stage.name,
+          manualFollowUpAt,
+          estimatedPurchaseAt,
+        );
         const interest = await this.resolveInterest(
           transaction,
           organizationId,
@@ -235,6 +250,7 @@ export class OpportunitiesService {
             userId: assignedUserId,
             expectedAmount: money.amount,
             currency: money.currency,
+            estimatedPurchaseAt,
             probability: dto.probability ?? 50,
             priority: dto.priority ?? 'NORMAL',
             ...(dto.campaignId ? { campaignId: dto.campaignId } : {}),
@@ -253,6 +269,42 @@ export class OpportunitiesService {
               productId: interest.productId,
               changedByUserId: context.user.userId,
               reason: 'Oportunidad creada',
+            },
+          });
+        }
+
+        const suggestedAt =
+          manualFollowUpAt ??
+          suggestedFollowUpAt(
+            stage.systemKey ?? stage.name,
+            this.configuration.defaultTimezone,
+            now,
+          );
+        const followUpAt = isPurchasedState(stage.systemKey ?? stage.name) ? null : suggestedAt;
+        if (followUpAt) {
+          const followUp = await transaction.followUp.create({
+            data: {
+              organizationId,
+              userId: assignedUserId ?? context.user.userId,
+              opportunityId: opportunity.id,
+              title: `Contactar lead: ${title}`,
+              dueAt: followUpAt,
+              priority: FollowUpPriority.NORMAL,
+              status: FollowUpStatus.PENDING,
+              autoSuggested: manualFollowUpAt === null,
+              createdByUserId: context.user.userId,
+            },
+            select: { id: true },
+          });
+          await transaction.followUpHistory.create({
+            data: {
+              organizationId,
+              followUpId: followUp.id,
+              action: FollowUpHistoryAction.CREATED,
+              changedByUserId: context.user.userId,
+              newDueAt: followUpAt,
+              newStatus: FollowUpStatus.PENDING,
+              note: manualFollowUpAt ? 'Seguimiento manual' : 'Seguimiento automático',
             },
           });
         }
@@ -385,10 +437,15 @@ export class OpportunitiesService {
         : this.decimalString(current.expectedAmount);
     const currencyInput = dto.currency !== undefined ? dto.currency : current.currency;
     const money = this.normalizeMoney(expectedAmountInput, currencyInput);
+    const estimatedPurchaseAt =
+      dto.estimatedPurchaseAt === undefined
+        ? current.estimatedPurchaseAt
+        : this.parseFutureDate(dto.estimatedPurchaseAt);
     const data: Prisma.OpportunityUncheckedUpdateInput = {
       title,
       expectedAmount: money.amount,
       currency: money.currency,
+      estimatedPurchaseAt,
       ...(dto.probability !== undefined ? { probability: dto.probability } : {}),
       ...(dto.priority !== undefined ? { priority: dto.priority } : {}),
     };
@@ -465,6 +522,7 @@ export class OpportunitiesService {
             productId: dto.productId ?? current.productId,
             probability: String(dto.probability ?? current.probability),
             priority: dto.priority ?? current.priority,
+            estimatedPurchaseAt: estimatedPurchaseAt?.toISOString() ?? null,
           }),
           ip: context.metadata.ipAddress,
         });
@@ -590,8 +648,22 @@ export class OpportunitiesService {
         'Debes indicar un motivo para marcar la oportunidad como perdida.',
       );
     }
+    const manualFollowUpAt =
+      dto.nextFollowUpAt === undefined ? undefined : this.parseFutureDate(dto.nextFollowUpAt);
+    const estimatedPurchaseAt =
+      dto.estimatedPurchaseAt === undefined
+        ? current.estimatedPurchaseAt
+        : this.parseFutureDate(dto.estimatedPurchaseAt);
+    this.assertCommercialStateRequirements(
+      target.systemKey ?? target.name,
+      manualFollowUpAt,
+      estimatedPurchaseAt,
+    );
     const now = new Date();
-    const updateData = this.stageTransitionData(target.category, now, reason);
+    const updateData = {
+      ...this.stageTransitionData(target.category, now, reason),
+      estimatedPurchaseAt,
+    };
     try {
       await this.prisma.$transaction(async (transaction) => {
         const updated = await transaction.opportunity.updateMany({
@@ -631,7 +703,15 @@ export class OpportunitiesService {
           reason,
           'OPPORTUNITY_STAGE_CHANGED',
         );
-        await this.syncOperationalFollowUp(transaction, current, target, context, now);
+        await this.syncOperationalFollowUp(
+          transaction,
+          current,
+          target,
+          context,
+          now,
+          manualFollowUpAt,
+          this.preserveLegacyManualFollowUp(current, manualFollowUpAt),
+        );
       });
     } catch (error: unknown) {
       this.rethrowDatabaseConflict(error);
@@ -681,6 +761,16 @@ export class OpportunitiesService {
       );
     }
     const now = new Date();
+    const manualFollowUpAt = this.parseFutureDate(dto.nextFollowUpAt);
+    const estimatedPurchaseAt =
+      dto.estimatedPurchaseAt === undefined
+        ? current.estimatedPurchaseAt
+        : this.parseFutureDate(dto.estimatedPurchaseAt);
+    this.assertCommercialStateRequirements(
+      target.systemKey ?? target.name,
+      manualFollowUpAt,
+      estimatedPurchaseAt,
+    );
     try {
       await this.prisma.$transaction(async (transaction) => {
         const updated = await transaction.opportunity.updateMany({
@@ -698,6 +788,7 @@ export class OpportunitiesService {
             wonAt: null,
             lostAt: null,
             lostReason: null,
+            estimatedPurchaseAt,
           },
         });
         if (updated.count !== 1) {
@@ -727,7 +818,14 @@ export class OpportunitiesService {
           dto.reason?.trim() || null,
           'OPPORTUNITY_REOPENED',
         );
-        await this.syncOperationalFollowUp(transaction, current, target, context, now);
+        await this.syncOperationalFollowUp(
+          transaction,
+          current,
+          target,
+          context,
+          now,
+          manualFollowUpAt,
+        );
       });
     } catch (error: unknown) {
       this.rethrowDatabaseConflict(error);
@@ -1476,6 +1574,7 @@ export class OpportunitiesService {
       currency: opportunity.currency,
       probability: opportunity.probability,
       priority: opportunity.priority,
+      estimatedPurchaseAt: opportunity.estimatedPurchaseAt?.toISOString() ?? null,
       status: opportunityStatus(opportunity.archivedAt, opportunity.pipelineStage.category),
       archivedAt: opportunity.archivedAt,
       archiveReason: opportunity.archiveReason,
@@ -1754,12 +1853,12 @@ export class OpportunitiesService {
     target: PipelineStageRecord,
     context: OpportunityRequestContext,
     now: Date,
+    manualFollowUpAt?: Date | null,
+    preserveManualOverride = false,
   ): Promise<void> {
-    const suggestedAt = suggestedFollowUpAt(
-      target.systemKey ?? target.name,
-      this.configuration.defaultTimezone,
-      now,
-    );
+    const suggestedAt =
+      manualFollowUpAt ??
+      suggestedFollowUpAt(target.systemKey ?? target.name, this.configuration.defaultTimezone, now);
     const existing = await transaction.followUp.findFirst({
       where: {
         organizationId: context.user.organizationId,
@@ -1781,7 +1880,7 @@ export class OpportunitiesService {
       },
     });
 
-    if (existing && !existing.autoSuggested) return;
+    if (preserveManualOverride && existing && !existing.autoSuggested) return;
 
     if (suggestedAt === null) {
       if (!existing) return;
@@ -1813,8 +1912,13 @@ export class OpportunitiesService {
       return;
     }
 
+    const autoSuggested = manualFollowUpAt === undefined || manualFollowUpAt === null;
     if (existing) {
-      if (existing.dueAt.getTime() === suggestedAt.getTime()) return;
+      if (
+        existing.dueAt.getTime() === suggestedAt.getTime() &&
+        existing.autoSuggested === autoSuggested
+      )
+        return;
       await transaction.followUp.update({
         where: {
           organizationId_id: { organizationId: context.user.organizationId, id: existing.id },
@@ -1822,7 +1926,7 @@ export class OpportunitiesService {
         data: {
           dueAt: suggestedAt,
           status: FollowUpStatus.PENDING,
-          autoSuggested: true,
+          autoSuggested,
           cancelledAt: null,
           cancellationReason: null,
           cancelledByUserId: null,
@@ -1838,8 +1942,10 @@ export class OpportunitiesService {
           newDueAt: suggestedAt,
           previousStatus: existing.status,
           newStatus: FollowUpStatus.PENDING,
-          note: 'Seguimiento automático actualizado por cambio de estado',
-          metadata: { automatic: true },
+          note: autoSuggested
+            ? 'Seguimiento automático actualizado por cambio de estado'
+            : 'Seguimiento manual actualizado por cambio de estado',
+          metadata: { automatic: autoSuggested },
         },
       });
       return;
@@ -1855,7 +1961,7 @@ export class OpportunitiesService {
         dueAt: suggestedAt,
         priority: FollowUpPriority.NORMAL,
         status: FollowUpStatus.PENDING,
-        autoSuggested: true,
+        autoSuggested,
         createdByUserId: context.user.userId,
       },
       select: { id: true },
@@ -1868,10 +1974,62 @@ export class OpportunitiesService {
         changedByUserId: context.user.userId,
         newDueAt: suggestedAt,
         newStatus: FollowUpStatus.PENDING,
-        note: 'Seguimiento automático por estado comercial',
-        metadata: { automatic: true },
+        note: autoSuggested
+          ? 'Seguimiento automático por estado comercial'
+          : 'Seguimiento manual por estado comercial',
+        metadata: { automatic: autoSuggested },
       },
     });
+  }
+
+  private preserveLegacyManualFollowUp(
+    current: OpportunityMutationRecord,
+    manualFollowUpAt: Date | null | undefined,
+  ): boolean {
+    if (manualFollowUpAt !== undefined) return false;
+    return (
+      current.pipelineStage.systemKey === null ||
+      ['WAITING_CUSTOMER', 'LEFT_ON_READ', 'DEJO_EN_VISTO'].includes(
+        current.pipelineStage.systemKey,
+      )
+    );
+  }
+
+  private parseFutureDate(value: string | null | undefined): Date | null {
+    if (value === undefined || value === null) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime()) || parsed.getTime() <= Date.now()) {
+      throw opportunityException(
+        HttpStatus.BAD_REQUEST,
+        OPPORTUNITY_ERROR_CODES.FOLLOW_UP_REQUIRED,
+        'La fecha debe ser válida y estar en el futuro.',
+      );
+    }
+    return parsed;
+  }
+
+  private assertCommercialStateRequirements(
+    systemKey: string,
+    manualFollowUpAt: Date | null | undefined,
+    estimatedPurchaseAt: Date | null,
+  ): void {
+    const key = operationalStateKey(systemKey);
+    if (stateRequiresManualFollowUp(systemKey) && !manualFollowUpAt) {
+      throw opportunityException(
+        HttpStatus.BAD_REQUEST,
+        OPPORTUNITY_ERROR_CODES.FOLLOW_UP_REQUIRED,
+        key === 'WANTS_TO_BUY'
+          ? 'Quiere comprar requiere una fecha de seguimiento manual.'
+          : 'Hablar más adelante requiere una fecha de seguimiento manual.',
+      );
+    }
+    if (key === 'WANTS_TO_BUY' && !estimatedPurchaseAt) {
+      throw opportunityException(
+        HttpStatus.BAD_REQUEST,
+        OPPORTUNITY_ERROR_CODES.ESTIMATED_PURCHASE_REQUIRED,
+        'Quiere comprar requiere una fecha estimada de compra.',
+      );
+    }
   }
 
   private notFound(): Error {

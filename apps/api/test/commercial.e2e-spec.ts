@@ -141,6 +141,81 @@ describe('Commercial core HTTP flow', () => {
     );
   });
 
+  it('deducts tracked stock only on confirmation and rejects overselling', async () => {
+    const token = await login(fixture.ownerA);
+    await prisma.product.update({
+      where: { id: fixture.productA },
+      data: { stockTrackingEnabled: true, stockQuantity: 2, stockMinimum: 1 },
+    });
+    const created = await authorized('post', '/api/v1/sales', token).send({
+      contactId: fixture.contactA,
+      currency: 'USD',
+      items: [{ productId: fixture.productA, quantity: '2', unitPrice: '50.00' }],
+    });
+    expect(created.status).toBe(201);
+    expect(
+      (await prisma.product.findUniqueOrThrow({ where: { id: fixture.productA } })).stockQuantity,
+    ).toBe(2);
+    const confirmed = await authorized(
+      'post',
+      `/api/v1/sales/${String(body(created).id)}/confirm`,
+      token,
+    );
+    expect(confirmed.status).toBe(201);
+    expect(
+      (await prisma.product.findUniqueOrThrow({ where: { id: fixture.productA } })).stockQuantity,
+    ).toBe(0);
+    expect(
+      await prisma.productStockMovement.findFirst({
+        where: { productId: fixture.productA, movementType: 'EXIT' },
+      }),
+    ).not.toBeNull();
+
+    const oversell = await authorized('post', '/api/v1/sales', token).send({
+      contactId: fixture.contactA,
+      currency: 'USD',
+      items: [{ productId: fixture.productA, quantity: '1', unitPrice: '50.00' }],
+    });
+    const rejected = await authorized(
+      'post',
+      `/api/v1/sales/${String(body(oversell).id)}/confirm`,
+      token,
+    );
+    expect(rejected.status).toBe(409);
+    expect(body(rejected).code).toBe('SALE_STOCK_INSUFFICIENT');
+  });
+
+  it('creates a subscription, renewal and reminder schedule from a confirmed sale', async () => {
+    const token = await login(fixture.ownerA);
+    const created = await authorized('post', '/api/v1/sales', token).send({
+      contactId: fixture.contactA,
+      currency: 'USD',
+      items: [
+        {
+          productId: fixture.productA,
+          quantity: '1',
+          unitPrice: '50.00',
+          subscriptionDurationDays: 90,
+        },
+      ],
+    });
+    const confirmed = await authorized(
+      'post',
+      `/api/v1/sales/${String(body(created).id)}/confirm`,
+      token,
+    );
+    expect(confirmed.status).toBe(201);
+    const subscription = await prisma.subscription.findFirstOrThrow({
+      where: { saleId: String(body(created).id), deletedAt: null },
+    });
+    expect(subscription.billingCycle).toBe('QUARTERLY');
+    const renewal = await prisma.renewal.findFirstOrThrow({
+      where: { subscriptionId: subscription.id, deletedAt: null },
+    });
+    expect(renewal.status).toBe('PENDING');
+    expect(await prisma.renewalReminder.count({ where: { renewalId: renewal.id } })).toBe(3);
+  });
+
   it('converts an Opportunity exactly once under concurrency', async () => {
     const token = await login(fixture.ownerA);
     const responses = await Promise.all([

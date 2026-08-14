@@ -19,6 +19,7 @@ interface KanbanItem {
   assignedTo?: { id: string; firstName: string; lastName: string | null } | null;
   stageName?: string;
   lastStageChangedAt?: string | null;
+  estimatedPurchaseAt?: string | null;
   nextFollowUp?: { id: string; title: string; dueAt: string; status: string } | null;
 }
 interface KanbanColumn {

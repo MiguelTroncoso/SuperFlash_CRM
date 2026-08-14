@@ -133,6 +133,13 @@ export class OffersService {
           demoDurationHours: product.demoDurationHours,
           category: product.productCategory,
           price: basePrice,
+          stock: {
+            trackingEnabled: product.stockTrackingEnabled,
+            quantity: product.stockQuantity,
+            reserved: product.stockReserved,
+            available: product.stockQuantity - product.stockReserved,
+            minimum: product.stockMinimum,
+          },
           plans,
         });
       }

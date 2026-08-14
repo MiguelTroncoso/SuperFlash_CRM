@@ -1,5 +1,17 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { ActivityType, Prisma, SaleStatus } from '@prisma/client';
+import {
+  ActivityType,
+  BillingCycle,
+  BillingPeriodUnit,
+  FollowUpStatus,
+  PipelineStageCategory,
+  Prisma,
+  ProductStockMovementType,
+  RenewalReminderKind,
+  RenewalStatus,
+  SaleStatus,
+  SubscriptionStatus,
+} from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
@@ -412,12 +424,12 @@ export class SalesService {
         productSlugSnapshot: built.product.slug,
         productTypeSnapshot: built.product.type,
         fulfillmentModeSnapshot: built.product.fulfillmentMode,
-        requiresSubscriptionSnapshot: built.product.requiresSubscription,
+        requiresSubscriptionSnapshot: built.requiresSubscription,
         skuSnapshot: built.product.sku,
         planNameSnapshot: built.plan?.name ?? null,
         variantNameSnapshot: built.variant?.name ?? null,
-        billingPeriodUnitSnapshot: built.plan?.billingPeriodUnit ?? null,
-        billingPeriodCountSnapshot: built.plan?.billingPeriodCount ?? null,
+        billingPeriodUnitSnapshot: built.billingPeriodUnit,
+        billingPeriodCountSnapshot: built.billingPeriodCount,
         catalogSnapshot: built.snapshot,
         quantity: built.quantity,
         unitPrice: built.unitPrice,
@@ -500,6 +512,9 @@ export class SalesService {
     tax: Prisma.Decimal;
     lineTotal: Prisma.Decimal;
     snapshot: Prisma.InputJsonObject;
+    requiresSubscription: boolean;
+    billingPeriodUnit: BillingPeriodUnit | null;
+    billingPeriodCount: number | null;
   }> {
     const quantity = parseQuantity(dto.quantity);
     positive(quantity, 'quantity');
@@ -533,6 +548,16 @@ export class SalesService {
         COMMERCIAL_ERROR_CODES.INVALID_MONEY,
         'El total del ítem no puede ser negativo.',
       );
+    const requiresSubscription =
+      resolution.product.requiresSubscription || resolution.product.type === 'SUBSCRIPTION';
+    if (dto.subscriptionDurationDays !== undefined && !requiresSubscription) {
+      throw commercialException(
+        HttpStatus.BAD_REQUEST,
+        COMMERCIAL_ERROR_CODES.SUBSCRIPTION_NOT_ELIGIBLE,
+        'La duración de suscripción solo aplica a productos con renovación.',
+      );
+    }
+    const duration = this.subscriptionDuration(dto.subscriptionDurationDays, resolution.plan);
     const snapshot = JSON.parse(
       JSON.stringify({
         snapshotVersion: 2,
@@ -552,10 +577,11 @@ export class SalesService {
         currency,
         taxIncluded: resolution.priceBookEntry?.taxIncluded ?? false,
         taxAmount: tax.toFixed(2),
-        billingPeriodCount: resolution.plan?.billingPeriodCount ?? null,
-        billingPeriodUnit: resolution.plan?.billingPeriodUnit ?? null,
+        billingPeriodCount: duration.billingPeriodCount,
+        billingPeriodUnit: duration.billingPeriodUnit,
+        subscriptionDurationDays: dto.subscriptionDurationDays ?? null,
         fulfillmentMode: resolution.product.fulfillmentMode,
-        requiresSubscription: resolution.product.requiresSubscription,
+        requiresSubscription,
         priceBookId: resolution.priceBook?.id ?? resolution.priceBookEntry?.priceBookId ?? null,
         priceBookEntryId: resolution.priceBookEntry?.id ?? null,
         pricingSource: resolution.pricingSource,
@@ -574,7 +600,480 @@ export class SalesService {
       tax,
       lineTotal,
       snapshot,
+      requiresSubscription,
+      billingPeriodUnit: duration.billingPeriodUnit,
+      billingPeriodCount: duration.billingPeriodCount,
     };
+  }
+
+  private subscriptionDuration(
+    durationDays: number | undefined,
+    plan: SaleCatalogResolution['plan'],
+  ): { billingPeriodUnit: BillingPeriodUnit | null; billingPeriodCount: number | null } {
+    if (durationDays !== undefined) {
+      if (durationDays === 30)
+        return { billingPeriodUnit: BillingPeriodUnit.DAY, billingPeriodCount: 30 };
+      if (durationDays === 90)
+        return { billingPeriodUnit: BillingPeriodUnit.MONTH, billingPeriodCount: 3 };
+      if (durationDays === 180)
+        return { billingPeriodUnit: BillingPeriodUnit.MONTH, billingPeriodCount: 6 };
+      if (durationDays === 365)
+        return { billingPeriodUnit: BillingPeriodUnit.YEAR, billingPeriodCount: 1 };
+    }
+    if (plan) {
+      return {
+        billingPeriodUnit: plan.billingPeriodUnit,
+        billingPeriodCount: plan.billingPeriodCount,
+      };
+    }
+    return { billingPeriodUnit: BillingPeriodUnit.MONTH, billingPeriodCount: 1 };
+  }
+
+  private async consumeTrackedStock(
+    transaction: CommercialClient,
+    saleId: string,
+    context: CommercialRequestContext,
+  ): Promise<void> {
+    const items = await transaction.saleItem.findMany({
+      where: {
+        organizationId: context.user.organizationId,
+        saleId,
+        deletedAt: null,
+        productId: { not: null },
+      },
+      select: { productId: true, quantity: true },
+    });
+    const quantities = new Map<string, Prisma.Decimal>();
+    for (const item of items) {
+      if (!item.productId) continue;
+      if (!item.quantity.mod(1).isZero()) {
+        throw commercialException(
+          HttpStatus.BAD_REQUEST,
+          COMMERCIAL_ERROR_CODES.STOCK_INVALID_QUANTITY,
+          'La cantidad de productos con stock debe ser un número entero.',
+        );
+      }
+      quantities.set(
+        item.productId,
+        (quantities.get(item.productId) ?? new Prisma.Decimal(0)).add(item.quantity),
+      );
+    }
+    for (const [productId, quantity] of [...quantities.entries()].sort(([left], [right]) =>
+      left.localeCompare(right),
+    )) {
+      const locked = await transaction.$queryRaw<
+        Array<{
+          id: string;
+          stockQuantity: number;
+          stockReserved: number;
+          stockTrackingEnabled: boolean;
+        }>
+      >(
+        Prisma.sql`SELECT "id", "stockQuantity", "stockReserved", "stockTrackingEnabled"
+          FROM "Product"
+          WHERE "organizationId" = ${context.user.organizationId}::uuid
+            AND "id" = ${productId}::uuid
+            AND "deletedAt" IS NULL
+          FOR UPDATE`,
+      );
+      if (locked.length === 0) continue;
+      const product = locked[0];
+      if (!product) continue;
+      if (!product.stockTrackingEnabled) continue;
+      const requested = quantity.toNumber();
+      const available = product.stockQuantity - product.stockReserved;
+      if (requested > available) {
+        throw commercialException(
+          HttpStatus.CONFLICT,
+          COMMERCIAL_ERROR_CODES.STOCK_INSUFFICIENT,
+          'No hay stock suficiente para confirmar la venta.',
+          { productId, available: String(available), requested: String(requested) },
+        );
+      }
+      const quantityAfter = product.stockQuantity - requested;
+      await transaction.product.update({
+        where: {
+          organizationId_id: { organizationId: context.user.organizationId, id: productId },
+        },
+        data: { stockQuantity: quantityAfter },
+      });
+      await transaction.productStockMovement.create({
+        data: {
+          organizationId: context.user.organizationId,
+          productId,
+          userId: context.user.userId,
+          quantityBefore: product.stockQuantity,
+          quantityDelta: -requested,
+          quantityAfter,
+          movementType: ProductStockMovementType.EXIT,
+          reason: `Venta ${saleId}`,
+        },
+      });
+      await transaction.activity.create({
+        data: {
+          organizationId: context.user.organizationId,
+          userId: context.user.userId,
+          saleId,
+          type: ActivityType.SYSTEM,
+          title: 'Stock descontado',
+          metadata: jsonObject({ productId, quantity: requested, quantityAfter }),
+          requestId: context.metadata.requestId ?? null,
+        },
+      });
+      await this.audit.recordWithClient(transaction, {
+        organizationId: context.user.organizationId,
+        userId: context.user.userId,
+        action: 'CATALOG_STOCK_SALE_EXIT',
+        tableName: 'Product',
+        recordId: productId,
+        previousValue: jsonObject({ stockQuantity: product.stockQuantity }),
+        newValue: jsonObject({ stockQuantity: quantityAfter, quantity: requested, saleId }),
+        ip: context.metadata.ipAddress,
+        requestId: context.metadata.requestId,
+      });
+    }
+  }
+
+  private async ensureSubscriptionsForSale(
+    transaction: CommercialClient,
+    saleId: string,
+    context: CommercialRequestContext,
+    startedAt: Date,
+  ): Promise<void> {
+    const sale = await transaction.sale.findFirst({
+      where: { id: saleId, organizationId: context.user.organizationId, deletedAt: null },
+      select: { contactId: true, userId: true },
+    });
+    if (!sale) return;
+    const items = await transaction.saleItem.findMany({
+      where: {
+        organizationId: context.user.organizationId,
+        saleId,
+        deletedAt: null,
+        requiresSubscriptionSnapshot: true,
+      },
+      select: {
+        id: true,
+        saleId: true,
+        productId: true,
+        planId: true,
+        variantId: true,
+        snapshotVersion: true,
+        productNameSnapshot: true,
+        skuSnapshot: true,
+        planNameSnapshot: true,
+        variantNameSnapshot: true,
+        catalogSnapshot: true,
+        quantity: true,
+        total: true,
+        currency: true,
+        billingPeriodUnitSnapshot: true,
+        billingPeriodCountSnapshot: true,
+      },
+    });
+    for (const item of items) {
+      const existing = await transaction.subscription.findUnique({
+        where: {
+          organizationId_saleItemId: {
+            organizationId: context.user.organizationId,
+            saleItemId: item.id,
+          },
+        },
+        select: { id: true },
+      });
+      if (existing) continue;
+      const cycle = this.subscriptionCycle(item);
+      const periodEnd = this.addSubscriptionCycle(
+        startedAt,
+        cycle.billingCycle,
+        cycle.customIntervalDays,
+      );
+      const subscription = await transaction.subscription.create({
+        data: {
+          organizationId: context.user.organizationId,
+          saleId,
+          saleItemId: item.id,
+          contactId: sale.contactId,
+          userId: sale.userId ?? context.user.userId,
+          productId: item.productId,
+          planId: item.planId,
+          variantId: item.variantId,
+          snapshotVersion: item.snapshotVersion,
+          status: SubscriptionStatus.PENDING,
+          billingCycle: cycle.billingCycle,
+          customIntervalDays: cycle.customIntervalDays,
+          currency: item.currency,
+          amount: item.total,
+          quantity: item.quantity,
+          productNameSnapshot: item.productNameSnapshot,
+          skuSnapshot: item.skuSnapshot,
+          planNameSnapshot: item.planNameSnapshot,
+          variantNameSnapshot: item.variantNameSnapshot,
+          catalogSnapshot: item.catalogSnapshot as Prisma.InputJsonValue,
+          startsAt: startedAt,
+          currentPeriodStart: startedAt,
+          currentPeriodEnd: periodEnd,
+          nextBillingAt: periodEnd,
+        },
+        select: { id: true },
+      });
+      const renewal = await transaction.renewal.create({
+        data: {
+          organizationId: context.user.organizationId,
+          subscriptionId: subscription.id,
+          sourceSaleId: saleId,
+          userId: sale.userId ?? context.user.userId,
+          status: RenewalStatus.PENDING,
+          billingCycle: cycle.billingCycle,
+          customIntervalDays: cycle.customIntervalDays,
+          amount: item.total,
+          currency: item.currency,
+          dueAt: periodEnd,
+          periodStart: startedAt,
+          periodEnd,
+          cycleKey: this.cycleKey(subscription.id, startedAt),
+          snapshotVersion: item.snapshotVersion,
+          productNameSnapshot: item.productNameSnapshot,
+          skuSnapshot: item.skuSnapshot,
+          catalogSnapshot: item.catalogSnapshot as Prisma.InputJsonValue,
+        },
+        select: { id: true },
+      });
+      const reminderData = [
+        { kind: RenewalReminderKind.DAYS_7, scheduledFor: this.shiftDays(periodEnd, -7) },
+        { kind: RenewalReminderKind.DAYS_3, scheduledFor: this.shiftDays(periodEnd, -3) },
+        { kind: RenewalReminderKind.DUE_TODAY, scheduledFor: periodEnd },
+      ].map((reminder) => ({
+        organizationId: context.user.organizationId,
+        renewalId: renewal.id,
+        userId: sale.userId ?? context.user.userId,
+        kind: reminder.kind,
+        scheduledFor: reminder.scheduledFor,
+      }));
+      await transaction.renewalReminder.createMany({ data: reminderData, skipDuplicates: true });
+      await transaction.activity.create({
+        data: {
+          organizationId: context.user.organizationId,
+          userId: context.user.userId,
+          contactId: sale.contactId,
+          saleId,
+          type: ActivityType.SYSTEM,
+          title: 'Suscripción y renovación creadas',
+          metadata: jsonObject({ subscriptionId: subscription.id, renewalId: renewal.id }),
+          requestId: context.metadata.requestId ?? null,
+        },
+      });
+      await this.audit.recordWithClient(transaction, {
+        organizationId: context.user.organizationId,
+        userId: context.user.userId,
+        action: 'SUBSCRIPTION_CREATED',
+        tableName: 'Subscription',
+        recordId: subscription.id,
+        newValue: jsonObject({ saleId, saleItemId: item.id, billingCycle: cycle.billingCycle }),
+        ip: context.metadata.ipAddress,
+        requestId: context.metadata.requestId,
+      });
+      await this.audit.recordWithClient(transaction, {
+        organizationId: context.user.organizationId,
+        userId: context.user.userId,
+        action: 'RENEWAL_CREATED',
+        tableName: 'Renewal',
+        recordId: renewal.id,
+        newValue: jsonObject({ subscriptionId: subscription.id, dueAt: periodEnd.toISOString() }),
+        ip: context.metadata.ipAddress,
+        requestId: context.metadata.requestId,
+      });
+      await this.enqueueEvent(transaction, 'SubscriptionCreated', subscription.id, context, {
+        saleId,
+        status: SubscriptionStatus.PENDING,
+      });
+      await this.enqueueEvent(transaction, 'RenewalCreated', renewal.id, context, {
+        subscriptionId: subscription.id,
+        status: RenewalStatus.PENDING,
+      });
+    }
+  }
+
+  private subscriptionCycle(item: {
+    billingPeriodUnitSnapshot: BillingPeriodUnit | null;
+    billingPeriodCountSnapshot: number | null;
+    catalogSnapshot: Prisma.JsonValue;
+  }): { billingCycle: BillingCycle; customIntervalDays: number | null } {
+    const snapshot = this.snapshotRecord(item.catalogSnapshot);
+    const durationDays = snapshot?.subscriptionDurationDays;
+    if (typeof durationDays === 'number') {
+      if (durationDays === 30) return { billingCycle: BillingCycle.CUSTOM, customIntervalDays: 30 };
+      if (durationDays === 90)
+        return { billingCycle: BillingCycle.QUARTERLY, customIntervalDays: null };
+      if (durationDays === 180)
+        return { billingCycle: BillingCycle.SEMI_ANNUAL, customIntervalDays: null };
+      if (durationDays === 365)
+        return { billingCycle: BillingCycle.ANNUAL, customIntervalDays: null };
+    }
+    const count = item.billingPeriodCountSnapshot ?? 1;
+    if (item.billingPeriodUnitSnapshot === BillingPeriodUnit.DAY)
+      return { billingCycle: BillingCycle.CUSTOM, customIntervalDays: count };
+    if (item.billingPeriodUnitSnapshot === BillingPeriodUnit.WEEK)
+      return { billingCycle: BillingCycle.CUSTOM, customIntervalDays: count * 7 };
+    if (item.billingPeriodUnitSnapshot === BillingPeriodUnit.MONTH) {
+      if (count === 3) return { billingCycle: BillingCycle.QUARTERLY, customIntervalDays: null };
+      if (count === 6) return { billingCycle: BillingCycle.SEMI_ANNUAL, customIntervalDays: null };
+      return { billingCycle: BillingCycle.MONTHLY, customIntervalDays: null };
+    }
+    if (item.billingPeriodUnitSnapshot === BillingPeriodUnit.YEAR)
+      return { billingCycle: BillingCycle.ANNUAL, customIntervalDays: null };
+    return { billingCycle: BillingCycle.MONTHLY, customIntervalDays: null };
+  }
+
+  private addSubscriptionCycle(
+    start: Date,
+    cycle: BillingCycle,
+    customIntervalDays: number | null,
+  ): Date {
+    const result = new Date(start);
+    if (cycle === BillingCycle.WEEKLY) result.setDate(result.getDate() + 7);
+    else if (cycle === BillingCycle.MONTHLY) result.setMonth(result.getMonth() + 1);
+    else if (cycle === BillingCycle.QUARTERLY) result.setMonth(result.getMonth() + 3);
+    else if (cycle === BillingCycle.SEMI_ANNUAL) result.setMonth(result.getMonth() + 6);
+    else if (cycle === BillingCycle.ANNUAL) result.setFullYear(result.getFullYear() + 1);
+    else result.setDate(result.getDate() + (customIntervalDays ?? 30));
+    return result;
+  }
+
+  private cycleKey(subscriptionId: string, periodStart: Date): string {
+    return `${subscriptionId}:${periodStart.toISOString()}`;
+  }
+
+  private shiftDays(date: Date, days: number): Date {
+    const shifted = new Date(date);
+    shifted.setDate(shifted.getDate() + days);
+    return shifted;
+  }
+
+  private snapshotRecord(value: Prisma.JsonValue): Record<string, Prisma.JsonValue> | null {
+    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+      return value as Record<string, Prisma.JsonValue>;
+    }
+    return null;
+  }
+
+  private async markOpportunityPurchased(
+    transaction: CommercialClient,
+    saleId: string,
+    context: CommercialRequestContext,
+    occurredAt: Date,
+  ): Promise<void> {
+    const sale = await transaction.sale.findFirst({
+      where: { id: saleId, organizationId: context.user.organizationId, deletedAt: null },
+      select: { opportunityId: true, contactId: true },
+    });
+    if (!sale?.opportunityId) return;
+    const purchasedStage = await transaction.pipelineStage.findFirst({
+      where: {
+        organizationId: context.user.organizationId,
+        systemKey: 'PURCHASED',
+        active: true,
+        deletedAt: null,
+        category: PipelineStageCategory.WON,
+      },
+      orderBy: { order: 'asc' },
+      select: { id: true, name: true },
+    });
+    if (!purchasedStage) return;
+    const opportunity = await transaction.opportunity.findFirst({
+      where: {
+        id: sale.opportunityId,
+        organizationId: context.user.organizationId,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        userId: true,
+        pipelineStageId: true,
+        pipelineStage: { select: { id: true, name: true } },
+      },
+    });
+    if (!opportunity || opportunity.pipelineStageId === purchasedStage.id) {
+      await transaction.contact.update({
+        where: {
+          organizationId_id: { organizationId: context.user.organizationId, id: sale.contactId },
+        },
+        data: { isCustomer: true, lastActivityAt: occurredAt },
+      });
+      return;
+    }
+    await transaction.opportunity.update({
+      where: {
+        organizationId_id: { organizationId: context.user.organizationId, id: opportunity.id },
+      },
+      data: { pipelineStageId: purchasedStage.id, closedAt: occurredAt, wonAt: occurredAt },
+    });
+    await transaction.opportunityStageHistory.create({
+      data: {
+        organizationId: context.user.organizationId,
+        opportunityId: opportunity.id,
+        fromStageId: opportunity.pipelineStageId,
+        toStageId: purchasedStage.id,
+        changedByUserId: context.user.userId,
+        reason: 'Venta confirmada',
+        changedAt: occurredAt,
+      },
+    });
+    await transaction.followUp.updateMany({
+      where: {
+        organizationId: context.user.organizationId,
+        opportunityId: opportunity.id,
+        status: FollowUpStatus.PENDING,
+        deletedAt: null,
+      },
+      data: {
+        status: FollowUpStatus.CANCELLED,
+        cancelledAt: occurredAt,
+        cancellationReason: 'Venta confirmada',
+      },
+    });
+    await transaction.activity.create({
+      data: {
+        organizationId: context.user.organizationId,
+        userId: context.user.userId,
+        contactId: sale.contactId,
+        opportunityId: opportunity.id,
+        saleId,
+        type: ActivityType.STATUS_CHANGE,
+        title: 'Oportunidad marcada como Compró',
+        metadata: jsonObject({ from: opportunity.pipelineStage.name, to: purchasedStage.name }),
+        occurredAt,
+        requestId: context.metadata.requestId ?? null,
+      },
+    });
+    await transaction.contact.update({
+      where: {
+        organizationId_id: { organizationId: context.user.organizationId, id: sale.contactId },
+      },
+      data: { isCustomer: true, lastActivityAt: occurredAt },
+    });
+    await this.audit.recordWithClient(transaction, {
+      organizationId: context.user.organizationId,
+      userId: context.user.userId,
+      action: 'OPPORTUNITY_STAGE_CHANGED',
+      tableName: 'Opportunity',
+      recordId: opportunity.id,
+      previousValue: jsonObject({
+        stageId: opportunity.pipelineStageId,
+        stage: opportunity.pipelineStage.name,
+      }),
+      newValue: jsonObject({
+        stageId: purchasedStage.id,
+        stage: purchasedStage.name,
+        reason: 'Venta confirmada',
+      }),
+      ip: context.metadata.ipAddress,
+      requestId: context.metadata.requestId,
+    });
+    await this.enqueueEvent(transaction, 'OpportunityStageChanged', opportunity.id, context, {
+      fromStageId: opportunity.pipelineStageId,
+      toStageId: purchasedStage.id,
+    });
   }
 
   private async transition(
@@ -625,17 +1124,25 @@ export class SalesService {
             'La venta debe tener pagos netos en cero antes de cancelarse.',
           );
       }
+      const transitionAt = new Date();
+      if (target === SaleStatus.CONFIRMED) {
+        await this.consumeTrackedStock(transaction, id, context);
+      }
       await transaction.sale.update({
         where: { organizationId_id: { organizationId: context.user.organizationId, id } },
         data: {
           status: target,
           version: { increment: 1 },
-          ...(target === SaleStatus.CONFIRMED ? { soldAt: new Date() } : {}),
+          ...(target === SaleStatus.CONFIRMED ? { soldAt: transitionAt } : {}),
           ...(target === SaleStatus.CANCELLED
-            ? { cancelledAt: new Date(), cancellationReason: reason?.trim() || null }
+            ? { cancelledAt: transitionAt, cancellationReason: reason?.trim() || null }
             : {}),
         },
       });
+      if (target === SaleStatus.CONFIRMED) {
+        await this.ensureSubscriptionsForSale(transaction, id, context, transitionAt);
+        await this.markOpportunityPurchased(transaction, id, context, transitionAt);
+      }
       await transaction.activity.create({
         data: {
           organizationId: context.user.organizationId,

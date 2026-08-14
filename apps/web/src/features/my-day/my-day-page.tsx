@@ -19,6 +19,7 @@ const OPERATING_SECTIONS = [
   ['pendingActivations', 'Activaciones', '/activations', '✓'],
   ['renewalsToday', 'Renovaciones', '/renewals/today', '↻'],
   ['overdueRenewals', 'Renovaciones vencidas', '/renewals/overdue', '!'],
+  ['lowStock', 'Stock bajo', '/catalog', '▣'],
 ] as const;
 
 export function MyDayPage(): React.ReactElement {

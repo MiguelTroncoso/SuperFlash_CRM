@@ -70,7 +70,11 @@ function RecordList({
                   : text(record.status)}
           </p>
           <p className="mt-1 text-xs text-content-muted">
-            {text(record.dueAt) !== '—' ? text(record.dueAt) : text(record.createdAt)}
+            {text(record.dueAt) !== '—'
+              ? text(record.dueAt)
+              : text(record.currentPeriodEnd) !== '—'
+                ? `Vence ${text(record.currentPeriodEnd)}`
+                : text(record.createdAt)}
             {text(record.amount) !== '—'
               ? ` · ${text(record.currency)} ${text(record.amount)}`
               : ''}
@@ -184,6 +188,10 @@ export function Customer360Page({ contactId }: { readonly contactId: string }): 
                       const opportunity = item as JsonRecord;
                       const product = opportunity.product as JsonRecord | null | undefined;
                       const category = opportunity.category as JsonRecord | null | undefined;
+                      const pipelineStage = opportunity.pipelineStage as
+                        JsonRecord | null | undefined;
+                      const nextFollowUp = opportunity.nextFollowUp as
+                        JsonRecord | null | undefined;
                       return (
                         <div
                           className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-subtle p-3"
@@ -194,7 +202,11 @@ export function Customer360Page({ contactId }: { readonly contactId: string }): 
                               {text(opportunity.title)}
                             </p>
                             <p className="mt-1 text-xs text-content-secondary">
-                              {text(product?.name ?? category?.name)}
+                              {text(pipelineStage?.name)} · {text(product?.name ?? category?.name)}
+                            </p>
+                            <p className="mt-1 text-xs text-content-muted">
+                              Seguimiento: {text(nextFollowUp?.dueAt)} · Compra estimada:{' '}
+                              {text(opportunity.estimatedPurchaseAt)}
                             </p>
                           </div>
                           <Link href="/pipeline">
@@ -208,6 +220,17 @@ export function Customer360Page({ contactId }: { readonly contactId: string }): 
                   ) : (
                     <p className="text-sm text-content-muted">Sin oportunidades registradas.</p>
                   )}
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Suscripciones activas y próximas</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <RecordList
+                    empty="No hay suscripciones registradas."
+                    records={data.subscriptions}
+                  />
                 </CardContent>
               </Card>
             </>

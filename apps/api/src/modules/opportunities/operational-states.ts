@@ -1,18 +1,11 @@
 import { DateTime } from 'luxon';
 
 export const OPERATIONAL_STATE_DEFINITIONS = [
-  { key: 'NEW', label: 'Nuevo', followUpDays: 2 },
-  { key: 'MESSAGE_SENT', label: 'Mensaje enviado', followUpDays: 2 },
-  { key: 'CONVERSATION', label: 'Conversando', followUpDays: 2 },
-  { key: 'DEMO_SENT', label: 'Demo enviada', followUpDays: 1 },
-  { key: 'WAITING_CUSTOMER', label: 'Esperando respuesta', followUpDays: 4 },
-  { key: 'INTERESTED', label: 'Interesado', followUpDays: 1 },
-  { key: 'PAYMENT_PENDING', label: 'Debe pagar', followUpDays: 1 },
-  { key: 'PAID', label: 'Pagó', followUpDays: null },
-  { key: 'ACTIVATING', label: 'Activando', followUpDays: 1 },
-  { key: 'ACTIVE', label: 'Activo', followUpDays: null },
-  { key: 'LOST', label: 'Perdido', followUpDays: null },
-  { key: 'FUTURE_REACTIVATION', label: 'Reactivar', followUpDays: 30 },
+  { key: 'DEMO_SENT', label: 'Demo enviada', followUpDays: 1, manualFollowUp: false },
+  { key: 'NO_RESPONSE', label: 'No responde', followUpDays: 3, manualFollowUp: false },
+  { key: 'TALK_LATER', label: 'Hablar más adelante', followUpDays: null, manualFollowUp: true },
+  { key: 'WANTS_TO_BUY', label: 'Quiere comprar', followUpDays: null, manualFollowUp: true },
+  { key: 'PURCHASED', label: 'Compró', followUpDays: null, manualFollowUp: false },
 ] as const;
 
 export type OperationalStateKey = (typeof OPERATIONAL_STATE_DEFINITIONS)[number]['key'];
@@ -22,22 +15,17 @@ const STATE_BY_KEY = new Map(
 );
 
 const LEGACY_STATE_KEYS: Record<string, OperationalStateKey> = {
-  NUEVO_LEAD: 'NEW',
-  DEJO_EN_VISTO: 'WAITING_CUSTOMER',
+  NEW: 'NO_RESPONSE',
+  NEW_LEAD: 'NO_RESPONSE',
+  NUEVO_LEAD: 'NO_RESPONSE',
+  DEJO_EN_VISTO: 'NO_RESPONSE',
+  WAITING_CUSTOMER: 'NO_RESPONSE',
   DEMO_ENTREGADA: 'DEMO_SENT',
-  DEBE_GASTAR_CREDITOS: 'CONVERSATION',
-  DEBE_JUNTAR_DINERO: 'PAYMENT_PENDING',
-  POSIBLE_COMPRADOR: 'INTERESTED',
-  COMPRO: 'PAID',
-  NO_CONCRETADO: 'LOST',
-  NEW_LEAD: 'NEW',
-  LEFT_ON_READ: 'WAITING_CUSTOMER',
+  LEFT_ON_READ: 'NO_RESPONSE',
   DEMO_DELIVERED: 'DEMO_SENT',
-  AWAITING_CREDIT_USAGE: 'CONVERSATION',
-  AWAITING_MONEY: 'PAYMENT_PENDING',
-  POTENTIAL_BUYER: 'INTERESTED',
-  WON: 'PAID',
-  LOST: 'LOST',
+  COMPRO: 'PURCHASED',
+  PAID: 'PURCHASED',
+  WON: 'PURCHASED',
 };
 
 export function operationalStateKey(
@@ -65,8 +53,31 @@ export function operationalStateLabel(
 }
 
 export function followUpDaysForState(systemKey: string | null | undefined): number | null {
+  const normalized = systemKey
+    ?.normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '_');
+  // Preserve the historical SLA for legacy stages while the new visible
+  // NO_RESPONSE state uses the Sprint 34 rule of three days.
+  if (
+    normalized === 'LEFT_ON_READ' ||
+    normalized === 'DEJO_EN_VISTO' ||
+    normalized === 'WAITING_CUSTOMER'
+  )
+    return 4;
   const key = operationalStateKey(systemKey);
   return key ? (STATE_BY_KEY.get(key)?.followUpDays ?? null) : null;
+}
+
+export function stateRequiresManualFollowUp(systemKey: string | null | undefined): boolean {
+  const key = operationalStateKey(systemKey);
+  return key ? (STATE_BY_KEY.get(key)?.manualFollowUp ?? false) : false;
+}
+
+export function isPurchasedState(systemKey: string | null | undefined): boolean {
+  return operationalStateKey(systemKey) === 'PURCHASED';
 }
 
 export function suggestedFollowUpAt(

@@ -17,26 +17,25 @@ import { api, queryString } from '@/lib/api-client';
 import type { PipelineResponse, PipelineStage } from '@/lib/types';
 
 const OPERATIONAL_STAGE_NAMES: Record<string, string> = {
-  NEW: 'Nuevo',
-  NEW_LEAD: 'Nuevo',
-  MESSAGE_SENT: 'Mensaje enviado',
-  CONVERSATION: 'Conversando',
-  AWAITING_CREDIT_USAGE: 'Conversando',
-  WAITING_CUSTOMER: 'Esperando respuesta',
-  LEFT_ON_READ: 'Esperando respuesta',
   DEMO_SENT: 'Demo enviada',
+  NO_RESPONSE: 'No responde',
+  TALK_LATER: 'Hablar más adelante',
+  WANTS_TO_BUY: 'Quiere comprar',
+  PURCHASED: 'Compró',
+  NEW: 'No responde',
+  NEW_LEAD: 'No responde',
+  NUEVO_LEAD: 'No responde',
+  LEFT_ON_READ: 'No responde',
+  DEJO_EN_VISTO: 'No responde',
+  WAITING_CUSTOMER: 'No responde',
   DEMO_DELIVERED: 'Demo enviada',
-  INTERESTED: 'Interesado',
-  POTENTIAL_BUYER: 'Interesado',
-  PAYMENT_PENDING: 'Debe pagar',
-  AWAITING_MONEY: 'Debe pagar',
-  PAID: 'Pagó',
-  WON: 'Pagó',
-  ACTIVATING: 'Activando',
-  ACTIVE: 'Activo',
-  LOST: 'Perdido',
-  FUTURE_REACTIVATION: 'Reactivar',
+  DEMO_ENTREGADA: 'Demo enviada',
+  COMPRO: 'Compró',
+  PAID: 'Compró',
+  WON: 'Compró',
 };
+
+const VISIBLE_STAGE_KEYS = new Set(Object.keys(OPERATIONAL_STAGE_NAMES));
 
 function operationalStageName(stage: PipelineStage): string {
   return (stage.systemKey && OPERATIONAL_STAGE_NAMES[stage.systemKey]) || stage.name;
@@ -44,6 +43,12 @@ function operationalStageName(stage: PipelineStage): string {
 
 function date(value: string | null | undefined): string {
   return value ? new Date(value).toLocaleDateString('es-CL') : '—';
+}
+
+function isoDateTime(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) throw new Error('La fecha ingresada no es válida.');
+  return parsed.toISOString();
 }
 
 export function PipelinePage(): React.ReactElement {
@@ -56,11 +61,26 @@ export function PipelinePage(): React.ReactElement {
     queryFn: () => api.getPipeline(queryString({ search, limit: 50 })),
   });
   const move = useMutation({
-    mutationFn: ({ opportunityId, stageId }: { opportunityId: string; stageId: string }) =>
-      api.moveOpportunity(opportunityId, {
-        pipelineStageId: stageId,
-        reason: 'Movimiento desde Kanban',
-      }),
+    mutationFn: ({ opportunityId, stageId }: { opportunityId: string; stageId: string }) => {
+      const stage = pipeline.data?.stages.find((item) => item.id === stageId);
+      const body: {
+        pipelineStageId: string;
+        reason: string;
+        nextFollowUpAt?: string;
+        estimatedPurchaseAt?: string;
+      } = { pipelineStageId: stageId, reason: 'Movimiento desde Kanban' };
+      if (stage?.systemKey === 'TALK_LATER' || stage?.systemKey === 'WANTS_TO_BUY') {
+        const followUp = window.prompt('Fecha y hora del seguimiento (YYYY-MM-DDTHH:mm):');
+        if (!followUp) throw new Error('Este estado requiere una fecha de seguimiento.');
+        body.nextFollowUpAt = isoDateTime(followUp);
+        if (stage.systemKey === 'WANTS_TO_BUY') {
+          const purchase = window.prompt('Fecha estimada de compra (YYYY-MM-DDTHH:mm):');
+          if (!purchase) throw new Error('Quiere comprar requiere fecha estimada de compra.');
+          body.estimatedPurchaseAt = isoDateTime(purchase);
+        }
+      }
+      return api.moveOpportunity(opportunityId, body);
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['pipeline'] });
       toast({
@@ -76,30 +96,33 @@ export function PipelinePage(): React.ReactElement {
   });
   const columns = useMemo(
     () =>
-      (pipeline.data?.stages ?? []).map((stage) => ({
-        id: stage.id,
-        color: stage.color,
-        items: stage.opportunities.map((opportunity) => ({
-          id: opportunity.id,
-          title: opportunity.contact.displayName ?? opportunity.contact.phone ?? 'Lead sin nombre',
-          subtitle: opportunity.contact.country ?? 'País no informado',
-          amount: null,
-          status: operationalStageName(opportunity.pipelineStage),
-          stageName: operationalStageName(opportunity.pipelineStage),
-          category: opportunity.category,
-          product: opportunity.product,
-          lastStageChangedAt: opportunity.lastStageChangedAt,
-          nextFollowUp: opportunity.nextFollowUp,
+      (pipeline.data?.stages ?? [])
+        .filter((stage) => VISIBLE_STAGE_KEYS.has(stage.systemKey ?? ''))
+        .map((stage) => ({
+          id: stage.id,
+          color: stage.color,
+          items: stage.opportunities.map((opportunity) => ({
+            id: opportunity.id,
+            title:
+              opportunity.contact.displayName ?? opportunity.contact.phone ?? 'Lead sin nombre',
+            subtitle: opportunity.contact.country ?? 'País no informado',
+            amount: null,
+            status: operationalStageName(opportunity.pipelineStage),
+            stageName: operationalStageName(opportunity.pipelineStage),
+            category: opportunity.category,
+            product: opportunity.product,
+            lastStageChangedAt: opportunity.lastStageChangedAt,
+            nextFollowUp: opportunity.nextFollowUp,
+            estimatedPurchaseAt: opportunity.estimatedPurchaseAt,
+          })),
+          title: operationalStageName(stage),
         })),
-        title: operationalStageName(stage),
-      })),
     [pipeline.data],
   );
   const total =
-    (pipeline.data as PipelineResponse | undefined)?.stages.reduce(
-      (sum, stage) => sum + stage.opportunities.length,
-      0,
-    ) ?? 0;
+    (pipeline.data as PipelineResponse | undefined)?.stages
+      .filter((stage) => VISIBLE_STAGE_KEYS.has(stage.systemKey ?? ''))
+      .reduce((sum, stage) => sum + stage.opportunities.length, 0) ?? 0;
   return (
     <QueryState
       isError={pipeline.isError}
@@ -157,6 +180,11 @@ export function PipelinePage(): React.ReactElement {
                   <span>Movimiento: {date(item.lastStageChangedAt)}</span>
                   <span>Seguimiento: {date(item.nextFollowUp?.dueAt)}</span>
                 </div>
+                {item.estimatedPurchaseAt ? (
+                  <p className="mt-2 text-[11px] text-content-muted">
+                    Compra estimada: {date(item.estimatedPurchaseAt)}
+                  </p>
+                ) : null}
               </>
             )}
           />

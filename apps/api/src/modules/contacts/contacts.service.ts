@@ -38,7 +38,12 @@ import { CreateLeadDto } from './dto/create-lead.dto';
 import { ContactSortBy, ListContactsQueryDto } from './dto/list-contacts-query.dto';
 import { UpdateContactDto } from './dto/update-contact.dto';
 import { PhoneNormalizerService } from './phone/phone-normalizer.service';
-import { suggestedFollowUpAt } from '../opportunities/operational-states';
+import {
+  isPurchasedState,
+  operationalStateKey,
+  stateRequiresManualFollowUp,
+  suggestedFollowUpAt,
+} from '../opportunities/operational-states';
 
 interface PublicTag {
   id: string;
@@ -393,6 +398,17 @@ export class ContactsService {
         'El próximo seguimiento debe estar en el futuro.',
       );
     }
+    const estimatedPurchaseAt = dto.estimatedPurchaseAt ? new Date(dto.estimatedPurchaseAt) : null;
+    if (
+      estimatedPurchaseAt &&
+      (Number.isNaN(estimatedPurchaseAt.getTime()) || estimatedPurchaseAt <= now)
+    ) {
+      throw contactException(
+        HttpStatus.BAD_REQUEST,
+        CONTACT_ERROR_CODES.ESTIMATED_PURCHASE_REQUIRED,
+        'La fecha estimada de compra debe estar en el futuro.',
+      );
+    }
     this.assertLeadPermission(context.user, 'marketing.attribution.manage');
 
     try {
@@ -631,6 +647,11 @@ export class ContactsService {
             CONTACT_ERROR_CODES.INITIAL_STAGE_NOT_FOUND,
             'No existe una etapa inicial activa.',
           );
+        this.assertLeadStateRequirements(
+          stage.systemKey ?? stage.name,
+          manualFollowUpAt,
+          estimatedPurchaseAt,
+        );
         const automaticFollowUpAt = manualFollowUpAt
           ? null
           : suggestedFollowUpAt(
@@ -638,7 +659,9 @@ export class ContactsService {
               this.configuration.defaultTimezone,
               now,
             );
-        const followUpAt = manualFollowUpAt ?? automaticFollowUpAt;
+        const followUpAt = isPurchasedState(stage.systemKey ?? stage.name)
+          ? null
+          : (manualFollowUpAt ?? automaticFollowUpAt);
         const autoSuggested = Boolean(automaticFollowUpAt);
         if (followUpAt) this.assertLeadPermission(context.user, 'followups.create');
         const title = buildInitialOpportunityTitle(
@@ -659,6 +682,7 @@ export class ContactsService {
             notes: values.notes,
             priority: dto.priority ?? 'NORMAL',
             probability: dto.probability ?? 50,
+            estimatedPurchaseAt,
             lastStageChangedAt: now,
           },
           select: { id: true, title: true, userId: true },
@@ -837,6 +861,7 @@ export class ContactsService {
           autoSuggested,
           state: stage.systemKey,
           nextFollowUpAt: followUpAt,
+          estimatedPurchaseAt,
         };
       });
       return result;
@@ -1449,6 +1474,30 @@ export class ContactsService {
       source: values.source,
       notes: values.notes,
     };
+  }
+
+  private assertLeadStateRequirements(
+    systemKey: string,
+    manualFollowUpAt: Date | null,
+    estimatedPurchaseAt: Date | null,
+  ): void {
+    const key = operationalStateKey(systemKey);
+    if (stateRequiresManualFollowUp(systemKey) && !manualFollowUpAt) {
+      throw contactException(
+        HttpStatus.BAD_REQUEST,
+        CONTACT_ERROR_CODES.FOLLOW_UP_REQUIRED,
+        key === 'WANTS_TO_BUY'
+          ? 'Quiere comprar requiere una fecha de seguimiento manual.'
+          : 'Hablar más adelante requiere una fecha de seguimiento manual.',
+      );
+    }
+    if (key === 'WANTS_TO_BUY' && !estimatedPurchaseAt) {
+      throw contactException(
+        HttpStatus.BAD_REQUEST,
+        CONTACT_ERROR_CODES.ESTIMATED_PURCHASE_REQUIRED,
+        'Quiere comprar requiere una fecha estimada de compra.',
+      );
+    }
   }
 
   private async mapDatabaseError(

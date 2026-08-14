@@ -194,11 +194,20 @@ export const api = {
   createPipelineStage: (body: JsonRecord) =>
     request<PipelineStage>('/pipeline/stages', { method: 'POST', ...jsonBody(body) }),
   getPipelineSummary: (query = '') => request<JsonRecord>(`/pipeline/summary${query}`),
-  moveOpportunity: (id: string, body: { pipelineStageId: string; reason?: string }) =>
-    request<Opportunity>(`/opportunities/${id}/move`, { method: 'POST', ...jsonBody(body) }),
+  moveOpportunity: (
+    id: string,
+    body: {
+      pipelineStageId: string;
+      reason?: string;
+      nextFollowUpAt?: string;
+      estimatedPurchaseAt?: string;
+    },
+  ) => request<Opportunity>(`/opportunities/${id}/move`, { method: 'POST', ...jsonBody(body) }),
   getSales: (query = '') => request<Paginated<Sale>>(`/sales${query}`),
   getSale: (id: string) => request<Sale>(`/sales/${id}`),
   createSale: (body: JsonRecord) => request<Sale>('/sales', { method: 'POST', ...jsonBody(body) }),
+  convertOpportunity: (opportunityId: string) =>
+    request<Sale>(`/sales/from-opportunity/${opportunityId}`, { method: 'POST' }),
   confirmSale: (id: string) => request<Sale>(`/sales/${id}/confirm`, { method: 'POST' }),
   createPayment: (saleId: string, body: JsonRecord) =>
     request<JsonRecord>(`/sales/${saleId}/payments`, { method: 'POST', ...jsonBody(body) }),

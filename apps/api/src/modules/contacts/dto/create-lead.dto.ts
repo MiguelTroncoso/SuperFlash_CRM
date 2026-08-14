@@ -133,4 +133,9 @@ export class CreateLeadDto {
   @IsOptional()
   @IsISO8601()
   nextFollowUpAt?: string | null;
+
+  @ApiPropertyOptional({ format: 'date-time', description: 'Obligatoria para Quiere comprar.' })
+  @IsOptional()
+  @IsISO8601()
+  estimatedPurchaseAt?: string | null;
 }

@@ -82,6 +82,7 @@ export interface Opportunity {
   notes: string | null;
   expectedAmount: string | null;
   currency: string | null;
+  estimatedPurchaseAt: string | null;
   status: string;
   archivedAt: string | null;
   lastStageChangedAt: string | null;
@@ -144,6 +145,13 @@ export interface ProductOffer {
   requiresSubscription: boolean;
   allowsDemo: boolean;
   price: { amount?: string; currency?: string } | null;
+  stock: {
+    trackingEnabled: boolean;
+    quantity: number;
+    reserved: number;
+    available: number;
+    minimum: number;
+  };
   plans: JsonRecord[];
 }
 
@@ -240,6 +248,7 @@ export interface StockMovement {
   quantityBefore: number;
   quantityDelta: number;
   quantityAfter: number;
+  movementType: string;
   reason: string;
   createdAt: string;
   changedBy: Person | null;
