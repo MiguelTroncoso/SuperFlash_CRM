@@ -56,6 +56,36 @@ export class RenewalsService {
         subscriptionId,
         context.user.organizationId,
       );
+      const pendingRenewal = await transaction.renewal.findFirst({
+        where: {
+          organizationId: context.user.organizationId,
+          subscriptionId: subscription.id,
+          status: RenewalStatus.PENDING,
+          deletedAt: null,
+        },
+        orderBy: { periodStart: 'asc' },
+        select: { id: true },
+      });
+      if (pendingRenewal) {
+        if (!dto.dueAt) return { id: pendingRenewal.id, created: false };
+        const requestedDueAt = new Date(dto.dueAt);
+        if (Number.isNaN(requestedDueAt.getTime()))
+          throw commercialException(
+            HttpStatus.BAD_REQUEST,
+            COMMERCIAL_ERROR_CODES.RENEWAL_TOO_EARLY,
+            'La fecha de renovación no es válida.',
+          );
+        await transaction.renewal.update({
+          where: {
+            organizationId_id: {
+              organizationId: context.user.organizationId,
+              id: pendingRenewal.id,
+            },
+          },
+          data: { dueAt: requestedDueAt },
+        });
+        return { id: pendingRenewal.id, created: false };
+      }
       if (
         subscription.status === SubscriptionStatus.CANCELLED ||
         subscription.status === SubscriptionStatus.EXPIRED

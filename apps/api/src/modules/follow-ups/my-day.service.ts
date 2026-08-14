@@ -269,6 +269,7 @@ export class MyDayService {
       paymentPromises,
       overdueRenewals,
       vipRenewals,
+      lowStock,
     ] = await Promise.all([
       this.prisma.fulfillment.findMany({
         where: { ...base, status: { in: ['PENDING', 'ASSIGNED'] } },
@@ -437,6 +438,7 @@ export class MyDayService {
           subscription: { select: { contact: { select: { firstName: true, lastName: true } } } },
         },
       }),
+      this.lowStockProducts(user.organizationId, limit),
     ]);
     return {
       pendingFulfillments: this.operationSection(
@@ -523,7 +525,35 @@ export class MyDayService {
       paymentPromises: this.renewalSection(paymentPromises, limit),
       overdueRenewals: this.renewalSection(overdueRenewals, limit),
       vipRenewals: this.renewalSection(vipRenewals, limit),
+      lowStock: this.operationSection(
+        lowStock.map((item) => ({
+          id: item.id,
+          status: 'LOW_STOCK',
+          reference: item.name,
+          providerId: null,
+          dueAt: null,
+          detail: `${item.stockQuantity}/${item.stockMinimum}`,
+        })),
+        lowStock.length,
+        limit,
+      ),
     };
+  }
+
+  private lowStockProducts(
+    organizationId: string,
+    limit: number,
+  ): Promise<Array<{ id: string; name: string; stockQuantity: number; stockMinimum: number }>> {
+    return this.prisma.$queryRaw`
+      SELECT "id", "name", "stockQuantity", "stockMinimum"
+      FROM "Product"
+      WHERE "organizationId" = ${organizationId}::uuid
+        AND "deletedAt" IS NULL
+        AND "stockTrackingEnabled" = TRUE
+        AND "stockQuantity" <= "stockMinimum"
+      ORDER BY "stockQuantity" ASC, "name" ASC
+      LIMIT ${limit}
+    `;
   }
 
   private renewalSection(
@@ -584,6 +614,7 @@ export class MyDayService {
       paymentPromises,
       overdueRenewals,
       vipRenewals,
+      lowStock,
     ] = await Promise.all([
       this.prisma.fulfillment.count({
         where: { ...fulfillmentBase, status: { in: ['PENDING', 'ASSIGNED'] } },
@@ -654,6 +685,7 @@ export class MyDayService {
           status: { notIn: [RenewalStatus.PAID, RenewalStatus.CANCELLED] },
         },
       }),
+      this.lowStockCount(user.organizationId),
     ]);
     return {
       pendingFulfillments,
@@ -668,7 +700,20 @@ export class MyDayService {
       paymentPromises,
       overdueRenewals,
       vipRenewals,
+      lowStock,
     };
+  }
+
+  private async lowStockCount(organizationId: string): Promise<number> {
+    const result = await this.prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*)::bigint AS count
+      FROM "Product"
+      WHERE "organizationId" = ${organizationId}::uuid
+        AND "deletedAt" IS NULL
+        AND "stockTrackingEnabled" = TRUE
+        AND "stockQuantity" <= "stockMinimum"
+    `;
+    return Number(result[0]?.count ?? 0);
   }
 
   private operationSection(
@@ -845,6 +890,7 @@ export interface MyDayResponse {
     expiredTrials: MyDaySection<PublicOperationalItem>;
     credentialsToDeliver: MyDaySection<PublicOperationalItem>;
     provisioningRetries: MyDaySection<PublicOperationalItem>;
+    lowStock: MyDaySection<PublicOperationalItem>;
   };
 }
 
@@ -865,6 +911,7 @@ export interface MyDaySummary {
   expiredTrials: number;
   credentialsToDeliver: number;
   provisioningRetries: number;
+  lowStock: number;
 }
 
 export interface PublicOperationalItem {
@@ -889,6 +936,7 @@ export type OperationalSections = {
   paymentPromises: MyDaySection<PublicOperationalItem>;
   overdueRenewals: MyDaySection<PublicOperationalItem>;
   vipRenewals: MyDaySection<PublicOperationalItem>;
+  lowStock: MyDaySection<PublicOperationalItem>;
 };
 
 export type OperationalSummary = {
@@ -904,4 +952,5 @@ export type OperationalSummary = {
   paymentPromises: number;
   overdueRenewals: number;
   vipRenewals: number;
+  lowStock: number;
 };

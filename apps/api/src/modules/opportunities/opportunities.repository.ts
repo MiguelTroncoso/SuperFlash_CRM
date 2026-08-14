@@ -73,6 +73,7 @@ const mutationSelect = Prisma.validator<Prisma.OpportunitySelect>()({
   notes: true,
   expectedAmount: true,
   currency: true,
+  estimatedPurchaseAt: true,
   probability: true,
   priority: true,
   closedAt: true,

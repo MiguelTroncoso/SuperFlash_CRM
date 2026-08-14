@@ -151,60 +151,30 @@ const expenseCategories = [
 
 const pipelineStages = [
   {
-    name: 'Nuevo Lead',
-    systemKey: 'NEW_LEAD',
-    color: '#64748B',
-    category: PipelineStageCategory.OPEN,
-  },
-  {
-    name: 'Dejó en visto',
-    systemKey: 'LEFT_ON_READ',
-    color: '#94A3B8',
-    category: PipelineStageCategory.OPEN,
-  },
-  {
-    name: 'Demo entregada',
-    systemKey: 'DEMO_DELIVERED',
+    name: 'Demo enviada',
+    systemKey: 'DEMO_SENT',
     color: '#3B82F6',
     category: PipelineStageCategory.OPEN,
   },
   {
-    name: 'Debe gastar créditos',
-    systemKey: 'AWAITING_CREDIT_USAGE',
+    name: 'No responde',
+    systemKey: 'NO_RESPONSE',
+    color: '#94A3B8',
+    category: PipelineStageCategory.OPEN,
+  },
+  {
+    name: 'Hablar más adelante',
+    systemKey: 'TALK_LATER',
     color: '#8B5CF6',
     category: PipelineStageCategory.OPEN,
   },
   {
-    name: 'Debe juntar dinero',
-    systemKey: 'AWAITING_MONEY',
-    color: '#F59E0B',
-    category: PipelineStageCategory.OPEN,
-  },
-  {
-    name: 'Posible comprador',
-    systemKey: 'POTENTIAL_BUYER',
+    name: 'Quiere comprar',
+    systemKey: 'WANTS_TO_BUY',
     color: '#F97316',
     category: PipelineStageCategory.OPEN,
   },
-  {
-    name: 'Compró',
-    systemKey: 'WON',
-    color: '#22C55E',
-    category: PipelineStageCategory.WON,
-  },
-  {
-    name: 'No concretado',
-    systemKey: 'LOST',
-    color: '#EF4444',
-    category: PipelineStageCategory.LOST,
-  },
-] as const;
-
-const operationalPipelineStages = [
-  { name: 'Mensaje enviado', systemKey: 'MESSAGE_SENT', color: '#0EA5E9' },
-  { name: 'Activando', systemKey: 'ACTIVATING', color: '#14B8A6' },
-  { name: 'Activo', systemKey: 'ACTIVE', color: '#22C55E' },
-  { name: 'Reactivar', systemKey: 'FUTURE_REACTIVATION', color: '#A855F7' },
+  { name: 'Compró', systemKey: 'PURCHASED', color: '#22C55E', category: PipelineStageCategory.WON },
 ] as const;
 
 const salesPermissionKeys = [
@@ -413,13 +383,6 @@ async function synchronizePipelineStages(transaction: Prisma.TransactionClient):
   for (const organization of organizations) {
     for (const stage of pipelineStages) {
       await reconcilePipelineStage(transaction, organization.id, stage);
-    }
-
-    for (const stage of operationalPipelineStages) {
-      await reconcilePipelineStage(transaction, organization.id, {
-        ...stage,
-        category: PipelineStageCategory.OPEN,
-      });
     }
   }
 }

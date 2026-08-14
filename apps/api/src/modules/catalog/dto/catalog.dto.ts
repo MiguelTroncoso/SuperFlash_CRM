@@ -4,6 +4,7 @@ import {
   FulfillmentMode,
   PriceBookStatus,
   ProductStatus,
+  ProductStockMovementType,
   ProductType,
 } from '@prisma/client';
 import { Transform } from 'class-transformer';
@@ -384,6 +385,10 @@ export class AdjustStockDto {
   @IsString()
   @Length(3, 500)
   reason!: string;
+
+  @IsOptional()
+  @IsEnum(ProductStockMovementType)
+  movementType?: ProductStockMovementType;
 }
 
 export class StockMovementListQueryDto {

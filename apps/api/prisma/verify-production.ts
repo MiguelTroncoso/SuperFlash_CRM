@@ -3,18 +3,11 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 const requiredPipelineKeys = [
-  'NEW_LEAD',
-  'LEFT_ON_READ',
-  'DEMO_DELIVERED',
-  'AWAITING_CREDIT_USAGE',
-  'AWAITING_MONEY',
-  'POTENTIAL_BUYER',
-  'WON',
-  'LOST',
-  'MESSAGE_SENT',
-  'ACTIVATING',
-  'ACTIVE',
-  'FUTURE_REACTIVATION',
+  'DEMO_SENT',
+  'NO_RESPONSE',
+  'TALK_LATER',
+  'WANTS_TO_BUY',
+  'PURCHASED',
 ] as const;
 
 function assert(condition: boolean, message: string): void {

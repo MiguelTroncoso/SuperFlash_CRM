@@ -3,6 +3,7 @@ import { OpportunityPriority } from '@prisma/client';
 import { Transform } from 'class-transformer';
 import {
   IsEnum,
+  IsISO8601,
   IsInt,
   IsOptional,
   IsString,
@@ -65,6 +66,16 @@ export class CreateOpportunityDto {
   @IsString()
   @Matches(DECIMAL_AMOUNT)
   expectedAmount?: string | null;
+
+  @ApiPropertyOptional({ format: 'date-time', nullable: true })
+  @IsOptional()
+  @IsISO8601()
+  estimatedPurchaseAt?: string | null;
+
+  @ApiPropertyOptional({ format: 'date-time', nullable: true })
+  @IsOptional()
+  @IsISO8601()
+  nextFollowUpAt?: string | null;
 
   @ApiPropertyOptional({ example: 'CLP', nullable: true })
   @IsOptional()

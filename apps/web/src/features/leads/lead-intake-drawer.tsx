@@ -23,28 +23,56 @@ interface LeadFormValues {
   pipelineStageId: string;
   note: string;
   nextFollowUpAt: string;
+  estimatedPurchaseAt: string;
 }
 
 const STAGE_LABELS: Record<string, string> = {
-  NEW: 'Nuevo',
-  NEW_LEAD: 'Nuevo',
+  NEW: 'No responde',
+  NEW_LEAD: 'No responde',
   MESSAGE_SENT: 'Mensaje enviado',
   CONVERSATION: 'Conversando',
   AWAITING_CREDIT_USAGE: 'Conversando',
-  WAITING_CUSTOMER: 'Esperando respuesta',
-  LEFT_ON_READ: 'Esperando respuesta',
+  WAITING_CUSTOMER: 'No responde',
+  LEFT_ON_READ: 'No responde',
   DEMO_SENT: 'Demo enviada',
   DEMO_DELIVERED: 'Demo enviada',
-  INTERESTED: 'Interesado',
-  POTENTIAL_BUYER: 'Interesado',
-  PAYMENT_PENDING: 'Debe pagar',
-  AWAITING_MONEY: 'Debe pagar',
-  PAID: 'Pagó',
-  WON: 'Pagó',
-  ACTIVATING: 'Activando',
-  ACTIVE: 'Activo',
-  LOST: 'Perdido',
-  FUTURE_REACTIVATION: 'Reactivar',
+  NO_RESPONSE: 'No responde',
+  TALK_LATER: 'Hablar más adelante',
+  WANTS_TO_BUY: 'Quiere comprar',
+  PURCHASED: 'Compró',
+};
+
+const VISIBLE_STAGE_KEYS = new Set([
+  'DEMO_SENT',
+  'NO_RESPONSE',
+  'TALK_LATER',
+  'WANTS_TO_BUY',
+  'PURCHASED',
+  'NEW',
+  'NEW_LEAD',
+  'NUEVO_LEAD',
+  'DEMO_DELIVERED',
+  'DEMO_ENTREGADA',
+  'LEFT_ON_READ',
+  'DEJO_EN_VISTO',
+  'WAITING_CUSTOMER',
+  'COMPRO',
+  'PAID',
+  'WON',
+]);
+
+const CANONICAL_STAGE_KEYS: Record<string, string> = {
+  NEW: 'NO_RESPONSE',
+  NEW_LEAD: 'NO_RESPONSE',
+  NUEVO_LEAD: 'NO_RESPONSE',
+  WAITING_CUSTOMER: 'NO_RESPONSE',
+  LEFT_ON_READ: 'NO_RESPONSE',
+  DEJO_EN_VISTO: 'NO_RESPONSE',
+  DEMO_DELIVERED: 'DEMO_SENT',
+  DEMO_ENTREGADA: 'DEMO_SENT',
+  COMPRO: 'PURCHASED',
+  PAID: 'PURCHASED',
+  WON: 'PURCHASED',
 };
 
 function Field({
@@ -69,17 +97,6 @@ function stageLabel(stage: PipelineStage): string {
     .toUpperCase()
     .replace(/\s+/g, '_');
   return STAGE_LABELS[stage.systemKey ?? ''] ?? STAGE_LABELS[normalizedName] ?? stage.name;
-}
-
-function toOperationalSystemKey(value: string): string {
-  const key = value
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 70);
-  return `CUSTOM_${key || 'STATE'}`;
 }
 
 function suggestedDateTimeLocal(days: number | null): string {
@@ -108,6 +125,9 @@ function toBody(values: LeadFormValues): JsonRecord {
     ...(optional(values.nextFollowUpAt)
       ? { nextFollowUpAt: new Date(values.nextFollowUpAt).toISOString() }
       : {}),
+    ...(optional(values.estimatedPurchaseAt)
+      ? { estimatedPurchaseAt: new Date(values.estimatedPurchaseAt).toISOString() }
+      : {}),
   };
 }
 
@@ -130,11 +150,11 @@ export function LeadIntakeDrawer({
       pipelineStageId: '',
       note: '',
       nextFollowUpAt: '',
+      estimatedPurchaseAt: '',
     },
   });
   const [categorySearch, setCategorySearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
-  const [stateSearch, setStateSearch] = useState('');
   const [newCategoryOpen, setNewCategoryOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [followUpAutomatic, setFollowUpAutomatic] = useState(true);
@@ -154,7 +174,11 @@ export function LeadIntakeDrawer({
     queryFn: () => api.getPipeline(queryString({ limit: 100 })),
   });
   const stages = (pipeline.data?.stages ?? []).filter((stage) => stage.active);
-  const selectedStage = stages.find((stage) => stage.id === pipelineStageId);
+  const stateStages = stages.filter((stage) => VISIBLE_STAGE_KEYS.has(stage.systemKey ?? ''));
+  const selectedStage = stateStages.find((stage) => stage.id === pipelineStageId);
+  const selectedStageKey = selectedStage
+    ? (CANONICAL_STAGE_KEYS[selectedStage.systemKey ?? ''] ?? selectedStage.systemKey)
+    : undefined;
   const selectedStageId = selectedStage?.id;
   const selectedStageDays = selectedStage?.followUpDays;
   const selectedCategory = (categories.data ?? []).find((item) => item.id === categoryId);
@@ -202,27 +226,14 @@ export function LeadIntakeDrawer({
         tone: 'error',
       }),
   });
-  const createState = useMutation({
-    mutationFn: (name: string) =>
-      api.createPipelineStage({
-        name,
-        systemKey: toOperationalSystemKey(name),
-        color: '#64748B',
-        category: 'OPEN',
-        order: stages.length + 1,
-      }),
-    onSuccess: (stage) => {
-      void queryClient.invalidateQueries({ queryKey: ['pipeline', 'lead-intake'] });
-      form.setValue('pipelineStageId', stage.id);
-      setStateSearch(stageLabel(stage));
-      toast({ title: 'Estado creado', tone: 'success' });
-    },
-    onError: (error: Error) =>
-      toast({ title: 'No fue posible crear el estado', description: error.message, tone: 'error' }),
-  });
   const create = useMutation({
     mutationFn: (values: LeadFormValues) => api.createLead(toBody(values)),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
+      const state = typeof result.state === 'string' ? result.state : null;
+      const opportunityId = typeof result.opportunityId === 'string' ? result.opportunityId : null;
+      if (state === 'PURCHASED' && opportunityId) {
+        await api.convertOpportunity(opportunityId);
+      }
       void queryClient.invalidateQueries({ queryKey: ['pipeline'] });
       void queryClient.invalidateQueries({ queryKey: ['contacts'] });
       void queryClient.invalidateQueries({ queryKey: ['customer-360'] });
@@ -230,7 +241,6 @@ export function LeadIntakeDrawer({
       form.reset();
       setCategorySearch('');
       setProductSearch('');
-      setStateSearch('');
       setFollowUpAutomatic(true);
       onClose();
       const reused = result.reusedContact ? ' Se reutilizó el contacto existente.' : '';
@@ -245,17 +255,23 @@ export function LeadIntakeDrawer({
   });
 
   useEffect(() => {
-    if (!pipelineStageId && stages[0]) {
-      form.setValue('pipelineStageId', stages[0].id);
-      setStateSearch(stageLabel(stages[0]));
+    if (!pipelineStageId && stateStages[0]) {
+      form.setValue('pipelineStageId', stateStages[0].id);
     }
-  }, [form, pipelineStageId, stages]);
+  }, [form, pipelineStageId, stateStages]);
 
   useEffect(() => {
-    if (!selectedStageId || !followUpAutomatic) return;
-    const days = selectedStageDays === undefined ? 2 : selectedStageDays;
-    form.setValue('nextFollowUpAt', suggestedDateTimeLocal(days));
-  }, [form, followUpAutomatic, selectedStageDays, selectedStageId]);
+    if (!selectedStageId) return;
+    const key = selectedStageKey;
+    if (key === 'DEMO_SENT' || key === 'NO_RESPONSE') {
+      setFollowUpAutomatic(true);
+      form.setValue('nextFollowUpAt', suggestedDateTimeLocal(selectedStageDays ?? null));
+      return;
+    }
+    setFollowUpAutomatic(false);
+    form.setValue('nextFollowUpAt', '');
+    if (key !== 'WANTS_TO_BUY') form.setValue('estimatedPurchaseAt', '');
+  }, [form, selectedStage, selectedStageDays, selectedStageId, selectedStageKey]);
 
   const categoryOptions = (categories.data ?? [])
     .filter((item) => item.active)
@@ -268,12 +284,6 @@ export function LeadIntakeDrawer({
         (!categoryId || item.category?.id === categoryId),
     )
     .map((item) => ({ id: item.id, label: item.name, secondary: item.sku ?? undefined }));
-  const stateOptions = stages.map((stage) => ({
-    id: stage.id,
-    label: stageLabel(stage),
-    secondary: stage.systemKey?.startsWith('CUSTOM_') ? 'Estado personalizado' : undefined,
-  }));
-
   return (
     <Drawer
       description="Registra el contacto y su oportunidad inicial sin perder trazabilidad."
@@ -305,23 +315,16 @@ export function LeadIntakeDrawer({
               ))}
             </Select>
           </Field>
-          <CreatableCombobox
-            createLabel="Crear estado"
-            emptyLabel="Sin estado seleccionado"
-            label="Estado comercial"
-            onCreate={(name) => {
-              createState.mutate(name);
-            }}
-            onSearch={setStateSearch}
-            onSelect={(option) => {
-              form.setValue('pipelineStageId', option?.id ?? '');
-              if (option) setStateSearch(option.label);
-            }}
-            options={stateOptions}
-            placeholder="Buscar estado..."
-            search={stateSearch}
-            selectedLabel={selectedStage ? stageLabel(selectedStage) : undefined}
-          />
+          <Field label="Estado comercial">
+            <Select {...form.register('pipelineStageId')}>
+              <option value="">Seleccionar estado</option>
+              {stateStages.map((stage) => (
+                <option key={stage.id} value={stage.id}>
+                  {stageLabel(stage)}
+                </option>
+              ))}
+            </Select>
+          </Field>
           <CreatableCombobox
             createLabel="Crear categoría"
             emptyLabel="Sin categoría"
@@ -385,17 +388,33 @@ export function LeadIntakeDrawer({
             search={productSearch}
             selectedLabel={selectedProduct?.name}
           />
-          <Field label="Próximo seguimiento">
-            <Input
-              type="datetime-local"
-              {...form.register('nextFollowUpAt', {
-                onChange: () => setFollowUpAutomatic(false),
-              })}
-            />
-            <span className="text-xs font-normal text-content-muted">
-              Se sugiere a las 10:00 en la zona horaria operativa; puedes cambiarlo manualmente.
-            </span>
-          </Field>
+          {selectedStageKey !== 'PURCHASED' ? (
+            <Field
+              label={
+                selectedStageKey === 'TALK_LATER' || selectedStageKey === 'WANTS_TO_BUY'
+                  ? 'Seguimiento manual *'
+                  : 'Próximo seguimiento'
+              }
+            >
+              <Input
+                required={!followUpAutomatic}
+                type="datetime-local"
+                {...form.register('nextFollowUpAt', {
+                  onChange: () => setFollowUpAutomatic(false),
+                })}
+              />
+              <span className="text-xs font-normal text-content-muted">
+                {followUpAutomatic
+                  ? 'Sugerido a las 10:00; puedes modificarlo.'
+                  : 'Selecciona la fecha y hora del próximo contacto.'}
+              </span>
+            </Field>
+          ) : null}
+          {selectedStageKey === 'WANTS_TO_BUY' ? (
+            <Field label="Fecha estimada de compra *">
+              <Input required type="datetime-local" {...form.register('estimatedPurchaseAt')} />
+            </Field>
+          ) : null}
         </div>
         <Field label="Nota inicial">
           <Textarea {...form.register('note')} placeholder="Contexto comercial del lead" />
@@ -409,11 +428,15 @@ export function LeadIntakeDrawer({
               create.isPending ||
               createCategory.isPending ||
               createProduct.isPending ||
-              createState.isPending
+              (selectedStageKey === 'PURCHASED' && !productId)
             }
             type="submit"
           >
-            {create.isPending ? 'Registrando…' : 'Registrar Lead'}
+            {create.isPending
+              ? 'Registrando…'
+              : selectedStageKey === 'PURCHASED'
+                ? 'Completar venta'
+                : 'Registrar Lead'}
           </Button>
         </div>
       </form>

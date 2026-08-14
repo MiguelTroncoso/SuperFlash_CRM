@@ -75,6 +75,9 @@ interface ProductFormValues {
   categoryId: string;
   type: string;
   fulfillmentMode: string;
+  stockTrackingEnabled: boolean;
+  stockQuantity: string;
+  stockMinimum: string;
 }
 
 function ProductForm({
@@ -103,6 +106,9 @@ function ProductForm({
       categoryId: '',
       type: 'OTHER',
       fulfillmentMode: 'MANUAL',
+      stockTrackingEnabled: false,
+      stockQuantity: '',
+      stockMinimum: '0',
     },
   });
   const [categorySearch, setCategorySearch] = useState('');
@@ -115,6 +121,9 @@ function ProductForm({
       categoryId: product?.category?.id ?? '',
       type: product?.type ?? 'OTHER',
       fulfillmentMode: product?.fulfillmentMode ?? 'MANUAL',
+      stockTrackingEnabled: product?.stock.trackingEnabled ?? false,
+      stockQuantity: product ? String(product.stock.quantity) : '',
+      stockMinimum: String(product?.stock.minimum ?? 0),
     });
     setCategorySearch(product?.category?.name ?? '');
   }, [form, product]);
@@ -141,6 +150,11 @@ function ProductForm({
       categoryId: categoryId || null,
       type: values.type,
       fulfillmentMode: values.fulfillmentMode,
+      stockTrackingEnabled: values.stockTrackingEnabled,
+      stockMinimum: Number(values.stockMinimum || 0),
+      ...(!product && values.stockQuantity.trim()
+        ? { stockQuantity: Number(values.stockQuantity) }
+        : {}),
     });
   };
   return (
@@ -188,6 +202,24 @@ function ProductForm({
             ))}
           </Select>
         </Field>
+        <div className="rounded-lg border border-border-subtle p-3">
+          <label className="flex items-center gap-2 text-sm font-semibold text-content-primary">
+            <input type="checkbox" {...form.register('stockTrackingEnabled')} /> Controlar stock
+          </label>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <Field label={product ? 'Stock actual' : 'Stock inicial'}>
+              <Input
+                disabled={Boolean(product)}
+                min={0}
+                type="number"
+                {...form.register('stockQuantity')}
+              />
+            </Field>
+            <Field label="Stock mínimo">
+              <Input min={0} type="number" {...form.register('stockMinimum')} />
+            </Field>
+          </div>
+        </div>
       </div>
       <Field label="Descripción">
         <Textarea {...form.register('description')} />
@@ -312,6 +344,24 @@ export function CatalogPage(): React.ReactElement {
         tone: 'error',
       }),
   });
+  const adjustStock = useMutation({
+    mutationFn: (input: { id: string; delta: number; reason: string }) =>
+      api.adjustProductStock(input.id, {
+        delta: input.delta,
+        reason: input.reason,
+        movementType: 'ADJUSTMENT',
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['catalog-products'] });
+      toast({ title: 'Stock actualizado', tone: 'success' });
+    },
+    onError: (error: Error) =>
+      toast({
+        title: 'No fue posible ajustar el stock',
+        description: error.message,
+        tone: 'error',
+      }),
+  });
   const saveCategory = useMutation({
     mutationFn: (input: { id?: string; body: JsonRecord }) =>
       input.id ? api.updateCategory(input.id, input.body) : api.createCategory(input.body),
@@ -411,6 +461,12 @@ export function CatalogPage(): React.ReactElement {
                     <p className="mt-3 text-xs text-content-muted">
                       {item.sku ?? 'Sin SKU'} · {item.type}
                     </p>
+                    <p className="mt-2 text-sm text-content-secondary">
+                      Stock: {item.stock.quantity} · Mínimo: {item.stock.minimum}
+                      {item.stock.trackingEnabled && item.stock.quantity <= item.stock.minimum
+                        ? ' · Bajo'
+                        : ''}
+                    </p>
                     <div className="mt-4 flex flex-wrap gap-2">
                       <PermissionGate permission="catalog.update">
                         <Button
@@ -444,6 +500,27 @@ export function CatalogPage(): React.ReactElement {
                             Activar
                           </Button>
                         )}
+                        <Button
+                          onClick={() => {
+                            const rawDelta = window.prompt(
+                              'Variación de stock (+ entrada / - salida)',
+                              '1',
+                            );
+                            if (!rawDelta) return;
+                            const delta = Number(rawDelta);
+                            if (!Number.isInteger(delta) || delta === 0) return;
+                            const reason = window.prompt(
+                              'Motivo del movimiento',
+                              'Ajuste operativo',
+                            );
+                            if (reason?.trim())
+                              adjustStock.mutate({ id: item.id, delta, reason: reason.trim() });
+                          }}
+                          size="sm"
+                          variant="outline"
+                        >
+                          Ajustar stock
+                        </Button>
                       </PermissionGate>
                       <PermissionGate permission="catalog.delete">
                         <Button

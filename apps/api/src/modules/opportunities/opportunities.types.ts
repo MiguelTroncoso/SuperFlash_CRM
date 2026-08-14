@@ -43,6 +43,7 @@ export interface PublicOpportunity {
   notes: string | null;
   expectedAmount: string | null;
   currency: string | null;
+  estimatedPurchaseAt: string | null;
   probability: number;
   priority: OpportunityPriority;
   status: OpportunityStatus;

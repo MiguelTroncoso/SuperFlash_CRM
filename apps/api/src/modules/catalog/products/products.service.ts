@@ -128,6 +128,20 @@ export class ProductsService {
           },
           include: productInclude,
         });
+        if (created.stockQuantity > 0) {
+          await transaction.productStockMovement.create({
+            data: {
+              organizationId,
+              productId: created.id,
+              userId: context.user.userId,
+              quantityBefore: 0,
+              quantityDelta: created.stockQuantity,
+              quantityAfter: created.stockQuantity,
+              movementType: 'ENTRY',
+              reason: 'Stock inicial',
+            },
+          });
+        }
         await this.audit.recordWithClient(transaction, {
           organizationId,
           userId: context.user.userId,
@@ -414,6 +428,8 @@ export class ProductsService {
           quantityBefore: current.stockQuantity,
           quantityDelta: dto.delta,
           quantityAfter,
+          movementType:
+            dto.movementType ?? (dto.delta > 0 ? 'ENTRY' : dto.delta < 0 ? 'EXIT' : 'ADJUSTMENT'),
           reason: dto.reason.trim(),
         },
       });

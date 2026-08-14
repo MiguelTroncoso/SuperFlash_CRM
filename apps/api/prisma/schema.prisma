@@ -395,6 +395,13 @@ enum FulfillmentMode {
   OTHER
 }
 
+enum ProductStockMovementType {
+  ENTRY
+  EXIT
+  ADJUSTMENT
+  RETURN
+}
+
 enum CustomerSegment {
   END_CUSTOMER
   RESELLER
@@ -808,30 +815,31 @@ model ContactTag {
 }
 
 model Opportunity {
-  id                 String              @id @default(uuid()) @db.Uuid
-  organizationId     String              @db.Uuid
-  contactId          String              @db.Uuid
-  pipelineStageId    String              @db.Uuid
-  campaignId         String?             @db.Uuid
-  categoryId         String?             @db.Uuid
-  productId          String?             @db.Uuid
-  userId             String?             @db.Uuid
-  title              String
-  notes              String?
-  expectedAmount     Decimal?            @db.Decimal(14, 2)
-  currency           String?
-  probability        Int                 @default(50)
-  priority           OpportunityPriority @default(NORMAL)
-  closedAt           DateTime?
-  archivedAt         DateTime?
-  archiveReason      String?
-  wonAt              DateTime?
-  lastStageChangedAt DateTime?
-  lostAt             DateTime?
-  lostReason         String?
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  deletedAt          DateTime?
+  id                  String              @id @default(uuid()) @db.Uuid
+  organizationId      String              @db.Uuid
+  contactId           String              @db.Uuid
+  pipelineStageId     String              @db.Uuid
+  campaignId          String?             @db.Uuid
+  categoryId          String?             @db.Uuid
+  productId           String?             @db.Uuid
+  userId              String?             @db.Uuid
+  title               String
+  notes               String?
+  expectedAmount      Decimal?            @db.Decimal(14, 2)
+  currency            String?
+  estimatedPurchaseAt DateTime?
+  probability         Int                 @default(50)
+  priority            OpportunityPriority @default(NORMAL)
+  closedAt            DateTime?
+  archivedAt          DateTime?
+  archiveReason       String?
+  wonAt               DateTime?
+  lastStageChangedAt  DateTime?
+  lostAt              DateTime?
+  lostReason          String?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  deletedAt           DateTime?
 
   organization    Organization                 @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   contact         Contact                      @relation(fields: [organizationId, contactId], references: [organizationId, id], onDelete: Restrict)
@@ -1289,15 +1297,16 @@ model PriceBookEntry {
 }
 
 model ProductStockMovement {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @db.Uuid
-  productId      String   @db.Uuid
-  userId         String?  @db.Uuid
+  id             String                   @id @default(uuid()) @db.Uuid
+  organizationId String                   @db.Uuid
+  productId      String                   @db.Uuid
+  userId         String?                  @db.Uuid
   quantityBefore Int
   quantityDelta  Int
   quantityAfter  Int
+  movementType   ProductStockMovementType @default(ADJUSTMENT)
   reason         String
-  createdAt      DateTime @default(now())
+  createdAt      DateTime                 @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   product      Product      @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
@@ -1305,6 +1314,7 @@ model ProductStockMovement {
 
   @@unique([organizationId, id])
   @@index([organizationId, productId, createdAt])
+  @@index([organizationId, productId, movementType, createdAt])
   @@index([organizationId, userId])
 }
 
