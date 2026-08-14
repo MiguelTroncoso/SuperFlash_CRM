@@ -21,17 +21,29 @@ Editar `.env.production` y reemplazar todos los valores de ejemplo. El
 despliegue rechaza secretos de ejemplo, secretos de menos de 32 caracteres,
 `COOKIE_SECURE` distinto de `true` y Swagger habilitado.
 
-## Despliegue
+## Despliegue oficial
 
 ```bash
 cd /opt/superflash/app
 ./scripts/production/deploy.sh
 ```
 
-El script valida el entorno, valida Compose, actualiza las imágenes base,
-construye las imágenes multistage, inicia PostgreSQL y Redis, espera sus
-healthchecks, ejecuta `prisma migrate deploy`, inicia API y Web y valida los
-healthchecks finales.
+`deploy.sh` es el único punto de entrada soportado. Valida las variables y
+Compose, crea un backup previo, sincroniza el checkout con `origin/main`,
+construye las imágenes multistage, ejecuta `prisma migrate deploy`, ejecuta el
+seed compilado para producción y verifica roles, permisos, pipeline y datos del
+catálogo. Después inicia API y Web y ejecuta healthchecks locales y públicos.
+
+Ante un fallo posterior a la actualización del código, el script intenta
+reconstruir y verificar automáticamente la versión anterior. Las migraciones
+Prisma son forward-only: el rollback automático no revierte el esquema y el
+backup previo queda disponible para recuperación de datos.
+
+Para validar configuración sin cambiar el estado del servidor:
+
+```bash
+./scripts/production/deploy.sh --validate
+```
 
 Los servicios quedan así:
 

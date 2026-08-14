@@ -29,7 +29,12 @@ wait_for_healthy postgres
 wait_for_healthy redis
 wait_for_healthy api
 wait_for_healthy web
+
+compose exec -T api node apps/api/dist/prisma/verify-production.js
+
 check_http API http://127.0.0.1:3001/api/v1/auth/me 400
 check_http Web http://127.0.0.1:3000/ 200
+check_http PublicAPI "$(env_value NEXT_PUBLIC_API_URL)/api/v1/auth/me" 400
+check_http PublicWeb "$(env_value WEB_URL)/" 200
 
 printf 'All production health checks passed.\n'

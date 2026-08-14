@@ -96,6 +96,77 @@ jobs:
       - name: Build backend
         run: npm run build:api
 
+      - name: Validate production deployment scripts
+        run: |
+          bash -n scripts/production/*.sh
+          if grep -R -n --fixed-strings 'tsx' docker/Dockerfile.api.prod scripts/production; then
+            echo 'Production deployment must not depend on tsx.' >&2
+            exit 1
+          fi
+          cp .env.production.example .env.production.ci
+          sed -i \
+            -e 's/replace-with-a-long-random-password/ci-production-postgres-password-012345678901234567890123456789/' \
+            -e 's/replace-with-a-unique-secret-of-at-least-32-characters/ci-production-secret-012345678901234567890123456789/' \
+            -e 's/replace-with-a-unique-key-of-at-least-32-characters/ci-production-key-012345678901234567890123456789/' \
+            -e 's/replace-with-a-strong-owner-password/CiOwner-Password-012345678901234567890123456789!/' \
+            -e 's#WEB_URL=https://app.superflash.site#WEB_URL=http://127.0.0.1:3000#' \
+            -e 's#NEXT_PUBLIC_API_URL=https://api.superflash.site#NEXT_PUBLIC_API_URL=http://127.0.0.1:3001#' \
+            .env.production.ci
+          PRODUCTION_ENV_FILE=.env.production.ci ./scripts/production/deploy.sh --validate
+          if PRODUCTION_ENV_FILE=.env.production.ci docker compose --env-file .env.production.ci -f docker-compose.prod.yml config | grep -E 'target: (5432|6379)|published: "?(5432|6379)"?'; then
+            echo 'Production PostgreSQL or Redis port is publicly published.' >&2
+            exit 1
+          fi
+          grep -q 'rollback_on_failure' scripts/production/deploy.sh
+          grep -q 'git reset --hard' scripts/production/deploy.sh
+
+      - name: Production Compose migration, seed and smoke test
+        env:
+          PRODUCTION_ENV_FILE: .env.production.ci
+          COMPOSE_PROJECT_NAME: superflash-ci
+        run: |
+          docker compose --env-file "$PRODUCTION_ENV_FILE" -f docker-compose.prod.yml up -d postgres redis
+          for service in postgres redis; do
+            for attempt in $(seq 1 60); do
+              container_id="$(docker compose --env-file "$PRODUCTION_ENV_FILE" -f docker-compose.prod.yml ps -q "$service")"
+              health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "$container_id")"
+              if [ "$health" = healthy ]; then break; fi
+              if [ "$attempt" = 60 ]; then exit 1; fi
+              sleep 2
+            done
+          done
+          docker compose --env-file "$PRODUCTION_ENV_FILE" -f docker-compose.prod.yml run --rm --no-deps api npm run prisma:migrate:deploy --workspace=@superflash/api
+          docker compose --env-file "$PRODUCTION_ENV_FILE" -f docker-compose.prod.yml run --rm --no-deps api npm run prisma:seed:prod --workspace=@superflash/api
+          docker compose --env-file "$PRODUCTION_ENV_FILE" -f docker-compose.prod.yml run --rm --no-deps api npm run prisma:verify:prod --workspace=@superflash/api
+          docker compose --env-file "$PRODUCTION_ENV_FILE" -f docker-compose.prod.yml up -d --build api web
+          ./scripts/production/healthcheck.sh
+
+      - name: Clean production Compose smoke environment
+        if: always()
+        env:
+          PRODUCTION_ENV_FILE: .env.production.ci
+          COMPOSE_PROJECT_NAME: superflash-ci
+        run: docker compose --env-file "$PRODUCTION_ENV_FILE" -f docker-compose.prod.yml down -v --remove-orphans
+
+      - name: Build production API image
+        run: docker build -f docker/Dockerfile.api.prod -t superflash-api-prod:ci .
+
+      - name: Build production Web image
+        run: docker build --build-arg NEXT_PUBLIC_API_URL=https://api.superflash.site -f docker/Dockerfile.web.prod -t superflash-web-prod:ci .
+
+      - name: Run production seed and integrity verification from image
+        env:
+          PRODUCTION_DATABASE_URL: postgresql://superflash:superflash@127.0.0.1:5432/superflash?schema=public
+        run: |
+          docker run --rm --network host \
+            -e DATABASE_URL="$PRODUCTION_DATABASE_URL" \
+            -e NODE_ENV=production \
+            -e SEED_CATALOG_EXAMPLES=false \
+            superflash-api-prod:ci node apps/api/dist/prisma/seed.js
+          docker run --rm --network host \
+            -e DATABASE_URL="$PRODUCTION_DATABASE_URL" \
+            superflash-api-prod:ci node apps/api/dist/prisma/verify-production.js
+
       - name: Build WhatsApp Web reader
         run: npm run build --workspace=@superflash/whatsapp-reader
 
