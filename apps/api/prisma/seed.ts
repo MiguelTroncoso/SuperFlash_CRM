@@ -320,6 +320,15 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
+function normalizeStageName(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLocaleLowerCase();
+}
+
 function hasCompleteOwnerCredentials(): boolean {
   return Boolean(
     ownerCredentials.email &&
@@ -362,16 +371,26 @@ async function synchronizeSystemRolePermissions(
   });
 
   for (const organization of organizations) {
-    const systemRoles = await transaction.role.findMany({
-      where: {
-        organizationId: organization.id,
-        name: { in: roles.map((role) => role.name) },
-        deletedAt: null,
-      },
-      select: { id: true, name: true },
-    });
+    for (const roleDefinition of roles) {
+      const role = await transaction.role.upsert({
+        where: {
+          organizationId_name: {
+            organizationId: organization.id,
+            name: roleDefinition.name,
+          },
+        },
+        update: {
+          description: roleDefinition.description,
+          deletedAt: null,
+        },
+        create: {
+          organizationId: organization.id,
+          name: roleDefinition.name,
+          description: roleDefinition.description,
+        },
+        select: { id: true, name: true },
+      });
 
-    for (const role of systemRoles) {
       await transaction.role.update({
         where: { id: role.id },
         data: {
@@ -383,6 +402,84 @@ async function synchronizeSystemRolePermissions(
       });
     }
   }
+}
+
+async function synchronizePipelineStages(transaction: Prisma.TransactionClient): Promise<void> {
+  const organizations = await transaction.organization.findMany({
+    where: { deletedAt: null },
+    select: { id: true },
+  });
+
+  for (const organization of organizations) {
+    for (const stage of pipelineStages) {
+      await reconcilePipelineStage(transaction, organization.id, stage);
+    }
+
+    for (const stage of operationalPipelineStages) {
+      await reconcilePipelineStage(transaction, organization.id, {
+        ...stage,
+        category: PipelineStageCategory.OPEN,
+      });
+    }
+  }
+}
+
+async function nextPipelineOrder(
+  transaction: Prisma.TransactionClient,
+  organizationId: string,
+): Promise<number> {
+  const maxOrder = await transaction.pipelineStage.aggregate({
+    where: { organizationId },
+    _max: { order: true },
+  });
+  return (maxOrder._max.order ?? 0) + 1;
+}
+
+async function reconcilePipelineStage(
+  transaction: Prisma.TransactionClient,
+  organizationId: string,
+  stage: {
+    readonly name: string;
+    readonly systemKey: string;
+    readonly color: string;
+    readonly category: PipelineStageCategory;
+  },
+): Promise<void> {
+  const stages = await transaction.pipelineStage.findMany({
+    where: { organizationId },
+    orderBy: [{ deletedAt: 'asc' }, { createdAt: 'asc' }],
+  });
+  const normalizedName = normalizeStageName(stage.name);
+  const existing =
+    stages.find((candidate) => candidate.systemKey === stage.systemKey) ??
+    stages.find((candidate) => normalizeStageName(candidate.name) === normalizedName);
+
+  if (existing) {
+    await transaction.pipelineStage.update({
+      where: {
+        organizationId_id: { organizationId, id: existing.id },
+      },
+      data: {
+        systemKey: stage.systemKey,
+        color: stage.color,
+        category: stage.category,
+        active: true,
+        deletedAt: null,
+      },
+    });
+    return;
+  }
+
+  await transaction.pipelineStage.create({
+    data: {
+      organizationId,
+      name: stage.name,
+      systemKey: stage.systemKey,
+      order: await nextPipelineOrder(transaction, organizationId),
+      color: stage.color,
+      category: stage.category,
+    },
+  });
 }
 
 async function seed(): Promise<void> {
@@ -491,55 +588,7 @@ async function seed(): Promise<void> {
       }
 
       await synchronizeSystemRolePermissions(transaction);
-
-      for (const [index, stage] of pipelineStages.entries()) {
-        await transaction.pipelineStage.upsert({
-          where: {
-            organizationId_order: {
-              organizationId: organization.id,
-              order: index + 1,
-            },
-          },
-          update: {
-            name: stage.name,
-            systemKey: stage.systemKey,
-            color: stage.color,
-            active: true,
-            category: stage.category,
-            deletedAt: null,
-          },
-          create: {
-            organizationId: organization.id,
-            name: stage.name,
-            systemKey: stage.systemKey,
-            order: index + 1,
-            color: stage.color,
-            category: stage.category,
-          },
-        });
-      }
-
-      for (const stage of operationalPipelineStages) {
-        const existing = await transaction.pipelineStage.findFirst({
-          where: { organizationId: organization.id, systemKey: stage.systemKey, deletedAt: null },
-          select: { id: true },
-        });
-        if (existing) continue;
-        const maxOrder = await transaction.pipelineStage.aggregate({
-          where: { organizationId: organization.id, deletedAt: null },
-          _max: { order: true },
-        });
-        await transaction.pipelineStage.create({
-          data: {
-            organizationId: organization.id,
-            name: stage.name,
-            systemKey: stage.systemKey,
-            order: (maxOrder._max.order ?? 0) + 1,
-            color: stage.color,
-            category: PipelineStageCategory.OPEN,
-          },
-        });
-      }
+      await synchronizePipelineStages(transaction);
 
       if (catalogExamplesEnabled) {
         const examples = [
@@ -658,12 +707,33 @@ async function seed(): Promise<void> {
           throw new Error('No se encontró el rol Owner durante el seed.');
         }
 
-        const passwordHash = await argon2.hash(ownerCredentials.password, {
-          type: argon2.argon2id,
-          memoryCost: 19_456,
-          timeCost: 2,
-          parallelism: 1,
+        const existingOwner = await transaction.user.findUnique({
+          where: {
+            organizationId_email: {
+              organizationId: organization.id,
+              email: normalizeEmail(ownerCredentials.email),
+            },
+          },
+          select: { passwordHash: true },
         });
+        let passwordHash = existingOwner?.passwordHash ?? null;
+        if (passwordHash) {
+          try {
+            if (!(await argon2.verify(passwordHash, ownerCredentials.password))) {
+              passwordHash = null;
+            }
+          } catch {
+            passwordHash = null;
+          }
+        }
+        if (!passwordHash) {
+          passwordHash = await argon2.hash(ownerCredentials.password, {
+            type: argon2.argon2id,
+            memoryCost: 19_456,
+            timeCost: 2,
+            parallelism: 1,
+          });
+        }
 
         await transaction.user.upsert({
           where: {
@@ -707,4 +777,7 @@ async function seed(): Promise<void> {
   }
 }
 
-void seed();
+seed().catch((error: unknown) => {
+  console.error('Seed failed.', error);
+  process.exitCode = 1;
+});

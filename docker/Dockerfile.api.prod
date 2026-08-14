@@ -24,7 +24,7 @@ FROM dependencies AS builder
 
 COPY . .
 
-RUN npm run build:utils && npm run db:generate && npm run build:api
+RUN npm run build:utils && npm run db:generate && npm run build:api && npm run db:seed:build
 
 FROM base AS production-dependencies
 
