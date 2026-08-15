@@ -79,9 +79,19 @@ describe('Operations and fulfillment HTTP flow', () => {
     return String(body(response).accessToken);
   }
 
-  function authorized(method: 'get' | 'post' | 'patch', path: string, token: string): request.Test {
+  function authorized(
+    method: 'get' | 'post' | 'patch' | 'delete',
+    path: string,
+    token: string,
+  ): request.Test {
     const builder =
-      method === 'get' ? api.get(path) : method === 'patch' ? api.patch(path) : api.post(path);
+      method === 'get'
+        ? api.get(path)
+        : method === 'patch'
+          ? api.patch(path)
+          : method === 'delete'
+            ? api.delete(path)
+            : api.post(path);
     return builder
       .set('Authorization', `Bearer ${token}`)
       .set('x-forwarded-for', `10.99.1.${++sequence}`);
@@ -396,6 +406,38 @@ describe('Operations and fulfillment HTTP flow', () => {
         where: { organizationId: fixture.ownerA.organizationId },
       }),
     ).toBe(3);
+  });
+
+  it('allows manual metrics to be edited and archived without physical deletion', async () => {
+    const token = await login(fixture.ownerA);
+    const created = await authorized('post', '/api/v1/dashboard/daily-metrics', token).send({
+      metricDate: '2026-08-15',
+      country: 'CL',
+      conversations: 2,
+      demos: 1,
+      salesCount: 0,
+      adSpend: '5.00',
+      currency: 'USD',
+    });
+    expect(created.status).toBe(201);
+    const id = String(body(created).id);
+
+    const updated = await authorized('patch', `/api/v1/dashboard/daily-metrics/${id}`, token).send({
+      conversations: 5,
+      notes: 'Revisado por operaciones',
+    });
+    expect(updated.status).toBe(200);
+    expect(body(updated).conversations).toBe(5);
+    expect(body(updated).notes).toBe('Revisado por operaciones');
+
+    const archived = await authorized('delete', `/api/v1/dashboard/daily-metrics/${id}`, token);
+    expect(archived.status).toBe(200);
+    expect(await prisma.dailyMetric.findUniqueOrThrow({ where: { id } })).toEqual(
+      expect.objectContaining({ deletedAt: expect.any(Date) }),
+    );
+    const visible = await authorized('get', '/api/v1/dashboard/daily-metrics', token);
+    expect(visible.status).toBe(200);
+    expect((body(visible).data as Array<{ id: string }>).some((row) => row.id === id)).toBe(false);
   });
 
   it('rejects unknown DTO fields', async () => {

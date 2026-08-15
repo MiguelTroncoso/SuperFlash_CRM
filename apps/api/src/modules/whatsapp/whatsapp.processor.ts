@@ -30,6 +30,8 @@ export class WhatsAppProcessor implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(WhatsAppProcessor.name);
   private interval: NodeJS.Timeout | undefined;
   private running = false;
+  private shuttingDown = false;
+  private activeRun: Promise<void> | undefined;
   private webhookHandler: ((event: CommercialEvent) => void) | undefined;
 
   constructor(
@@ -56,22 +58,33 @@ export class WhatsAppProcessor implements OnModuleInit, OnModuleDestroy {
     this.interval.unref();
   }
 
-  onModuleDestroy(): void {
+  async onModuleDestroy(): Promise<void> {
+    this.shuttingDown = true;
     if (this.interval) clearInterval(this.interval);
     if (this.webhookHandler) this.events.off('WhatsAppWebhookReceived', this.webhookHandler);
     this.webhookHandler = undefined;
+    await this.activeRun;
   }
 
   async processAvailable(): Promise<void> {
-    if (this.running) return;
+    if (this.running || this.shuttingDown) return;
     this.running = true;
+    const run = this.processBatch();
+    this.activeRun = run;
+    try {
+      await run;
+    } finally {
+      if (this.activeRun === run) this.activeRun = undefined;
+      this.running = false;
+    }
+  }
+
+  private async processBatch(): Promise<void> {
     try {
       const webhooks = await this.claimWebhookEvents();
       for (const webhook of webhooks) await this.processWebhookEvent(webhook.id);
     } catch (error: unknown) {
       this.logger.error(error instanceof Error ? error.message : 'WhatsApp processing failed');
-    } finally {
-      this.running = false;
     }
   }
 

@@ -27,6 +27,8 @@ export class OutboxProcessor implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(OutboxProcessor.name);
   private interval: NodeJS.Timeout | undefined;
   private running = false;
+  private shuttingDown = false;
+  private activeRun: Promise<void> | undefined;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -39,20 +41,31 @@ export class OutboxProcessor implements OnModuleInit, OnModuleDestroy {
     this.interval.unref();
   }
 
-  onModuleDestroy(): void {
+  async onModuleDestroy(): Promise<void> {
+    this.shuttingDown = true;
     if (this.interval) clearInterval(this.interval);
+    await this.activeRun;
   }
 
   async processAvailable(): Promise<void> {
-    if (this.running) return;
+    if (this.running || this.shuttingDown) return;
     this.running = true;
+    const run = this.processBatch();
+    this.activeRun = run;
+    try {
+      await run;
+    } finally {
+      if (this.activeRun === run) this.activeRun = undefined;
+      this.running = false;
+    }
+  }
+
+  private async processBatch(): Promise<void> {
     try {
       const claimed = await this.claimBatch();
       for (const event of claimed) await this.dispatch(event);
     } catch (error: unknown) {
       this.logger.error(error instanceof Error ? error.message : 'Outbox processing failed');
-    } finally {
-      this.running = false;
     }
   }
 

@@ -259,6 +259,39 @@ export class OperationalDashboardService {
     });
   }
 
+  async deleteDailyMetric(
+    id: string,
+    user: AuthenticatedUser,
+    metadata: RequestMetadata,
+  ): Promise<void> {
+    await this.prisma.$transaction(async (transaction) => {
+      const existing = await transaction.dailyMetric.findFirst({
+        where: { id, organizationId: user.organizationId, deletedAt: null },
+      });
+      if (!existing) {
+        throw new NotFoundException({
+          code: 'DAILY_METRIC_NOT_FOUND',
+          message: 'La métrica diaria no existe.',
+        });
+      }
+      await transaction.dailyMetric.update({
+        where: { id },
+        data: { deletedAt: new Date(), updatedByUserId: user.userId },
+      });
+      await this.audit.recordWithClient(transaction, {
+        organizationId: user.organizationId,
+        userId: user.userId,
+        action: 'DAILY_METRIC_DELETED',
+        tableName: 'DailyMetric',
+        recordId: id,
+        previousValue: this.auditValue(existing),
+        newValue: { deletedAt: new Date().toISOString() },
+        ip: metadata.ipAddress,
+        requestId: metadata.requestId,
+      });
+    });
+  }
+
   async dashboard(query: OperationalDashboardQueryDto, user: AuthenticatedUser) {
     const dates = range(query, 'America/Santiago');
     const today = DateTime.now().setZone('America/Santiago').startOf('day');
