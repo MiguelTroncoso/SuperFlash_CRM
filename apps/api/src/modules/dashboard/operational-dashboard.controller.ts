@@ -1,5 +1,6 @@
 import {
   Body,
+  Delete,
   Controller,
   Get,
   Param,
@@ -79,6 +80,17 @@ export class OperationalDashboardController {
     @Req() request: Request,
   ) {
     return this.service.updateDailyMetric(id, dto, user, metadata(request));
+  }
+
+  @Delete('daily-metrics/:id')
+  @Permissions('operations.manage')
+  @ApiOperation({ summary: 'Archiva una fila manual del día operativo' })
+  remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ) {
+    return this.service.deleteDailyMetric(id, user, metadata(request));
   }
 
   @Post('daily-metrics/import/preview')

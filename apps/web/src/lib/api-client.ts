@@ -178,6 +178,8 @@ export const api = {
     request<DailyMetric>('/dashboard/daily-metrics', { method: 'POST', ...jsonBody(body) }),
   updateDailyMetric: (id: string, body: JsonRecord) =>
     request<DailyMetric>(`/dashboard/daily-metrics/${id}`, { method: 'PATCH', ...jsonBody(body) }),
+  deleteDailyMetric: (id: string) =>
+    request<void>(`/dashboard/daily-metrics/${id}`, { method: 'DELETE' }),
   previewDailyMetricsImport: (csv: string) =>
     request<JsonRecord>('/dashboard/daily-metrics/import/preview', {
       method: 'POST',

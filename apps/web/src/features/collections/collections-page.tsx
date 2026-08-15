@@ -145,6 +145,7 @@ function PaymentDrawer({
 export function CollectionsPage(): React.ReactElement {
   const [selected, setSelected] = useState<Sale | null>(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const [view, setView] = useState<'pending' | 'history'>('pending');
   const queryClient = useQueryClient();
   const toast = useToastStore((state) => state.push);
   const sales = useQuery({
@@ -184,6 +185,7 @@ export function CollectionsPage(): React.ReactElement {
       return { sale, balance, paid: Math.max(amount(sale.total) - balance, 0) };
     })
     .filter((row) => row.balance > 0.009);
+  const salesById = new Map((sales.data?.data ?? []).map((sale) => [sale.id, sale]));
   return (
     <QueryState
       isError={sales.isError || payments.isError}
@@ -196,8 +198,26 @@ export function CollectionsPage(): React.ReactElement {
           title="Cobros"
           description="Registra pagos y elimina saldos pendientes sin salir del flujo de venta."
         />
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Cobros">
+          <Button
+            onClick={() => setView('pending')}
+            role="tab"
+            aria-selected={view === 'pending'}
+            variant={view === 'pending' ? 'primary' : 'outline'}
+          >
+            Pendientes
+          </Button>
+          <Button
+            onClick={() => setView('history')}
+            role="tab"
+            aria-selected={view === 'history'}
+            variant={view === 'history' ? 'primary' : 'outline'}
+          >
+            Historial de pagos
+          </Button>
+        </div>
         <Card className="overflow-hidden">
-          {records.length ? (
+          {view === 'pending' && records.length ? (
             <div className="overflow-x-auto">
               <table className="min-w-[780px] w-full text-left text-sm">
                 <thead className="bg-surface-muted text-xs uppercase tracking-wide text-content-muted">
@@ -268,6 +288,54 @@ export function CollectionsPage(): React.ReactElement {
                 </tbody>
               </table>
             </div>
+          ) : view === 'history' ? (
+            payments.data?.data.length ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-[720px] w-full text-left text-sm">
+                  <thead className="bg-surface-muted text-xs uppercase tracking-wide text-content-muted">
+                    <tr>
+                      <th className="px-4 py-3">Cliente</th>
+                      <th className="px-4 py-3">Fecha</th>
+                      <th className="px-4 py-3">Monto</th>
+                      <th className="px-4 py-3">Método</th>
+                      <th className="px-4 py-3">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border-subtle">
+                    {payments.data.data.map((payment) => {
+                      const sale = salesById.get(String(payment.saleId));
+                      return (
+                        <tr key={String(payment.id)}>
+                          <td className="px-4 py-3 font-semibold text-content-primary">
+                            {sale?.contact?.name ?? 'Cliente'}
+                          </td>
+                          <td className="px-4 py-3 text-content-secondary">
+                            {payment.paymentDate
+                              ? new Date(String(payment.paymentDate)).toLocaleDateString('es-CL')
+                              : '—'}
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-content-primary">
+                            {String(payment.currency ?? sale?.currency ?? '')}{' '}
+                            {String(payment.grossAmount ?? payment.netAmount ?? '0.00')}
+                          </td>
+                          <td className="px-4 py-3 text-content-secondary">
+                            {String(payment.method ?? '—')}
+                          </td>
+                          <td className="px-4 py-3">
+                            <StatusBadge status={String(payment.status ?? 'UNKNOWN')} />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <EmptyState
+                description="Los pagos confirmados, parciales y reembolsados aparecerán aquí."
+                title="Sin pagos registrados"
+              />
+            )
           ) : (
             <EmptyState
               description="Las ventas confirmadas sin saldo pendiente no aparecen aquí."

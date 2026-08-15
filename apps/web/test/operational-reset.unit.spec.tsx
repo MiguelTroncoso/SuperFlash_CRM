@@ -7,7 +7,13 @@ import { ExecutiveDashboardPage } from '@/features/executive-intelligence/execut
 import { OperationalDashboardPage } from '@/features/operations/operational-dashboard-page';
 import { api } from '@/lib/api-client';
 import { useAuthStore } from '@/lib/auth-store';
-import type { AuthUser, IntelligenceDashboard, OperationalDashboard, Sale } from '@/lib/types';
+import type {
+  AuthUser,
+  FinancialDashboard,
+  IntelligenceDashboard,
+  OperationalDashboard,
+  Sale,
+} from '@/lib/types';
 
 jest.mock('next/navigation', () => ({
   usePathname: () => '/',
@@ -136,6 +142,25 @@ const operationalDashboard: OperationalDashboard = {
   },
 };
 
+const financialDashboard: FinancialDashboard = {
+  month: '2026-08',
+  currency: 'USD',
+  revenue: '100.00',
+  expenses: '30.00',
+  grossProfit: '70.00',
+  netProfit: '70.00',
+  marginPercent: 70,
+  mrr: '0.00',
+  arr: '0.00',
+  estimatedCash: '70.00',
+  fixedMonthlyCost: '20.00',
+  variableCost: '10.00',
+  breakEven: '30.00',
+  previousMonth: { revenue: '80.00', expenses: '20.00', netProfit: '60.00' },
+  upcomingRecurringExpenses: [],
+  monthlyTrend: [],
+};
+
 describe('operational CRM reset', () => {
   beforeEach(() => {
     useAuthStore.getState().setSession('token', user);
@@ -163,17 +188,30 @@ describe('operational CRM reset', () => {
     expect(screen.queryByRole('link', { name: 'Contactos' })).not.toBeInTheDocument();
   });
 
-  it('renders only the six operational dashboard signals', async () => {
+  it('renders real executive and financial dashboard signals', async () => {
     jest.spyOn(api, 'getExecutiveDashboard').mockResolvedValue(dashboard);
-    jest.spyOn(api, 'getMyDaySummary').mockResolvedValue({ newLeads: 4 });
+    jest.spyOn(api, 'getOperationalDashboard').mockResolvedValue(operationalDashboard);
+    jest.spyOn(api, 'getFinancialDashboard').mockResolvedValue(financialDashboard);
+    jest.spyOn(api, 'getContacts').mockResolvedValue({
+      data: [],
+      pagination: { page: 1, limit: 1, total: 12, totalPages: 12 },
+    });
+    jest.spyOn(api, 'getProducts').mockResolvedValue({
+      data: [],
+      pagination: { page: 1, limit: 1, total: 6, totalPages: 6 },
+    });
     render(withQuery(<ExecutiveDashboardPage />));
-    await waitFor(() => expect(screen.getByText('Leads del día')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Ventas hoy')).toBeInTheDocument());
     expect(screen.getByText('Ventas del mes')).toBeInTheDocument();
     expect(screen.getByText('Cobros pendientes')).toBeInTheDocument();
+    expect(screen.getByText('Utilidad neta')).toBeInTheDocument();
+    expect(screen.getByText('Egresos del mes')).toBeInTheDocument();
     expect(screen.getByText('Renovaciones')).toBeInTheDocument();
+    expect(screen.getByText('Stock crítico')).toBeInTheDocument();
+    expect(screen.getByText('Clientes')).toBeInTheDocument();
+    expect(screen.getByText('Productos')).toBeInTheDocument();
+    expect(screen.getByText('Conversaciones hoy')).toBeInTheDocument();
     expect(screen.getByText('Conversión')).toBeInTheDocument();
-    expect(screen.getByText('Ingresos')).toBeInTheDocument();
-    expect(screen.queryByText('Ingresos por día')).not.toBeInTheDocument();
   });
 
   it('renders the daily operating dashboard and keeps manual activity separate', async () => {

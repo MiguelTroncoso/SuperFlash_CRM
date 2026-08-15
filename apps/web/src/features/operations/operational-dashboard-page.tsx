@@ -10,9 +10,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Drawer } from '@/components/ui/drawer';
 import { Input, Select, Textarea } from '@/components/ui/input';
 import { MetricCard } from '@/components/ui/metric-card';
+import { PermissionGate } from '@/components/ui/permission-gate';
 import { useToastStore } from '@/components/ui/toast';
 import { api, queryString } from '@/lib/api-client';
-import type { JsonRecord } from '@/lib/types';
+import type { DailyMetric, JsonRecord } from '@/lib/types';
 
 function money(items: Array<{ currency: string; amount: string }>): string {
   const item = items[0];
@@ -34,6 +35,7 @@ export function OperationalDashboardPage(): React.ReactElement {
   const [campaignId, setCampaignId] = useState('');
   const [productId, setProductId] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [editingMetric, setEditingMetric] = useState<DailyMetric | null>(null);
   const queryClient = useQueryClient();
   const toast = useToastStore((state) => state.push);
   const query = queryString({
@@ -70,21 +72,37 @@ export function OperationalDashboardPage(): React.ReactElement {
     queryKey: ['catalog-offers', 'operational'],
     queryFn: () => api.getOffers('?customerSegment=ANY&currency=USD&limit=100'),
   });
-  const create = useMutation({
-    mutationFn: (body: JsonRecord) => api.upsertDailyMetric(body),
+  const save = useMutation({
+    mutationFn: (input: { id?: string; body: JsonRecord }) =>
+      input.id ? api.updateDailyMetric(input.id, input.body) : api.upsertDailyMetric(input.body),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['operational-dashboard'] });
       void queryClient.invalidateQueries({ queryKey: ['daily-metrics'] });
       setDrawerOpen(false);
+      setEditingMetric(null);
       toast({
-        title: 'Día registrado',
-        description: 'La fila quedó disponible para editarse.',
+        title: editingMetric ? 'Día actualizado' : 'Día registrado',
+        description: 'La actividad manual quedó reflejada en el período.',
         tone: 'success',
       });
     },
     onError: (error: Error) =>
       toast({
-        title: 'No fue posible registrar el día',
+        title: 'No fue posible guardar el día',
+        description: error.message,
+        tone: 'error',
+      }),
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api.deleteDailyMetric(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['operational-dashboard'] });
+      void queryClient.invalidateQueries({ queryKey: ['daily-metrics'] });
+      toast({ title: 'Registro archivado', tone: 'success' });
+    },
+    onError: (error: Error) =>
+      toast({
+        title: 'No fue posible archivar el registro',
         description: error.message,
         tone: 'error',
       }),
@@ -102,7 +120,18 @@ export function OperationalDashboardPage(): React.ReactElement {
             eyebrow="Sistema operativo comercial"
             title="Dashboard operativo"
             description="Registra la actividad manual del día y separa las señales comerciales de la facturación real."
-            actions={<Button onClick={() => setDrawerOpen(true)}>＋ Registrar día</Button>}
+            actions={
+              <PermissionGate permission="operations.manage">
+                <Button
+                  onClick={() => {
+                    setEditingMetric(null);
+                    setDrawerOpen(true);
+                  }}
+                >
+                  ＋ Registrar día
+                </Button>
+              </PermissionGate>
+            }
           />
           <Card className="p-4">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
@@ -327,6 +356,7 @@ export function OperationalDashboardPage(): React.ReactElement {
                       <th className="px-5 py-3">Conversaciones</th>
                       <th className="px-5 py-3">Demos</th>
                       <th className="px-5 py-3">Gasto</th>
+                      <th className="px-5 py-3">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -341,6 +371,33 @@ export function OperationalDashboardPage(): React.ReactElement {
                         <td className="px-5 py-3 text-content-primary">{row.demos}</td>
                         <td className="px-5 py-3 text-content-primary">
                           {row.currency} {row.adSpend}
+                        </td>
+                        <td className="px-5 py-3">
+                          <PermissionGate permission="operations.manage">
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                onClick={() => {
+                                  setEditingMetric(row);
+                                  setDrawerOpen(true);
+                                }}
+                                size="sm"
+                                variant="outline"
+                              >
+                                Editar
+                              </Button>
+                              <Button
+                                disabled={remove.isPending}
+                                onClick={() => {
+                                  if (window.confirm('¿Archivar este registro del día?'))
+                                    remove.mutate(row.id);
+                                }}
+                                size="sm"
+                                variant="ghost"
+                              >
+                                Archivar
+                              </Button>
+                            </div>
+                          </PermissionGate>
                         </td>
                       </tr>
                     ))}
@@ -386,25 +443,25 @@ export function OperationalDashboardPage(): React.ReactElement {
         </PageGrid>
       ) : null}
       <Drawer
-        description="Una fila por campaña y país. Si existe, se actualiza en lugar de duplicarse."
-        onClose={() => setDrawerOpen(false)}
+        description={
+          editingMetric
+            ? 'Actualiza la actividad manual registrada para este día.'
+            : 'Una fila por campaña y país. Si existe, se actualiza en lugar de duplicarse.'
+        }
+        onClose={() => {
+          setDrawerOpen(false);
+          setEditingMetric(null);
+        }}
         open={drawerOpen}
-        title="Registrar día operativo"
+        title={editingMetric ? 'Editar día operativo' : 'Registrar día operativo'}
       >
         <form
+          key={editingMetric?.id ?? 'new-daily-metric'}
           className="space-y-4"
           onSubmit={(event) => {
             event.preventDefault();
             const form = new FormData(event.currentTarget);
-            create.mutate({
-              metricDate: String(form.get('metricDate') ?? todayIso()),
-              country: String(form.get('country') ?? 'CL'),
-              ...(String(form.get('campaignId') ?? '')
-                ? { campaignId: String(form.get('campaignId')) }
-                : {}),
-              ...(String(form.get('campaignName') ?? '').trim()
-                ? { campaignName: String(form.get('campaignName')).trim(), platform: 'MANUAL' }
-                : {}),
+            const body: JsonRecord = {
               conversations: Number(form.get('conversations') ?? 0),
               demos: Number(form.get('demos') ?? 0),
               salesCount: Number(form.get('salesCount') ?? 0),
@@ -412,19 +469,42 @@ export function OperationalDashboardPage(): React.ReactElement {
               ...(String(form.get('grossRevenue') ?? '')
                 ? { grossRevenue: String(form.get('grossRevenue')) }
                 : {}),
-              currency: String(form.get('currency') ?? 'USD'),
               notes: String(form.get('notes') ?? ''),
-            });
+            };
+            if (!editingMetric) {
+              Object.assign(body, {
+                metricDate: String(form.get('metricDate') ?? todayIso()),
+                country: String(form.get('country') ?? 'CL'),
+                ...(String(form.get('campaignId') ?? '')
+                  ? { campaignId: String(form.get('campaignId')) }
+                  : {}),
+                ...(String(form.get('campaignName') ?? '').trim()
+                  ? { campaignName: String(form.get('campaignName')).trim(), platform: 'MANUAL' }
+                  : {}),
+                currency: String(form.get('currency') ?? 'USD'),
+              });
+            }
+            save.mutate(editingMetric ? { id: editingMetric.id, body } : { body });
           }}
         >
           <label className="space-y-1 text-sm font-semibold text-content-primary">
             <span>Fecha</span>
-            <Input defaultValue={todayIso()} name="metricDate" required type="date" />
+            <Input
+              defaultValue={editingMetric?.metricDate ?? todayIso()}
+              disabled={Boolean(editingMetric)}
+              name="metricDate"
+              required
+              type="date"
+            />
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="space-y-1 text-sm font-semibold text-content-primary">
               <span>País</span>
-              <Select defaultValue="CL" name="country">
+              <Select
+                defaultValue={editingMetric?.country ?? 'CL'}
+                disabled={Boolean(editingMetric)}
+                name="country"
+              >
                 <option value="CL">Chile</option>
                 <option value="MX">México</option>
                 <option value="PE">Perú</option>
@@ -436,7 +516,11 @@ export function OperationalDashboardPage(): React.ReactElement {
             </label>
             <label className="space-y-1 text-sm font-semibold text-content-primary">
               <span>Campaña existente</span>
-              <Select defaultValue="" name="campaignId">
+              <Select
+                defaultValue={editingMetric?.campaign?.id ?? ''}
+                disabled={Boolean(editingMetric)}
+                name="campaignId"
+              >
                 <option value="">Sin campaña</option>
                 {(campaigns.data?.data ?? []).map((campaign) => (
                   <option key={campaign.id} value={campaign.id}>
@@ -448,40 +532,71 @@ export function OperationalDashboardPage(): React.ReactElement {
           </div>
           <label className="space-y-1 text-sm font-semibold text-content-primary">
             <span>Campaña rápida (si no eliges una existente)</span>
-            <Input name="campaignName" placeholder="Ej. Meta agosto Chile" />
+            <Input
+              disabled={Boolean(editingMetric)}
+              name="campaignName"
+              placeholder="Ej. Meta agosto Chile"
+            />
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="space-y-1 text-sm font-semibold text-content-primary">
               <span>Conversaciones</span>
-              <Input defaultValue="0" min="0" name="conversations" type="number" />
+              <Input
+                defaultValue={editingMetric?.conversations ?? 0}
+                min="0"
+                name="conversations"
+                type="number"
+              />
             </label>
             <label className="space-y-1 text-sm font-semibold text-content-primary">
               <span>Demos</span>
-              <Input defaultValue="0" min="0" name="demos" type="number" />
+              <Input defaultValue={editingMetric?.demos ?? 0} min="0" name="demos" type="number" />
             </label>
             <label className="space-y-1 text-sm font-semibold text-content-primary">
               <span>Ventas informativas</span>
-              <Input defaultValue="0" min="0" name="salesCount" type="number" />
+              <Input
+                defaultValue={editingMetric?.salesCount ?? 0}
+                min="0"
+                name="salesCount"
+                type="number"
+              />
             </label>
             <label className="space-y-1 text-sm font-semibold text-content-primary">
               <span>Gasto publicitario</span>
-              <Input defaultValue="0" min="0" name="adSpend" step="0.01" type="number" />
+              <Input
+                defaultValue={editingMetric?.adSpend ?? '0'}
+                min="0"
+                name="adSpend"
+                step="0.01"
+                type="number"
+              />
             </label>
             <label className="space-y-1 text-sm font-semibold text-content-primary">
               <span>Facturación opcional</span>
-              <Input min="0" name="grossRevenue" step="0.01" type="number" />
+              <Input
+                defaultValue={editingMetric?.grossRevenue ?? ''}
+                min="0"
+                name="grossRevenue"
+                step="0.01"
+                type="number"
+              />
             </label>
             <label className="space-y-1 text-sm font-semibold text-content-primary">
               <span>Moneda</span>
-              <Input defaultValue="USD" maxLength={3} name="currency" />
+              <Input
+                defaultValue={editingMetric?.currency ?? 'USD'}
+                disabled={Boolean(editingMetric)}
+                maxLength={3}
+                name="currency"
+              />
             </label>
           </div>
           <label className="space-y-1 text-sm font-semibold text-content-primary">
             <span>Notas</span>
-            <Textarea name="notes" />
+            <Textarea defaultValue={editingMetric?.notes ?? ''} name="notes" />
           </label>
-          <Button className="w-full" disabled={create.isPending} type="submit">
-            {create.isPending ? 'Guardando…' : 'Guardar día'}
+          <Button className="w-full" disabled={save.isPending} type="submit">
+            {save.isPending ? 'Guardando…' : editingMetric ? 'Guardar cambios' : 'Guardar día'}
           </Button>
         </form>
       </Drawer>
