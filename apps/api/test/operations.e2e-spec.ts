@@ -347,6 +347,57 @@ describe('Operations and fulfillment HTTP flow', () => {
     expect((body(response).sections as Record<string, unknown>).pendingFulfillments).toBeDefined();
   });
 
+  it('records daily operating metrics idempotently and exposes the source distinction', async () => {
+    const token = await login(fixture.ownerA);
+    const payload = {
+      metricDate: '2026-08-15',
+      country: 'CL',
+      campaignName: 'Sprint 35 Manual',
+      conversations: 12,
+      demos: 4,
+      salesCount: 1,
+      adSpend: '35.50',
+      grossRevenue: '120.00',
+      currency: 'USD',
+    };
+    const first = await authorized('post', '/api/v1/dashboard/daily-metrics', token).send(payload);
+    const second = await authorized('post', '/api/v1/dashboard/daily-metrics', token).send(payload);
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(body(second).id).toBe(body(first).id);
+    const dashboard = await authorized('get', '/api/v1/dashboard/operational', token);
+    expect(dashboard.status).toBe(200);
+    expect((body(dashboard).sourceOfTruth as Record<string, unknown>).financialSales).toBe(
+      'Sale and confirmed Payment',
+    );
+    const rows = await prisma.dailyMetric.count({
+      where: { organizationId: fixture.ownerA.organizationId },
+    });
+    expect(rows).toBe(1);
+
+    const csv =
+      'fecha,campaña,pais,conversaciones,demos,ventas,gasto\n' +
+      '2026-08-16,Sprint 35 CSV,CL,8,2,0,12.00\n' +
+      '2026-08-16,Sprint 35 CSV,MX,5,1,0,8.00';
+    const imported = await authorized('post', '/api/v1/dashboard/daily-metrics/import', token).send(
+      { csv },
+    );
+    const importedAgain = await authorized(
+      'post',
+      '/api/v1/dashboard/daily-metrics/import',
+      token,
+    ).send({ csv });
+    expect(imported.status).toBe(201);
+    expect(importedAgain.status).toBe(201);
+    expect(body(imported).imported).toBe(2);
+    expect(body(importedAgain).imported).toBe(2);
+    expect(
+      await prisma.dailyMetric.count({
+        where: { organizationId: fixture.ownerA.organizationId },
+      }),
+    ).toBe(3);
+  });
+
   it('rejects unknown DTO fields', async () => {
     const token = await login(fixture.ownerA);
     const response = await authorized('post', '/api/v1/providers', token).send({
@@ -394,6 +445,8 @@ async function createFixture(prisma: PrismaClient): Promise<Fixture> {
     'activations.update',
     'activations.delete',
     'followups.read',
+    'operations.read',
+    'operations.manage',
   ];
   const permissions = await Promise.all(
     permissionKeys.map((key) => prisma.permission.create({ data: { key, name: key } })),

@@ -5,6 +5,7 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
     await transaction.$executeRaw`SELECT set_config('superflash.allow_integrity_cleanup', 'on', true)`;
     await transaction.renewalReminder.deleteMany();
     await transaction.notification.deleteMany();
+    await transaction.dailyMetric.deleteMany();
     await transaction.expense.deleteMany();
     await transaction.commercialImportRow.deleteMany();
     await transaction.commercialImport.deleteMany();

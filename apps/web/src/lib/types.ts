@@ -140,6 +140,7 @@ export interface ProductOffer {
   slug: string;
   sku: string | null;
   description: string | null;
+  category: { id: string; name: string; slug: string } | null;
   type: string;
   fulfillmentMode: string;
   requiresSubscription: boolean;
@@ -351,6 +352,66 @@ export interface MyDayResponse {
 
 export interface MyDaySummary {
   [key: string]: number;
+}
+
+export interface OperationalDashboard {
+  period: { from: string; to: string };
+  today: {
+    conversations: number;
+    demos: number;
+    informativeSales: number;
+    adSpend: Array<{ currency: string; amount: string }>;
+    grossRevenue: Array<{ currency: string; amount: string }>;
+    followups: number;
+  };
+  month: {
+    conversations: number;
+    demos: number;
+    sales: number;
+    conversionConversationToDemo: number;
+    conversionDemoToSale: number;
+    conversionConversationToSale: number;
+    grossBilling: Array<{ currency: string; amount: string }>;
+    netIncome: Array<{ currency: string; amount: string }>;
+    profit: Array<{ currency: string; amount: string }>;
+    averageTicket: Array<{ currency: string; amount: string }>;
+    adSpend: string;
+    costPerConversation: string;
+    costPerDemo: string;
+    cpa: string;
+    roas: string;
+  };
+  manualActivity: JsonRecord;
+  financialReal: JsonRecord;
+  byCountry: Array<{
+    country: string;
+    conversations: number;
+    demos: number;
+    informativeSales: number;
+    adSpend: string;
+    grossRevenue: string;
+  }>;
+  pendingCollections: Array<{ currency: string; balance: string }>;
+  renewalsDueSoon: number;
+  criticalStock: number;
+  sourceOfTruth: { manualActivity: string; financialSales: string; financialSalesCount: string };
+}
+
+export interface DailyMetric {
+  id: string;
+  metricDate: string;
+  campaign: NamedRelation | null;
+  country: string;
+  conversations: number;
+  demos: number;
+  salesCount: number;
+  adSpend: string;
+  grossRevenue: string | null;
+  currency: string;
+  notes: string | null;
+  source: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface IntelligenceMoneyMetric {

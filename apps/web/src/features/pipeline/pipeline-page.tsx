@@ -17,14 +17,16 @@ import { api, queryString } from '@/lib/api-client';
 import type { PipelineResponse, PipelineStage } from '@/lib/types';
 
 const OPERATIONAL_STAGE_NAMES: Record<string, string> = {
+  NEW: 'Nuevo',
+  NUEVO: 'Nuevo',
+  MESSAGE_SENT: 'Mensaje enviado',
   DEMO_SENT: 'Demo enviada',
   NO_RESPONSE: 'No responde',
   TALK_LATER: 'Hablar más adelante',
   WANTS_TO_BUY: 'Quiere comprar',
   PURCHASED: 'Compró',
-  NEW: 'No responde',
-  NEW_LEAD: 'No responde',
-  NUEVO_LEAD: 'No responde',
+  NEW_LEAD: 'Nuevo',
+  NUEVO_LEAD: 'Nuevo',
   LEFT_ON_READ: 'No responde',
   DEJO_EN_VISTO: 'No responde',
   WAITING_CUSTOMER: 'No responde',
@@ -33,6 +35,8 @@ const OPERATIONAL_STAGE_NAMES: Record<string, string> = {
   COMPRO: 'Compró',
   PAID: 'Compró',
   WON: 'Compró',
+  LOST: 'Perdido',
+  PERDIDO: 'Perdido',
 };
 
 const VISIBLE_STAGE_KEYS = new Set(Object.keys(OPERATIONAL_STAGE_NAMES));

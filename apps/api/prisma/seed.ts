@@ -63,6 +63,8 @@ const permissions = [
   { key: 'campaigns.update', name: 'Actualizar campañas' },
   { key: 'campaigns.delete', name: 'Eliminar campañas' },
   { key: 'reports.read', name: 'Leer reportes' },
+  { key: 'operations.read', name: 'Leer operación diaria' },
+  { key: 'operations.manage', name: 'Gestionar operación diaria' },
   { key: 'settings.manage', name: 'Administrar configuración' },
   { key: 'audit.read', name: 'Leer auditoría' },
   { key: 'catalog.read', name: 'Leer catálogo' },
@@ -151,6 +153,18 @@ const expenseCategories = [
 
 const pipelineStages = [
   {
+    name: 'Nuevo',
+    systemKey: 'NEW',
+    color: '#64748B',
+    category: PipelineStageCategory.OPEN,
+  },
+  {
+    name: 'Mensaje enviado',
+    systemKey: 'MESSAGE_SENT',
+    color: '#0EA5E9',
+    category: PipelineStageCategory.OPEN,
+  },
+  {
     name: 'Demo enviada',
     systemKey: 'DEMO_SENT',
     color: '#3B82F6',
@@ -175,6 +189,12 @@ const pipelineStages = [
     category: PipelineStageCategory.OPEN,
   },
   { name: 'Compró', systemKey: 'PURCHASED', color: '#22C55E', category: PipelineStageCategory.WON },
+  {
+    name: 'Perdido',
+    systemKey: 'LOST',
+    color: '#EF4444',
+    category: PipelineStageCategory.LOST,
+  },
 ] as const;
 
 const salesPermissionKeys = [
@@ -213,6 +233,8 @@ const salesPermissionKeys = [
   'whatsapp.templates.read',
   'whatsapp.conversations.assign',
   'financial.read',
+  'operations.read',
+  'operations.manage',
 ] as const;
 
 const marketingSalesPermissionKeys = [

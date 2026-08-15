@@ -4,9 +4,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Sidebar } from '@/components/layout/sidebar';
 import { CollectionsPage } from '@/features/collections/collections-page';
 import { ExecutiveDashboardPage } from '@/features/executive-intelligence/executive-dashboard-page';
+import { OperationalDashboardPage } from '@/features/operations/operational-dashboard-page';
 import { api } from '@/lib/api-client';
 import { useAuthStore } from '@/lib/auth-store';
-import type { AuthUser, IntelligenceDashboard, Sale } from '@/lib/types';
+import type { AuthUser, IntelligenceDashboard, OperationalDashboard, Sale } from '@/lib/types';
 
 jest.mock('next/navigation', () => ({
   usePathname: () => '/',
@@ -76,6 +77,55 @@ const dashboard: IntelligenceDashboard = {
   },
 };
 
+const operationalDashboard: OperationalDashboard = {
+  period: { from: '2026-08-01T00:00:00.000Z', to: '2026-08-16T00:00:00.000Z' },
+  today: {
+    conversations: 4,
+    demos: 1,
+    informativeSales: 0,
+    adSpend: [{ currency: 'USD', amount: '10.00' }],
+    grossRevenue: [{ currency: 'USD', amount: '0.00' }],
+    followups: 2,
+  },
+  month: {
+    conversations: 20,
+    demos: 5,
+    sales: 2,
+    conversionConversationToDemo: 25,
+    conversionDemoToSale: 40,
+    conversionConversationToSale: 10,
+    grossBilling: [{ currency: 'USD', amount: '120.00' }],
+    netIncome: [{ currency: 'USD', amount: '115.00' }],
+    profit: [{ currency: 'USD', amount: '80.00' }],
+    averageTicket: [{ currency: 'USD', amount: '60.00' }],
+    adSpend: '35.00',
+    costPerConversation: '1.75',
+    costPerDemo: '7.00',
+    cpa: '17.50',
+    roas: '3.43',
+  },
+  manualActivity: {},
+  financialReal: {},
+  byCountry: [
+    {
+      country: 'CL',
+      conversations: 20,
+      demos: 5,
+      informativeSales: 1,
+      adSpend: '35.00',
+      grossRevenue: '120.00',
+    },
+  ],
+  pendingCollections: [{ currency: 'USD', balance: '25.00' }],
+  renewalsDueSoon: 1,
+  criticalStock: 0,
+  sourceOfTruth: {
+    manualActivity: 'DailyMetric',
+    financialSales: 'Sale and confirmed Payment',
+    financialSalesCount: 'Sale',
+  },
+};
+
 describe('operational CRM reset', () => {
   beforeEach(() => {
     useAuthStore.getState().setSession('token', user);
@@ -114,6 +164,22 @@ describe('operational CRM reset', () => {
     expect(screen.getByText('Conversión')).toBeInTheDocument();
     expect(screen.getByText('Ingresos')).toBeInTheDocument();
     expect(screen.queryByText('Ingresos por día')).not.toBeInTheDocument();
+  });
+
+  it('renders the daily operating dashboard and keeps manual activity separate', async () => {
+    jest.spyOn(api, 'getOperationalDashboard').mockResolvedValue(operationalDashboard);
+    jest
+      .spyOn(api, 'getDailyMetrics')
+      .mockResolvedValue({ data: [], pagination: { page: 1, limit: 50, total: 0, totalPages: 0 } });
+    jest.spyOn(api, 'getMarketingCampaigns').mockResolvedValue({
+      data: [],
+      pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
+    });
+    render(withQuery(<OperationalDashboardPage />));
+    await waitFor(() => expect(screen.getByText('Dashboard operativo')).toBeInTheDocument());
+    expect(screen.getByText('Conversaciones hoy')).toBeInTheDocument();
+    expect(screen.getByText('Registro manual')).toBeInTheDocument();
+    expect(screen.getByText('Facturación del mes')).toBeInTheDocument();
   });
 
   it('shows the operational collections queue from existing sales and payments', async () => {

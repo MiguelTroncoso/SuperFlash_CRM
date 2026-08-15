@@ -27,8 +27,9 @@ interface LeadFormValues {
 }
 
 const STAGE_LABELS: Record<string, string> = {
-  NEW: 'No responde',
-  NEW_LEAD: 'No responde',
+  NEW: 'Nuevo',
+  NUEVO: 'Nuevo',
+  NEW_LEAD: 'Nuevo',
   MESSAGE_SENT: 'Mensaje enviado',
   CONVERSATION: 'Conversando',
   AWAITING_CREDIT_USAGE: 'Conversando',
@@ -40,6 +41,8 @@ const STAGE_LABELS: Record<string, string> = {
   TALK_LATER: 'Hablar más adelante',
   WANTS_TO_BUY: 'Quiere comprar',
   PURCHASED: 'Compró',
+  LOST: 'Perdido',
+  PERDIDO: 'Perdido',
 };
 
 const VISIBLE_STAGE_KEYS = new Set([
@@ -48,6 +51,9 @@ const VISIBLE_STAGE_KEYS = new Set([
   'TALK_LATER',
   'WANTS_TO_BUY',
   'PURCHASED',
+  'LOST',
+  'MESSAGE_SENT',
+  'NUEVO',
   'NEW',
   'NEW_LEAD',
   'NUEVO_LEAD',
@@ -62,9 +68,11 @@ const VISIBLE_STAGE_KEYS = new Set([
 ]);
 
 const CANONICAL_STAGE_KEYS: Record<string, string> = {
-  NEW: 'NO_RESPONSE',
-  NEW_LEAD: 'NO_RESPONSE',
-  NUEVO_LEAD: 'NO_RESPONSE',
+  NEW: 'NEW',
+  NEW_LEAD: 'NEW',
+  NUEVO: 'NEW',
+  NUEVO_LEAD: 'NEW',
+  MESSAGE_SENT: 'MESSAGE_SENT',
   WAITING_CUSTOMER: 'NO_RESPONSE',
   LEFT_ON_READ: 'NO_RESPONSE',
   DEJO_EN_VISTO: 'NO_RESPONSE',
@@ -73,6 +81,7 @@ const CANONICAL_STAGE_KEYS: Record<string, string> = {
   COMPRO: 'PURCHASED',
   PAID: 'PURCHASED',
   WON: 'PURCHASED',
+  PERDIDO: 'LOST',
 };
 
 function Field({
@@ -228,12 +237,7 @@ export function LeadIntakeDrawer({
   });
   const create = useMutation({
     mutationFn: (values: LeadFormValues) => api.createLead(toBody(values)),
-    onSuccess: async (result) => {
-      const state = typeof result.state === 'string' ? result.state : null;
-      const opportunityId = typeof result.opportunityId === 'string' ? result.opportunityId : null;
-      if (state === 'PURCHASED' && opportunityId) {
-        await api.convertOpportunity(opportunityId);
-      }
+    onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: ['pipeline'] });
       void queryClient.invalidateQueries({ queryKey: ['contacts'] });
       void queryClient.invalidateQueries({ queryKey: ['customer-360'] });
@@ -263,7 +267,7 @@ export function LeadIntakeDrawer({
   useEffect(() => {
     if (!selectedStageId) return;
     const key = selectedStageKey;
-    if (key === 'DEMO_SENT' || key === 'NO_RESPONSE') {
+    if (key === 'MESSAGE_SENT' || key === 'DEMO_SENT' || key === 'NO_RESPONSE') {
       setFollowUpAutomatic(true);
       form.setValue('nextFollowUpAt', suggestedDateTimeLocal(selectedStageDays ?? null));
       return;

@@ -7,6 +7,7 @@ import type {
   AutomationRule,
   Contact,
   ContactCreateResult,
+  DailyMetric,
   Category,
   CommunicationChannelHealth,
   CommunicationConfigurationCheck,
@@ -39,6 +40,7 @@ import type {
   MarketingSpend,
   ProspectConversationState,
   Notification,
+  OperationalDashboard,
   Opportunity,
   Pagination,
   Paginated,
@@ -168,6 +170,24 @@ export const api = {
   getMyDaySummary: (query = '') => request<MyDaySummary>(`/my-day/summary${query}`),
   getExecutiveDashboard: (query = '') =>
     request<IntelligenceDashboard>(`/executive/dashboard${query}`),
+  getOperationalDashboard: (query = '') =>
+    request<OperationalDashboard>(`/dashboard/operational${query}`),
+  getDailyMetrics: (query = '') =>
+    request<Paginated<DailyMetric>>(`/dashboard/daily-metrics${query}`),
+  upsertDailyMetric: (body: JsonRecord) =>
+    request<DailyMetric>('/dashboard/daily-metrics', { method: 'POST', ...jsonBody(body) }),
+  updateDailyMetric: (id: string, body: JsonRecord) =>
+    request<DailyMetric>(`/dashboard/daily-metrics/${id}`, { method: 'PATCH', ...jsonBody(body) }),
+  previewDailyMetricsImport: (csv: string) =>
+    request<JsonRecord>('/dashboard/daily-metrics/import/preview', {
+      method: 'POST',
+      ...jsonBody({ csv }),
+    }),
+  importDailyMetrics: (csv: string) =>
+    request<JsonRecord>('/dashboard/daily-metrics/import', {
+      method: 'POST',
+      ...jsonBody({ csv }),
+    }),
   getBusinessIntelligence: (view: string, query = '') =>
     request<BusinessIntelligenceResponse>(`/business-intelligence/${view}${query}`),
   getCustomer360: (contactId: string) => request<Customer360Response>(`/customer-360/${contactId}`),
