@@ -1368,6 +1368,7 @@ model Sale {
   exchangeRate         Decimal?   @db.Decimal(18, 8)
   exchangeRateSnapshot Json?
   soldAt               DateTime?
+  paymentDueAt         DateTime?
   cancelledAt          DateTime?
   cancellationReason   String?
   note                 String?
@@ -2006,6 +2007,7 @@ model Expense {
   currency           String
   expenseDate        DateTime
   vendorName         String?
+  reference          String?
   description        String?
   paymentMethod      ExpensePaymentMethod @default(OTHER)
   frequency          ExpenseFrequency     @default(ONE_TIME)

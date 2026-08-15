@@ -228,7 +228,8 @@ export const api = {
   createSale: (body: JsonRecord) => request<Sale>('/sales', { method: 'POST', ...jsonBody(body) }),
   convertOpportunity: (opportunityId: string) =>
     request<Sale>(`/sales/from-opportunity/${opportunityId}`, { method: 'POST' }),
-  confirmSale: (id: string) => request<Sale>(`/sales/${id}/confirm`, { method: 'POST' }),
+  confirmSale: (id: string, body?: JsonRecord) =>
+    request<Sale>(`/sales/${id}/confirm`, { method: 'POST', ...(body ? jsonBody(body) : {}) }),
   createPayment: (saleId: string, body: JsonRecord) =>
     request<JsonRecord>(`/sales/${saleId}/payments`, { method: 'POST', ...jsonBody(body) }),
   getPayments: (query = '') =>

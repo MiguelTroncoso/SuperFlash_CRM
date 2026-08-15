@@ -130,6 +130,7 @@ export interface Sale {
   opportunity: NamedRelation | null;
   seller: Person | null;
   items: JsonRecord[];
+  paymentDueAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -363,6 +364,13 @@ export interface OperationalDashboard {
     adSpend: Array<{ currency: string; amount: string }>;
     grossRevenue: Array<{ currency: string; amount: string }>;
     followups: number;
+    sales: number;
+    grossBilling: Array<{ currency: string; amount: string }>;
+    confirmedPayments: Array<{ currency: string; amount: string }>;
+    netIncome: Array<{ currency: string; amount: string }>;
+    expenses: Array<{ currency: string; amount: string }>;
+    profit: Array<{ currency: string; amount: string }>;
+    renewals: number;
   };
   month: {
     conversations: number;
@@ -373,6 +381,7 @@ export interface OperationalDashboard {
     conversionConversationToSale: number;
     grossBilling: Array<{ currency: string; amount: string }>;
     netIncome: Array<{ currency: string; amount: string }>;
+    expenses: Array<{ currency: string; amount: string }>;
     profit: Array<{ currency: string; amount: string }>;
     averageTicket: Array<{ currency: string; amount: string }>;
     adSpend: string;
@@ -848,9 +857,12 @@ export interface FinancialExpense {
   currency: string;
   expenseDate: string;
   vendorName: string | null;
+  reference: string | null;
   description: string | null;
   paymentMethod: string;
   frequency: string;
+  startDate?: string | null;
+  endDate?: string | null;
   active: boolean;
   notes: string | null;
   receiptUrl: string | null;

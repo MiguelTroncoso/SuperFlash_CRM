@@ -35,11 +35,18 @@ export class OffersService {
               OR: [
                 { name: { contains: query.search, mode: 'insensitive' } },
                 { slug: { contains: query.search.toLowerCase(), mode: 'insensitive' } },
+                { sku: { contains: query.search.toUpperCase(), mode: 'insensitive' } },
+                {
+                  productCategory: {
+                    is: { name: { contains: query.search, mode: 'insensitive' } },
+                  },
+                },
               ],
             }
           : {}),
       },
       orderBy: { name: 'asc' },
+      take: query.limit,
       include: {
         productCategory: { select: { id: true, name: true, slug: true } },
         plans: { where: { active: true, deletedAt: null }, orderBy: { order: 'asc' } },

@@ -14,7 +14,7 @@ import { Input, Select, Textarea } from '@/components/ui/input';
 import { MetricCard } from '@/components/ui/metric-card';
 import { useToastStore } from '@/components/ui/toast';
 import { api, queryString } from '@/lib/api-client';
-import type { FinancialDashboard, FinancialExpense } from '@/lib/types';
+import type { FinancialDashboard, FinancialExpense, JsonRecord } from '@/lib/types';
 
 const CURRENCIES = ['CLP', 'USD', 'EUR', 'MXN', 'PEN'] as const;
 const FREQUENCIES = ['ONE_TIME', 'WEEKLY', 'MONTHLY', 'ANNUAL'] as const;
@@ -251,8 +251,15 @@ export function FinancialExpensesPage(): React.ReactElement {
     frequency: 'ONE_TIME',
     description: '',
     vendorName: '',
+    reference: '',
+    notes: '',
+    startDate: '',
+    endDate: '',
+    receiptUrl: '',
+    active: true,
     categoryId: '',
   });
+  const [editingId, setEditingId] = useState<string | null>(null);
   const categories = useQuery({
     queryKey: ['financial-categories'],
     queryFn: api.getFinancialCategories,
@@ -261,12 +268,27 @@ export function FinancialExpensesPage(): React.ReactElement {
     queryKey: ['financial-expenses', search],
     queryFn: () => api.getFinancialExpenses(queryString({ search, limit: 50 })),
   });
+  const resetForm = () => {
+    setEditingId(null);
+    setForm((value) => ({
+      ...value,
+      amount: '',
+      description: '',
+      reference: '',
+      notes: '',
+      startDate: '',
+      endDate: '',
+      receiptUrl: '',
+      active: true,
+    }));
+  };
   const create = useMutation({
     mutationFn: api.createFinancialExpense,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['financial-expenses'] });
+      void queryClient.invalidateQueries({ queryKey: ['financial-dashboard'] });
       toast({ title: 'Gasto registrado', tone: 'success' });
-      setForm((value) => ({ ...value, amount: '', description: '' }));
+      resetForm();
     },
     onError: (error: Error) =>
       toast({
@@ -274,6 +296,30 @@ export function FinancialExpensesPage(): React.ReactElement {
         description: error.message,
         tone: 'error',
       }),
+  });
+  const updateExpense = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: JsonRecord }) =>
+      api.updateFinancialExpense(id, body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['financial-expenses'] });
+      void queryClient.invalidateQueries({ queryKey: ['financial-dashboard'] });
+      toast({ title: 'Gasto actualizado', tone: 'success' });
+      resetForm();
+    },
+    onError: (error: Error) =>
+      toast({
+        title: 'No fue posible actualizar el gasto',
+        description: error.message,
+        tone: 'error',
+      }),
+  });
+  const archive = useMutation({
+    mutationFn: api.archiveFinancialExpense,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['financial-expenses'] });
+      void queryClient.invalidateQueries({ queryKey: ['financial-dashboard'] });
+      toast({ title: 'Gasto archivado', tone: 'success' });
+    },
   });
   const generate = useMutation({
     mutationFn: api.generateRecurringExpenses,
@@ -284,6 +330,18 @@ export function FinancialExpensesPage(): React.ReactElement {
   });
   const update = (key: keyof typeof form, value: string) =>
     setForm((current) => ({ ...current, [key]: value }));
+  const submitExpense = () => {
+    const body: JsonRecord = {
+      ...form,
+      ...(form.categoryId ? { categoryId: form.categoryId } : {}),
+      ...(form.startDate ? { startDate: form.startDate } : {}),
+      ...(form.endDate ? { endDate: form.endDate } : {}),
+      ...(form.receiptUrl ? { receiptUrl: form.receiptUrl } : {}),
+    };
+    if (editingId) updateExpense.mutate({ id: editingId, body });
+    else create.mutate(body);
+  };
+  const expensePending = create.isPending || updateExpense.isPending;
   return (
     <PageGrid>
       <PageHeader
@@ -357,6 +415,15 @@ export function FinancialExpensesPage(): React.ReactElement {
             />
           </label>
           <label className="text-xs font-semibold text-content-secondary">
+            Referencia
+            <Input
+              className="mt-1"
+              placeholder="Factura o transferencia"
+              value={form.reference}
+              onChange={(event) => update('reference', event.target.value)}
+            />
+          </label>
+          <label className="text-xs font-semibold text-content-secondary">
             Forma de pago
             <Select
               className="mt-1"
@@ -388,18 +455,59 @@ export function FinancialExpensesPage(): React.ReactElement {
               onChange={(event) => update('description', event.target.value)}
             />
           </label>
-          <div className="flex items-end">
-            <Button
-              disabled={create.isPending || !form.amount}
-              onClick={() =>
-                create.mutate({
-                  ...form,
-                  ...(form.categoryId ? { categoryId: form.categoryId } : {}),
-                })
+          <label className="text-xs font-semibold text-content-secondary">
+            Inicio
+            <Input
+              className="mt-1"
+              type="date"
+              value={form.startDate}
+              onChange={(event) => update('startDate', event.target.value)}
+            />
+          </label>
+          <label className="text-xs font-semibold text-content-secondary">
+            Fin
+            <Input
+              className="mt-1"
+              type="date"
+              value={form.endDate}
+              onChange={(event) => update('endDate', event.target.value)}
+            />
+          </label>
+          <label className="text-xs font-semibold text-content-secondary sm:col-span-2 lg:col-span-1">
+            Comprobante (URL opcional)
+            <Input
+              className="mt-1"
+              value={form.receiptUrl}
+              onChange={(event) => update('receiptUrl', event.target.value)}
+            />
+          </label>
+          <label className="flex items-center gap-2 text-xs font-semibold text-content-secondary">
+            <input
+              checked={form.active}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, active: event.target.checked }))
               }
-            >
-              {create.isPending ? 'Guardando…' : 'Registrar gasto'}
+              type="checkbox"
+            />
+            Gasto activo
+          </label>
+          <label className="text-xs font-semibold text-content-secondary sm:col-span-2 lg:col-span-1">
+            Nota
+            <Textarea
+              className="mt-1"
+              value={form.notes}
+              onChange={(event) => update('notes', event.target.value)}
+            />
+          </label>
+          <div className="flex items-end">
+            <Button disabled={expensePending || !form.amount} onClick={submitExpense}>
+              {expensePending ? 'Guardando…' : editingId ? 'Actualizar gasto' : 'Registrar gasto'}
             </Button>
+            {editingId ? (
+              <Button onClick={resetForm} type="button" variant="outline">
+                Cancelar edición
+              </Button>
+            ) : null}
           </div>
         </CardContent>
       </Card>
@@ -422,9 +530,11 @@ export function FinancialExpensesPage(): React.ReactElement {
                 <tr>
                   <th className="px-5 py-3">Fecha</th>
                   <th className="px-5 py-3">Descripción</th>
+                  <th className="px-5 py-3">Referencia</th>
                   <th className="px-5 py-3">Categoría</th>
                   <th className="px-5 py-3">Monto</th>
                   <th className="px-5 py-3">Estado</th>
+                  <th className="px-5 py-3">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-subtle">
@@ -436,6 +546,7 @@ export function FinancialExpensesPage(): React.ReactElement {
                     <td className="px-5 py-3 font-semibold text-content-primary">
                       {expense.description ?? expense.vendorName ?? 'Sin descripción'}
                     </td>
+                    <td className="px-5 py-3 text-content-secondary">{expense.reference ?? '—'}</td>
                     <td className="px-5 py-3 text-content-secondary">
                       {expense.category?.name ?? 'Sin categoría'}
                     </td>
@@ -444,6 +555,44 @@ export function FinancialExpensesPage(): React.ReactElement {
                     </td>
                     <td className="px-5 py-3">
                       <StatusBadge status={expense.generated ? 'GENERATED' : 'ACTIVE'} />
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          onClick={() => {
+                            setEditingId(expense.id);
+                            setForm((current) => ({
+                              ...current,
+                              expenseDate: expense.expenseDate.slice(0, 10),
+                              amount: expense.amount,
+                              currency: expense.currency,
+                              paymentMethod: expense.paymentMethod,
+                              frequency: expense.frequency,
+                              description: expense.description ?? '',
+                              vendorName: expense.vendorName ?? '',
+                              reference: expense.reference ?? '',
+                              notes: expense.notes ?? '',
+                              startDate: expense.startDate?.slice(0, 10) ?? '',
+                              endDate: expense.endDate?.slice(0, 10) ?? '',
+                              receiptUrl: expense.receiptUrl ?? '',
+                              active: expense.active,
+                              categoryId: expense.category?.id ?? '',
+                            }));
+                          }}
+                          size="sm"
+                          variant="outline"
+                        >
+                          Editar
+                        </Button>
+                        <Button
+                          disabled={archive.isPending}
+                          onClick={() => archive.mutate(expense.id)}
+                          size="sm"
+                          variant="ghost"
+                        >
+                          Archivar
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}

@@ -5,7 +5,6 @@ import { useQuery } from '@tanstack/react-query';
 
 import { PageGrid, PageHeader } from '@/components/shared/page-header';
 import { QueryState } from '@/components/shared/query-state';
-import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { MetricCard } from '@/components/ui/metric-card';
@@ -13,13 +12,10 @@ import { api } from '@/lib/api-client';
 import { arrayValue, numberValue, stringValue } from '@/lib/utils';
 
 const OPERATING_SECTIONS = [
-  ['newLeads', 'Leads nuevos', '/leads', '✦'],
-  ['todayFollowUps', 'Responder hoy', '/my-day?section=todayFollowUps', '◷'],
   ['paymentPromises', 'Cobros pendientes', '/collections', '$'],
   ['pendingActivations', 'Activaciones', '/activations', '✓'],
-  ['renewalsToday', 'Renovaciones', '/renewals/today', '↻'],
-  ['overdueRenewals', 'Renovaciones vencidas', '/renewals/overdue', '!'],
-  ['lowStock', 'Stock bajo', '/catalog', '▣'],
+  ['renewalsToday', 'Renovaciones para hoy', '/renewals/today', '↻'],
+  ['lowStock', 'Stock crítico', '/catalog', '▣'],
 ] as const;
 
 export function MyDayPage(): React.ReactElement {
@@ -38,12 +34,7 @@ export function MyDayPage(): React.ReactElement {
         <PageHeader
           eyebrow="Operación comercial"
           title="Mi Día"
-          description="La cola de trabajo para responder, cobrar, activar y renovar."
-          actions={
-            <Link href="/leads">
-              <Button>＋ Registrar Lead</Button>
-            </Link>
-          }
+          description="La cola de trabajo para cobrar, activar, renovar y controlar stock."
         />
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {OPERATING_SECTIONS.map(([key, label, href, icon]) => (

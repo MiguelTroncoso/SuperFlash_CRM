@@ -140,7 +140,9 @@ const permissions = [
 
 const expenseCategories = [
   'Publicidad',
+  'Proveedor',
   'Hosting',
+  'Hosting/VPS',
   'Software',
   'Dominios',
   'Servicios',
@@ -148,6 +150,7 @@ const expenseCategories = [
   'Impuestos',
   'Operación',
   'Personal',
+  'Transporte',
   'Otros',
 ] as const;
 
