@@ -31,6 +31,8 @@ const user: AuthUser = {
     'payments.read',
     'renewals.read',
     'catalog.read',
+    'financial.read',
+    'operations.read',
   ],
 };
 
@@ -86,6 +88,13 @@ const operationalDashboard: OperationalDashboard = {
     adSpend: [{ currency: 'USD', amount: '10.00' }],
     grossRevenue: [{ currency: 'USD', amount: '0.00' }],
     followups: 2,
+    sales: 1,
+    grossBilling: [{ currency: 'USD', amount: '100.00' }],
+    confirmedPayments: [{ currency: 'USD', amount: '80.00' }],
+    netIncome: [{ currency: 'USD', amount: '80.00' }],
+    expenses: [{ currency: 'USD', amount: '10.00' }],
+    profit: [{ currency: 'USD', amount: '70.00' }],
+    renewals: 1,
   },
   month: {
     conversations: 20,
@@ -96,6 +105,7 @@ const operationalDashboard: OperationalDashboard = {
     conversionConversationToSale: 10,
     grossBilling: [{ currency: 'USD', amount: '120.00' }],
     netIncome: [{ currency: 'USD', amount: '115.00' }],
+    expenses: [{ currency: 'USD', amount: '35.00' }],
     profit: [{ currency: 'USD', amount: '80.00' }],
     averageTicket: [{ currency: 'USD', amount: '60.00' }],
     adSpend: '35.00',
@@ -137,11 +147,11 @@ describe('operational CRM reset', () => {
     render(<Sidebar />);
     for (const label of [
       'Dashboard',
+      'Operación diaria',
       'Mi Día',
-      'Leads',
-      'Pipeline',
       'Ventas',
       'Cobros',
+      'Gastos',
       'Renovaciones',
       'Catálogo',
       'Configuración',
@@ -179,7 +189,8 @@ describe('operational CRM reset', () => {
     await waitFor(() => expect(screen.getByText('Dashboard operativo')).toBeInTheDocument());
     expect(screen.getByText('Conversaciones hoy')).toBeInTheDocument();
     expect(screen.getByText('Registro manual')).toBeInTheDocument();
-    expect(screen.getByText('Facturación del mes')).toBeInTheDocument();
+    expect(screen.getByText('Resumen del día')).toBeInTheDocument();
+    expect(screen.getByText('Ingresos netos del mes')).toBeInTheDocument();
   });
 
   it('shows the operational collections queue from existing sales and payments', async () => {

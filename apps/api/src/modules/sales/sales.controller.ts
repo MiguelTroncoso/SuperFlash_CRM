@@ -19,7 +19,13 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Permissions } from '../auth/decorators/permissions.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
-import { CancelSaleDto, CreateSaleDto, ListSalesQueryDto, UpdateSaleDto } from './dto/sales.dto';
+import {
+  CancelSaleDto,
+  ConfirmSaleDto,
+  CreateSaleDto,
+  ListSalesQueryDto,
+  UpdateSaleDto,
+} from './dto/sales.dto';
 import { SalesService } from './sales.service';
 
 function requestMetadata(request: Request): RequestMetadata {
@@ -100,10 +106,11 @@ export class SalesController {
   @Permissions('sales.update')
   confirm(
     @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ConfirmSaleDto,
     @CurrentUser() user: AuthenticatedUser,
     @Req() request: Request,
   ): Promise<Record<string, unknown>> {
-    return this.service.confirm(id, { user, metadata: requestMetadata(request) });
+    return this.service.confirm(id, { user, metadata: requestMetadata(request) }, dto.payment);
   }
 
   @Post(':id/fulfill')

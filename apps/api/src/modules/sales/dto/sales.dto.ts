@@ -1,10 +1,11 @@
-import { SaleStatus } from '@prisma/client';
+import { PaymentMethod, SaleStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   ArrayMinSize,
   IsArray,
   IsDecimal,
+  IsDateString,
   IsEnum,
   IsIn,
   IsInt,
@@ -16,6 +17,25 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
+
+export class ConfirmSalePaymentDto {
+  @IsDecimal({ decimal_digits: '0,2' })
+  amount!: string;
+
+  @IsString()
+  @MaxLength(3)
+  currency!: string;
+
+  @IsEnum(PaymentMethod)
+  method!: PaymentMethod;
+}
+
+export class ConfirmSaleDto {
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ConfirmSalePaymentDto)
+  payment?: ConfirmSalePaymentDto;
+}
 
 export class CreateSaleItemDto {
   @ApiProperty({ format: 'uuid' })
@@ -100,6 +120,11 @@ export class CreateSaleDto {
   @MaxLength(4000)
   note?: string;
 
+  @IsOptional()
+  @ApiPropertyOptional({ format: 'date-time' })
+  @IsDateString()
+  paymentDueAt?: string;
+
   @IsArray()
   @ApiProperty({ type: [CreateSaleItemDto], minItems: 1 })
   @ArrayMinSize(1)
@@ -124,6 +149,11 @@ export class UpdateSaleDto {
   @IsString()
   @MaxLength(4000)
   note?: string;
+
+  @IsOptional()
+  @ApiPropertyOptional({ format: 'date-time' })
+  @IsDateString()
+  paymentDueAt?: string;
 }
 
 export class CancelSaleDto {

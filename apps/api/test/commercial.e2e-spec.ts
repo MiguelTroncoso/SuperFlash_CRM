@@ -141,6 +141,45 @@ describe('Commercial core HTTP flow', () => {
     );
   });
 
+  it('confirms a Sale and records an immediate payment in one transaction', async () => {
+    const token = await login(fixture.ownerA);
+    const created = await authorized('post', '/api/v1/sales', token).send({
+      contactId: fixture.contactA,
+      currency: 'USD',
+      items: [{ productId: fixture.productA, unitPrice: '25.00' }],
+    });
+    const saleId = String(body(created).id);
+    const confirmed = await authorized('post', `/api/v1/sales/${saleId}/confirm`, token).send({
+      payment: { amount: '25.00', currency: 'USD', method: 'MANUAL' },
+    });
+    expect(confirmed.status).toBe(201);
+    expect(body(confirmed).status).toBe('CONFIRMED');
+    expect(
+      await prisma.payment.count({
+        where: { organizationId: fixture.organizationA, saleId, status: 'CONFIRMED' },
+      }),
+    ).toBe(1);
+    expect(
+      await prisma.activity.findFirst({ where: { saleId, title: 'Pago confirmado con la venta' } }),
+    ).not.toBeNull();
+  });
+
+  it('rolls back the Sale transition when the immediate payment is invalid', async () => {
+    const token = await login(fixture.ownerA);
+    const created = await authorized('post', '/api/v1/sales', token).send({
+      contactId: fixture.contactA,
+      currency: 'USD',
+      items: [{ productId: fixture.productA, unitPrice: '25.00' }],
+    });
+    const saleId = String(body(created).id);
+    const rejected = await authorized('post', `/api/v1/sales/${saleId}/confirm`, token).send({
+      payment: { amount: '25.01', currency: 'USD', method: 'MANUAL' },
+    });
+    expect(rejected.status).toBe(409);
+    expect((await prisma.sale.findUniqueOrThrow({ where: { id: saleId } })).status).toBe('DRAFT');
+    expect(await prisma.payment.count({ where: { saleId } })).toBe(0);
+  });
+
   it('deducts tracked stock only on confirmation and rejects overselling', async () => {
     const token = await login(fixture.ownerA);
     await prisma.product.update({

@@ -4,6 +4,7 @@ import {
   BillingCycle,
   BillingPeriodUnit,
   FollowUpStatus,
+  PaymentStatus,
   PipelineStageCategory,
   Prisma,
   ProductStockMovementType,
@@ -20,6 +21,7 @@ import { OutboxService } from '../../infrastructure/outbox/outbox.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/auth.types';
 import { SaleCatalogResolution, PricingService } from '../catalog/pricing/pricing.service';
+import { isSupportedCurrency } from '../commercial/currency';
 import {
   CommercialClient,
   CommercialRequestContext,
@@ -31,6 +33,7 @@ import {
 } from '../commercial/commercial.types';
 import { COMMERCIAL_ERROR_CODES, commercialException } from '../commercial/commercial.errors';
 import {
+  ConfirmSalePaymentDto,
   CreateSaleDto,
   CreateSaleItemDto,
   ListSalesQueryDto,
@@ -261,6 +264,7 @@ export class SalesService {
           discountAmount: true,
           taxAmount: true,
           note: true,
+          paymentDueAt: true,
         },
       });
       if (!current) this.notFound(COMMERCIAL_ERROR_CODES.SALE_NOT_FOUND, 'La venta no existe.');
@@ -301,6 +305,8 @@ export class SalesService {
           taxAmount: tax,
           total,
           note: dto.note === undefined ? current.note : dto.note?.trim() || null,
+          paymentDueAt:
+            dto.paymentDueAt === undefined ? current.paymentDueAt : new Date(dto.paymentDueAt),
           version: { increment: 1 },
         },
       });
@@ -338,8 +344,20 @@ export class SalesService {
     return this.findOne(id, context.user);
   }
 
-  async confirm(id: string, context: CommercialRequestContext): Promise<Record<string, unknown>> {
-    return this.transition(id, SaleStatus.CONFIRMED, 'SaleConfirmed', 'SALE_CONFIRMED', context);
+  async confirm(
+    id: string,
+    context: CommercialRequestContext,
+    payment?: ConfirmSalePaymentDto,
+  ): Promise<Record<string, unknown>> {
+    return this.transition(
+      id,
+      SaleStatus.CONFIRMED,
+      'SaleConfirmed',
+      'SALE_CONFIRMED',
+      context,
+      undefined,
+      payment,
+    );
   }
 
   async fulfill(id: string, context: CommercialRequestContext): Promise<Record<string, unknown>> {
@@ -464,6 +482,7 @@ export class SalesService {
         total,
         currency,
         note: dto.note?.trim() || null,
+        paymentDueAt: dto.paymentDueAt ? new Date(dto.paymentDueAt) : null,
       },
       select: { id: true },
     });
@@ -1083,6 +1102,7 @@ export class SalesService {
     auditAction: string,
     context: CommercialRequestContext,
     reason?: string,
+    payment?: ConfirmSalePaymentDto,
   ): Promise<Record<string, unknown>> {
     await this.prisma.$transaction(async (transaction) => {
       const locked = await transaction.$queryRaw<Array<{ id: string }>>(
@@ -1142,6 +1162,8 @@ export class SalesService {
       if (target === SaleStatus.CONFIRMED) {
         await this.ensureSubscriptionsForSale(transaction, id, context, transitionAt);
         await this.markOpportunityPurchased(transaction, id, context, transitionAt);
+        if (payment)
+          await this.createConfirmedPayment(transaction, id, payment, context, transitionAt);
       }
       await transaction.activity.create({
         data: {
@@ -1172,6 +1194,100 @@ export class SalesService {
     return this.findOne(id, context.user);
   }
 
+  private async createConfirmedPayment(
+    transaction: CommercialClient,
+    saleId: string,
+    payment: ConfirmSalePaymentDto,
+    context: CommercialRequestContext,
+    occurredAt: Date,
+  ): Promise<void> {
+    const amount = parseMoney(payment.amount);
+    positive(amount, 'payment amount');
+    const currency = normalizeCurrency(payment.currency);
+    if (!isSupportedCurrency(currency)) {
+      throw commercialException(
+        HttpStatus.BAD_REQUEST,
+        COMMERCIAL_ERROR_CODES.UNSUPPORTED_CURRENCY,
+        'La moneda no está admitida.',
+      );
+    }
+    const sale = await transaction.sale.findFirst({
+      where: { id: saleId, organizationId: context.user.organizationId, deletedAt: null },
+      select: { total: true, currency: true },
+    });
+    if (!sale) this.notFound(COMMERCIAL_ERROR_CODES.SALE_NOT_FOUND, 'La venta no existe.');
+    if (sale.currency !== currency)
+      throw commercialException(
+        HttpStatus.BAD_REQUEST,
+        COMMERCIAL_ERROR_CODES.INVALID_MONEY,
+        'La moneda del pago debe coincidir con la venta.',
+      );
+    const aggregate = await transaction.payment.aggregate({
+      where: {
+        organizationId: context.user.organizationId,
+        saleId,
+        status: { in: [PaymentStatus.CONFIRMED, PaymentStatus.REFUNDED] },
+        deletedAt: null,
+      },
+      _sum: { netAmount: true, refundedAmount: true },
+    });
+    const confirmed = (aggregate._sum.netAmount ?? new Prisma.Decimal(0)).sub(
+      aggregate._sum.refundedAmount ?? new Prisma.Decimal(0),
+    );
+    if (amount.gt(sale.total.sub(confirmed)))
+      throw commercialException(
+        HttpStatus.CONFLICT,
+        COMMERCIAL_ERROR_CODES.PAYMENT_EXCEEDS_BALANCE,
+        'El pago excede el saldo pendiente de la venta.',
+      );
+    const paymentId = randomUUID();
+    await transaction.payment.create({
+      data: {
+        id: paymentId,
+        organizationId: context.user.organizationId,
+        saleId,
+        grossAmount: amount,
+        feeAmount: new Prisma.Decimal(0),
+        netAmount: amount,
+        currency,
+        method: payment.method,
+        status: PaymentStatus.CONFIRMED,
+        paymentDate: occurredAt,
+        confirmedAt: occurredAt,
+      },
+    });
+    await transaction.activity.create({
+      data: {
+        organizationId: context.user.organizationId,
+        userId: context.user.userId,
+        saleId,
+        type: ActivityType.PAYMENT,
+        title: 'Pago confirmado con la venta',
+        metadata: jsonObject({ status: PaymentStatus.CONFIRMED, method: payment.method }),
+        requestId: context.metadata.requestId ?? null,
+      },
+    });
+    await this.audit.recordWithClient(transaction, {
+      organizationId: context.user.organizationId,
+      userId: context.user.userId,
+      action: 'PAYMENT_CONFIRMED',
+      tableName: 'Payment',
+      recordId: paymentId,
+      newValue: jsonObject({ status: PaymentStatus.CONFIRMED, saleId, amount: amount.toFixed(2) }),
+      ip: context.metadata.ipAddress,
+      requestId: context.metadata.requestId,
+    });
+    await this.outbox.enqueueWithClient(transaction, {
+      eventType: 'PaymentConfirmed',
+      organizationId: context.user.organizationId,
+      aggregateType: 'Payment',
+      aggregateId: paymentId,
+      actorId: context.user.userId,
+      requestId: context.metadata.requestId ?? randomUUID(),
+      payload: jsonObject({ status: PaymentStatus.CONFIRMED, saleId }),
+    });
+  }
+
   private validTransition(from: SaleStatus, to: SaleStatus): boolean {
     if (to === SaleStatus.CONFIRMED)
       return from === SaleStatus.DRAFT || from === SaleStatus.PENDING;
@@ -1195,6 +1311,7 @@ export class SalesService {
       total: sale.total.toFixed(2),
       currency: sale.currency,
       note: sale.note,
+      paymentDueAt: sale.paymentDueAt,
       soldAt: sale.soldAt,
       cancelledAt: sale.cancelledAt,
       cancellationReason: sale.cancellationReason,

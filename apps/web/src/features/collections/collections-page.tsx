@@ -72,6 +72,10 @@ function PaymentDrawer({
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['collections'] });
       void queryClient.invalidateQueries({ queryKey: ['sales'] });
+      void queryClient.invalidateQueries({ queryKey: ['operational-dashboard'] });
+      void queryClient.invalidateQueries({ queryKey: ['financial-dashboard'] });
+      void queryClient.invalidateQueries({ queryKey: ['executive-dashboard'] });
+      void queryClient.invalidateQueries({ queryKey: ['my-day'] });
       form.reset();
       onClose();
       toast({ title: 'Pago registrado', tone: 'success' });
@@ -164,6 +168,10 @@ export function CollectionsPage(): React.ReactElement {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['collections'] });
       void queryClient.invalidateQueries({ queryKey: ['sales'] });
+      void queryClient.invalidateQueries({ queryKey: ['operational-dashboard'] });
+      void queryClient.invalidateQueries({ queryKey: ['financial-dashboard'] });
+      void queryClient.invalidateQueries({ queryKey: ['executive-dashboard'] });
+      void queryClient.invalidateQueries({ queryKey: ['my-day'] });
       toast({ title: 'Venta marcada como pagada', tone: 'success' });
     },
     onError: (error: Error) =>
@@ -171,7 +179,10 @@ export function CollectionsPage(): React.ReactElement {
   });
   const records = (sales.data?.data ?? [])
     .filter((sale) => sale.status === 'CONFIRMED' || sale.status === 'FULFILLED')
-    .map((sale) => ({ sale, balance: saleBalance(sale, payments.data?.data ?? []) }))
+    .map((sale) => {
+      const balance = saleBalance(sale, payments.data?.data ?? []);
+      return { sale, balance, paid: Math.max(amount(sale.total) - balance, 0) };
+    })
     .filter((row) => row.balance > 0.009);
   return (
     <QueryState
@@ -192,7 +203,9 @@ export function CollectionsPage(): React.ReactElement {
                 <thead className="bg-surface-muted text-xs uppercase tracking-wide text-content-muted">
                   <tr>
                     <th className="px-4 py-3">Cliente</th>
-                    <th className="px-4 py-3">Monto pendiente</th>
+                    <th className="px-4 py-3">Total</th>
+                    <th className="px-4 py-3">Pagado</th>
+                    <th className="px-4 py-3">Saldo</th>
                     <th className="px-4 py-3">Fecha compromiso</th>
                     <th className="px-4 py-3">Método</th>
                     <th className="px-4 py-3">Estado</th>
@@ -200,16 +213,22 @@ export function CollectionsPage(): React.ReactElement {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border-subtle">
-                  {records.map(({ sale, balance }) => (
+                  {records.map(({ sale, balance, paid }) => (
                     <tr key={sale.id}>
                       <td className="px-4 py-3 font-semibold text-content-primary">
                         {sale.contact?.name ?? 'Cliente sin nombre'}
                       </td>
                       <td className="px-4 py-3 font-bold text-content-primary">
+                        {money(sale.currency, amount(sale.total))}
+                      </td>
+                      <td className="px-4 py-3 text-content-secondary">
+                        {money(sale.currency, paid)}
+                      </td>
+                      <td className="px-4 py-3 font-bold text-content-primary">
                         {money(sale.currency, balance)}
                       </td>
                       <td className="px-4 py-3 text-content-secondary">
-                        {new Date(sale.createdAt).toLocaleDateString('es-CL')}
+                        {new Date(sale.paymentDueAt ?? sale.createdAt).toLocaleDateString('es-CL')}
                       </td>
                       <td className="px-4 py-3 text-content-secondary">Pendiente</td>
                       <td className="px-4 py-3">

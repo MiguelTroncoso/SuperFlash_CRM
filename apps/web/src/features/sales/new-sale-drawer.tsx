@@ -11,6 +11,7 @@ import { Input, Select, Textarea } from '@/components/ui/input';
 import { useToastStore } from '@/components/ui/toast';
 import { api, queryString } from '@/lib/api-client';
 import type { JsonRecord } from '@/lib/types';
+import { useAuthStore } from '@/lib/auth-store';
 
 interface SaleFormValues {
   contactId: string;
@@ -24,6 +25,14 @@ interface SaleFormValues {
   paidNow: boolean;
   paymentAmount: string;
   unitPrice: string;
+  discountAmount: string;
+  paymentDueAt: string;
+  priceOverrideReason: string;
+}
+
+interface SaleSubmission {
+  values: SaleFormValues;
+  confirm: boolean;
 }
 
 export function NewSaleDrawer({
@@ -48,12 +57,20 @@ export function NewSaleDrawer({
       paidNow: false,
       paymentAmount: '',
       unitPrice: '',
+      discountAmount: '',
+      paymentDueAt: '',
+      priceOverrideReason: '',
     },
   });
   const queryClient = useQueryClient();
   const toast = useToastStore((state) => state.push);
+  const canOverridePrice = useAuthStore((state) =>
+    Boolean(state.user?.permissions.includes('catalog.prices.override')),
+  );
   const [contactSearch, setContactSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
+  const [quickPhone, setQuickPhone] = useState('');
+  const [quickCountry, setQuickCountry] = useState('CL');
   useEffect(() => {
     if (open && defaultContactId) form.setValue('contactId', defaultContactId);
   }, [defaultContactId, form, open]);
@@ -63,8 +80,16 @@ export function NewSaleDrawer({
       api.getContacts(queryString({ page: 1, limit: 50, search: contactSearch || undefined })),
   });
   const offers = useQuery({
-    queryKey: ['catalog-offers', 'new-sale'],
-    queryFn: () => api.getOffers('?limit=100'),
+    queryKey: ['catalog-offers', 'new-sale', productSearch, form.watch('currency')],
+    queryFn: () =>
+      api.getOffers(
+        queryString({
+          customerSegment: 'ANY',
+          currency: form.watch('currency').trim().toUpperCase() || 'USD',
+          search: productSearch.trim() || undefined,
+          limit: 100,
+        }),
+      ),
   });
   const selectedOffer = (offers.data?.data ?? []).find(
     (offer) => offer.id === form.watch('productId'),
@@ -78,8 +103,14 @@ export function NewSaleDrawer({
   const selectedPlan = (selectedOffer?.plans ?? []).find(
     (plan) => typeof plan.id === 'string' && plan.id === form.watch('planId'),
   );
+  const subtotal =
+    Math.max(Number(form.watch('quantity') || 0), 0) *
+    Math.max(Number(form.watch('unitPrice') || 0), 0);
   const create = useMutation({
-    mutationFn: async (values: SaleFormValues) => {
+    mutationFn: async ({ values, confirm }: SaleSubmission) => {
+      if (!values.contactId || !values.productId) {
+        throw new Error('Selecciona un cliente y un producto antes de continuar.');
+      }
       const body: JsonRecord = {
         contactId: values.contactId,
         currency: values.currency.trim().toUpperCase(),
@@ -89,38 +120,65 @@ export function NewSaleDrawer({
             ...(values.planId ? { planId: values.planId } : {}),
             quantity: values.quantity,
             ...(values.unitPrice.trim() ? { unitPrice: values.unitPrice.trim() } : {}),
+            ...(values.priceOverrideReason.trim()
+              ? { priceOverrideReason: values.priceOverrideReason.trim() }
+              : {}),
             ...(selectedOffer?.type === 'SUBSCRIPTION' || selectedOffer?.requiresSubscription
               ? { subscriptionDurationDays: Number(values.subscriptionDurationDays) }
               : {}),
           },
         ],
+        ...(values.discountAmount.trim() ? { discountAmount: values.discountAmount.trim() } : {}),
+        ...(values.paymentDueAt
+          ? { paymentDueAt: new Date(`${values.paymentDueAt}T23:59:59.000Z`).toISOString() }
+          : {}),
         ...(values.note.trim() ? { note: values.note.trim() } : {}),
       };
       const sale = await api.createSale(body);
-      if (values.paidNow) {
-        const confirmedSale = sale.status === 'DRAFT' ? await api.confirmSale(sale.id) : sale;
-        const payment = await api.createPayment(confirmedSale.id, {
-          amount: values.paymentAmount.trim() || confirmedSale.total,
-          currency: confirmedSale.currency,
-          method: values.paymentMethod,
-        });
-        if (typeof payment.id === 'string') await api.confirmPayment(payment.id);
+      let result = sale;
+      if (confirm) {
+        const confirmedSale =
+          sale.status === 'DRAFT'
+            ? await api.confirmSale(
+                sale.id,
+                values.paidNow
+                  ? {
+                      payment: {
+                        amount: values.paymentAmount.trim() || sale.total,
+                        currency: sale.currency,
+                        method: values.paymentMethod,
+                      },
+                    }
+                  : undefined,
+              )
+            : sale;
+        result = confirmedSale;
       }
-      return sale;
+      return { sale: result, confirmed: confirm };
     },
-    onSuccess: (_sale, values) => {
+    onSuccess: ({ confirmed }, { values }) => {
       void queryClient.invalidateQueries({ queryKey: ['sales'] });
       void queryClient.invalidateQueries({ queryKey: ['collections'] });
       void queryClient.invalidateQueries({ queryKey: ['executive-dashboard'] });
+      void queryClient.invalidateQueries({ queryKey: ['catalog-offers'] });
+      void queryClient.invalidateQueries({ queryKey: ['operational-dashboard'] });
+      void queryClient.invalidateQueries({ queryKey: ['financial-dashboard'] });
+      void queryClient.invalidateQueries({ queryKey: ['renewal-center'] });
+      void queryClient.invalidateQueries({ queryKey: ['my-day'] });
       form.reset();
       setContactSearch('');
       setProductSearch('');
+      setQuickPhone('');
+      setQuickCountry('CL');
       onClose();
       toast({
-        title: 'Venta creada',
-        description: values.paidNow
-          ? 'La venta fue confirmada y el pago quedó registrado.'
-          : 'Se creó como borrador para revisión.',
+        title: confirmed ? 'Venta confirmada' : 'Borrador guardado',
+        description:
+          confirmed && values.paidNow
+            ? 'La venta, el stock y el pago quedaron registrados.'
+            : confirmed
+              ? 'La venta, el stock y las renovaciones quedaron registradas.'
+              : 'Se creó como borrador para revisión.',
         tone: 'success',
       });
     },
@@ -134,7 +192,10 @@ export function NewSaleDrawer({
       open={open}
       title="Nueva venta"
     >
-      <form className="space-y-5" onSubmit={form.handleSubmit((values) => create.mutate(values))}>
+      <form
+        className="space-y-5"
+        onSubmit={form.handleSubmit((values) => create.mutate({ values, confirm: false }))}
+      >
         <CreatableCombobox
           createLabel="Crear cliente rápido"
           emptyLabel="Limpiar cliente"
@@ -146,7 +207,8 @@ export function NewSaleDrawer({
               .createContact({
                 firstName,
                 ...(lastName.length ? { lastName: lastName.join(' ') } : {}),
-                country: 'CL',
+                ...(quickPhone.trim() ? { phone: quickPhone.trim() } : {}),
+                country: quickCountry,
                 source: 'MANUAL',
               })
               .then((contact) => {
@@ -173,6 +235,25 @@ export function NewSaleDrawer({
           search={contactSearch}
           selectedLabel={selectedContact?.displayName ?? undefined}
         />
+        <div className="grid gap-3 rounded-xl border border-border-subtle bg-surface-muted p-3 sm:grid-cols-2">
+          <label className="space-y-1 text-xs font-semibold text-content-secondary">
+            <span>Teléfono cliente rápido (opcional)</span>
+            <Input
+              value={quickPhone}
+              onChange={(event) => setQuickPhone(event.target.value)}
+              placeholder="+56912345678"
+            />
+          </label>
+          <label className="space-y-1 text-xs font-semibold text-content-secondary">
+            <span>País cliente rápido</span>
+            <Select value={quickCountry} onChange={(event) => setQuickCountry(event.target.value)}>
+              <option value="CL">Chile</option>
+              <option value="MX">México</option>
+              <option value="PE">Perú</option>
+              <option value="US">Estados Unidos</option>
+            </Select>
+          </label>
+        </div>
         <CreatableCombobox
           createLabel="Crear producto"
           emptyLabel="Limpiar producto"
@@ -224,9 +305,16 @@ export function NewSaleDrawer({
             <span>Precio</span>
             <Input
               {...form.register('unitPrice')}
+              disabled={!canOverridePrice}
               value={form.watch('unitPrice') || selectedOffer?.price?.amount || ''}
             />
           </label>
+          {canOverridePrice ? (
+            <label className="space-y-1 text-sm font-semibold text-content-primary">
+              <span>Motivo del precio manual</span>
+              <Input placeholder="Opcional" {...form.register('priceOverrideReason')} />
+            </label>
+          ) : null}
           {selectedOffer?.type === 'SUBSCRIPTION' || selectedOffer?.requiresSubscription ? (
             <label className="space-y-1 text-sm font-semibold text-content-primary">
               <span>Duración de suscripción</span>
@@ -252,9 +340,33 @@ export function NewSaleDrawer({
               {...form.register('quantity', { required: true })}
             />
           </label>
+          <div className="rounded-xl border border-border-subtle bg-surface-muted p-3 text-sm text-content-secondary sm:col-span-2">
+            Subtotal:{' '}
+            <strong className="text-content-primary">
+              {form.watch('currency').toUpperCase()}{' '}
+              {subtotal.toLocaleString('es-CL', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </strong>
+          </div>
+          <label className="space-y-1 text-sm font-semibold text-content-primary sm:col-span-2">
+            <span>Descuento</span>
+            <Input inputMode="decimal" min="0" step="0.01" {...form.register('discountAmount')} />
+          </label>
           <label className="space-y-1 text-sm font-semibold text-content-primary">
             <span>Moneda</span>
-            <Input maxLength={3} {...form.register('currency', { required: true })} />
+            <Select {...form.register('currency', { required: true })}>
+              {['USD', 'CLP', 'MXN', 'PEN', 'EUR'].map((currency) => (
+                <option key={currency} value={currency}>
+                  {currency}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="space-y-1 text-sm font-semibold text-content-primary">
+            <span>Fecha compromiso de pago</span>
+            <Input type="date" {...form.register('paymentDueAt')} />
           </label>
         </div>
         <label className="space-y-1 text-sm font-semibold text-content-primary">
@@ -287,12 +399,21 @@ export function NewSaleDrawer({
           <span>Nota</span>
           <Textarea {...form.register('note')} />
         </label>
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button onClick={onClose} type="button" variant="outline">
             Cancelar
           </Button>
-          <Button disabled={create.isPending} type="submit">
-            {create.isPending ? 'Creando…' : 'Crear borrador'}
+          <Button disabled={create.isPending} type="submit" variant="outline">
+            {create.isPending ? 'Guardando…' : 'Guardar borrador'}
+          </Button>
+          <Button
+            disabled={create.isPending}
+            onClick={() =>
+              void form.handleSubmit((values) => create.mutate({ values, confirm: true }))()
+            }
+            type="button"
+          >
+            {create.isPending ? 'Confirmando…' : 'Confirmar venta'}
           </Button>
         </div>
       </form>

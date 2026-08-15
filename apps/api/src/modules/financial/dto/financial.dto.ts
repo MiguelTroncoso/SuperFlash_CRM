@@ -68,6 +68,11 @@ export class CreateExpenseDto {
   @IsOptional()
   @IsString()
   @MaxLength(240)
+  reference?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(240)
   description?: string;
 
   @IsEnum(ExpensePaymentMethod)

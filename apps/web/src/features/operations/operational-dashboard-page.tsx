@@ -68,7 +68,7 @@ export function OperationalDashboardPage(): React.ReactElement {
   });
   const products = useQuery({
     queryKey: ['catalog-offers', 'operational'],
-    queryFn: () => api.getOffers('?limit=100'),
+    queryFn: () => api.getOffers('?customerSegment=ANY&currency=USD&limit=100'),
   });
   const create = useMutation({
     mutationFn: (body: JsonRecord) => api.upsertDailyMetric(body),
@@ -187,10 +187,7 @@ export function OperationalDashboardPage(): React.ReactElement {
               </div>
             </div>
           </Card>
-          <section
-            aria-label="Actividad de hoy"
-            className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
-          >
+          <section aria-label="Resumen de hoy" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <MetricCard
               icon="◷"
               label="Conversaciones hoy"
@@ -199,18 +196,35 @@ export function OperationalDashboardPage(): React.ReactElement {
             />
             <MetricCard
               icon="↗"
-              label="Ventas del mes"
-              value={metric(data.month.sales)}
-              trend={`${data.today.followups} seguimientos hoy`}
+              label="Ventas reales hoy"
+              value={metric(data.today.sales)}
+              trend={`${data.today.renewals} renovaciones hoy`}
             />
             <MetricCard
               icon="$"
-              label="Facturación del mes"
-              value={money(data.month.grossBilling)}
-              trend="Ventas confirmadas o cumplidas"
+              label="Cobros recibidos hoy"
+              value={money(data.today.confirmedPayments)}
+              trend="Pagos confirmados"
             />
             <MetricCard
-              icon="✓"
+              icon="◉"
+              label="Gastos de hoy"
+              value={money(data.today.expenses)}
+              trend="Expense real, separado de ad spend manual"
+            />
+          </section>
+          <section
+            aria-label="Métricas del mes y pendientes"
+            className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+          >
+            <MetricCard
+              icon="✦"
+              label="Resultado de hoy"
+              value={money(data.today.profit)}
+              trend="Cobros recibidos menos gastos"
+            />
+            <MetricCard
+              icon="%"
               label="Cobros pendientes"
               value={money(
                 data.pendingCollections.map((item) => ({
@@ -220,34 +234,77 @@ export function OperationalDashboardPage(): React.ReactElement {
               )}
               trend="Saldo calculado desde pagos"
             />
+            <MetricCard
+              icon="⌁"
+              label="Renovaciones próximas"
+              value={metric(data.renewalsDueSoon)}
+              trend="Ventana operativa de 7 días"
+            />
+            <MetricCard
+              icon="✓"
+              label="Seguimientos hoy"
+              value={metric(data.today.followups)}
+              trend="Pendientes del día"
+            />
           </section>
+          <Card>
+            <CardHeader>
+              <CardTitle>Resumen del día</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              <div className="rounded-xl bg-surface-muted p-3">
+                <p className="text-xs text-content-muted">Ventas</p>
+                <p className="mt-1 font-bold text-content-primary">{metric(data.today.sales)}</p>
+              </div>
+              <div className="rounded-xl bg-surface-muted p-3">
+                <p className="text-xs text-content-muted">Facturación bruta</p>
+                <p className="mt-1 font-bold text-content-primary">
+                  {money(data.today.grossBilling)}
+                </p>
+              </div>
+              <div className="rounded-xl bg-surface-muted p-3">
+                <p className="text-xs text-content-muted">Cobros recibidos</p>
+                <p className="mt-1 font-bold text-content-primary">
+                  {money(data.today.confirmedPayments)}
+                </p>
+              </div>
+              <div className="rounded-xl bg-surface-muted p-3">
+                <p className="text-xs text-content-muted">Gastos</p>
+                <p className="mt-1 font-bold text-content-primary">{money(data.today.expenses)}</p>
+              </div>
+              <div className="rounded-xl bg-surface-muted p-3">
+                <p className="text-xs text-content-muted">Resultado</p>
+                <p className="mt-1 font-bold text-content-primary">{money(data.today.profit)}</p>
+              </div>
+            </CardContent>
+          </Card>
           <section
-            aria-label="Métricas del mes"
+            aria-label="Resumen mensual"
             className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
           >
             <MetricCard
-              icon="✦"
-              label="Demos del mes"
-              value={metric(data.month.demos)}
-              trend={`${data.month.conversionConversationToDemo}% conversación → demo`}
+              icon="↗"
+              label="Ventas del mes"
+              value={metric(data.month.sales)}
+              trend={`${data.month.conversionConversationToSale}% conversación → venta`}
             />
             <MetricCard
-              icon="%"
-              label="Conversión a venta"
-              value={`${data.month.conversionConversationToSale}%`}
-              trend={`${data.month.conversionDemoToSale}% demo → venta`}
+              icon="$"
+              label="Ingresos netos del mes"
+              value={money(data.month.netIncome)}
+              trend="Cobros confirmados menos reembolsos"
             />
             <MetricCard
               icon="◉"
-              label="Utilidad"
-              value={money(data.month.profit)}
-              trend={`Margen operativo desde cobros`}
+              label="Gastos del mes"
+              value={money(data.month.expenses)}
+              trend="Gastos reales registrados"
             />
             <MetricCard
               icon="⌁"
-              label="ROAS"
-              value={data.month.roas}
-              trend={`CPA ${data.month.cpa}`}
+              label="Resultado del mes"
+              value={money(data.month.profit)}
+              trend={`ROAS ${data.month.roas} · CPA ${data.month.cpa}`}
             />
           </section>
           <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">

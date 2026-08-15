@@ -265,7 +265,7 @@ export function SmartInboxPage(): React.ReactElement {
   });
   const offers = useQuery<{ data: ProductOffer[] }>({
     queryKey: ['smart-inbox', 'offers'],
-    queryFn: () => api.getOffers('?limit=50'),
+    queryFn: () => api.getOffers('?customerSegment=ANY&currency=USD&limit=50'),
   });
   const tags = useQuery<Tag[]>({
     queryKey: ['smart-inbox', 'tags'],

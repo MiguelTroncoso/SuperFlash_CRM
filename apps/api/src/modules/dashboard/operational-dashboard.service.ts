@@ -290,6 +290,23 @@ export class OperationalDashboardService {
       status: PaymentStatus.CONFIRMED,
       paymentDate: { gte: dates.from, lt: dates.to },
     };
+    const todaySaleWhere: Prisma.SaleWhereInput = {
+      ...saleWhere,
+      createdAt: { gte: todayDate, lt: tomorrowDate },
+    };
+    const todayPaymentWhere: Prisma.PaymentWhereInput = {
+      ...paymentWhere,
+      paymentDate: { gte: todayDate, lt: tomorrowDate },
+    };
+    const expenseWhere: Prisma.ExpenseWhereInput = {
+      organizationId: user.organizationId,
+      deletedAt: null,
+      expenseDate: { gte: dates.from, lt: dates.to },
+    };
+    const todayExpenseWhere: Prisma.ExpenseWhereInput = {
+      ...expenseWhere,
+      expenseDate: { gte: todayDate, lt: tomorrowDate },
+    };
     const [
       manual,
       todayManual,
@@ -297,12 +314,16 @@ export class OperationalDashboardService {
       todayManualMoney,
       countries,
       sales,
+      todaySales,
       payments,
+      todayPayments,
       expenses,
+      todayExpenses,
       pendingCollections,
       followups,
       renewals,
-      criticalStock,
+      renewalsToday,
+      criticalStockRows,
     ] = await Promise.all([
       this.prisma.dailyMetric.aggregate({
         where: manualWhere,
@@ -352,17 +373,29 @@ export class OperationalDashboardService {
         _count: { _all: true },
         _sum: { total: true },
       }),
+      this.prisma.sale.groupBy({
+        where: todaySaleWhere,
+        by: ['currency'],
+        _count: { _all: true },
+        _sum: { total: true },
+      }),
       this.prisma.payment.groupBy({
         where: paymentWhere,
         by: ['currency'],
         _sum: { grossAmount: true, netAmount: true, refundedAmount: true },
       }),
+      this.prisma.payment.groupBy({
+        where: todayPaymentWhere,
+        by: ['currency'],
+        _sum: { grossAmount: true, netAmount: true, refundedAmount: true },
+      }),
       this.prisma.expense.groupBy({
-        where: {
-          organizationId: user.organizationId,
-          deletedAt: null,
-          expenseDate: { gte: dates.from, lt: dates.to },
-        },
+        where: expenseWhere,
+        by: ['currency'],
+        _sum: { amount: true },
+      }),
+      this.prisma.expense.groupBy({
+        where: todayExpenseWhere,
         by: ['currency'],
         _sum: { amount: true },
       }),
@@ -384,18 +417,27 @@ export class OperationalDashboardService {
           dueAt: { gte: todayDate, lt: today.plus({ days: 8 }).toUTC().toJSDate() },
         },
       }),
-      this.prisma.product.count({
+      this.prisma.renewal.count({
+        where: {
+          organizationId: user.organizationId,
+          deletedAt: null,
+          status: { in: ['PENDING', 'DUE', 'OVERDUE'] },
+          dueAt: { gte: todayDate, lt: tomorrowDate },
+        },
+      }),
+      this.prisma.product.findMany({
         where: {
           organizationId: user.organizationId,
           deletedAt: null,
           active: true,
           status: 'ACTIVE',
           stockTrackingEnabled: true,
-          stockQuantity: { lte: 0 },
         },
+        select: { stockQuantity: true, stockReserved: true, stockMinimum: true },
       }),
     ]);
     const real: RealSummary = this.realSummary(sales, payments, expenses);
+    const todayReal: RealSummary = this.realSummary(todaySales, todayPayments, todayExpenses);
     const manualSummary: ManualSummary = {
       conversations: manual._sum.conversations ?? 0,
       demos: manual._sum.demos ?? 0,
@@ -430,7 +472,17 @@ export class OperationalDashboardService {
     const grossRevenue = decimal(primaryManualCurrency?._sum.grossRevenue);
     return {
       period: { from: dates.from.toISOString(), to: dates.to.toISOString() },
-      today: { ...todaySummary, followups: followups },
+      today: {
+        ...todaySummary,
+        sales: todayReal.salesCount,
+        grossBilling: todayReal.billingGross,
+        confirmedPayments: todayReal.confirmedPayments,
+        netIncome: todayReal.netIncome,
+        expenses: todayReal.expenses,
+        profit: todayReal.profit,
+        renewals: renewalsToday,
+        followups,
+      },
       month: {
         conversations,
         demos,
@@ -444,6 +496,7 @@ export class OperationalDashboardService {
           : 0,
         grossBilling: real.billingGross,
         netIncome: real.netIncome,
+        expenses: real.expenses,
         profit: real.profit,
         averageTicket: real.averageTicket,
         adSpend: amount(adSpend),
@@ -464,7 +517,11 @@ export class OperationalDashboardService {
       })),
       pendingCollections,
       renewalsDueSoon: renewals,
-      criticalStock,
+      criticalStock: criticalStockRows.filter((product) =>
+        decimal(product.stockQuantity)
+          .minus(decimal(product.stockReserved))
+          .lessThanOrEqualTo(decimal(product.stockMinimum)),
+      ).length,
       sourceOfTruth: {
         manualActivity: 'DailyMetric',
         financialSales: 'Sale and confirmed Payment',

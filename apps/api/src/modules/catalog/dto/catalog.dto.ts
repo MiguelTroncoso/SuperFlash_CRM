@@ -7,7 +7,7 @@ import {
   ProductStockMovementType,
   ProductType,
 } from '@prisma/client';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
   IsDateString,
@@ -836,8 +836,9 @@ export class PricingResolveQueryDto {
 }
 
 export class OffersQueryDto {
+  @Transform(({ value }) => value ?? CustomerSegment.ANY)
   @IsEnum(CustomerSegment)
-  customerSegment!: CustomerSegment;
+  customerSegment: CustomerSegment = CustomerSegment.ANY;
 
   @Transform(upper)
   @IsOptional()
@@ -846,7 +847,7 @@ export class OffersQueryDto {
 
   @Transform(upper)
   @IsISO4217CurrencyCode()
-  currency!: string;
+  currency = 'USD';
 
   @IsOptional()
   @IsUUID()
@@ -861,6 +862,13 @@ export class OffersQueryDto {
   @IsString()
   @Length(1, 160)
   search?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit = 100;
 
   @IsOptional()
   @IsBoolean()
