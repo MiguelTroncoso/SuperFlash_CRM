@@ -11,7 +11,7 @@ import {
 
 import { PrismaService } from '../../../infrastructure/prisma/prisma.service';
 import { AuthenticatedUser } from '../../auth/auth.types';
-import { isSupportedCurrency } from '../../commercial/currency';
+import { isSupportedCurrency, SUPPORTED_CURRENCIES } from '../../commercial/currency';
 import { CatalogAccessPolicy } from '../access/catalog-access.policy';
 import { CATALOG_ERROR_CODES, catalogException } from '../catalog.errors';
 import {
@@ -71,6 +71,7 @@ export interface PricingResolution {
   productId: string;
   planId: string | null;
   variantId: string | null;
+  priceBookEntryId: string;
   priceBook: {
     id: string;
     name: string;
@@ -107,6 +108,8 @@ interface ResolutionInput {
   at?: Date | undefined;
   includeCosts: boolean;
 }
+
+export type PricingDiscoveryInput = Omit<ResolutionInput, 'currency'>;
 
 export interface PricingCandidate {
   id: string;
@@ -269,6 +272,7 @@ export class PricingService {
       productId: selected.productId,
       planId: selected.planId,
       variantId: selected.variantId,
+      priceBookEntryId: selected.id,
       priceBook: {
         id: selected.priceBook.id,
         name: selected.priceBook.name,
@@ -298,6 +302,98 @@ export class PricingService {
         resolvedAt: at,
       },
     };
+  }
+
+  async resolveAvailable(
+    organizationId: string,
+    input: PricingDiscoveryInput,
+  ): Promise<PricingResolution[]> {
+    await this.assertCombination(
+      organizationId,
+      input.productId,
+      input.planId ?? null,
+      input.variantId ?? null,
+    );
+    const at = input.at ?? new Date();
+    const countryCode = input.countryCode ?? null;
+    const currencies = await this.prisma.priceBookEntry.findMany({
+      where: {
+        organizationId,
+        productId: input.productId,
+        planId: input.planId ?? null,
+        variantId: input.variantId ?? null,
+        active: true,
+        deletedAt: null,
+        AND: [
+          { OR: [{ validFrom: null }, { validFrom: { lte: at } }] },
+          { OR: [{ validUntil: null }, { validUntil: { gt: at } }] },
+        ],
+        product: {
+          is: {
+            organizationId,
+            active: true,
+            status: ProductStatus.ACTIVE,
+            deletedAt: null,
+          },
+        },
+        ...(input.planId
+          ? {
+              plan: {
+                is: {
+                  organizationId,
+                  id: input.planId,
+                  productId: input.productId,
+                  active: true,
+                  deletedAt: null,
+                },
+              },
+            }
+          : {}),
+        ...(input.variantId
+          ? {
+              variant: {
+                is: {
+                  organizationId,
+                  id: input.variantId,
+                  productId: input.productId,
+                  active: true,
+                  deletedAt: null,
+                },
+              },
+            }
+          : {}),
+        priceBook: {
+          is: {
+            organizationId,
+            status: PriceBookStatus.ACTIVE,
+            archivedAt: null,
+            deletedAt: null,
+            customerSegment: { in: [input.customerSegment, CustomerSegment.ANY] },
+            ...(countryCode
+              ? { OR: [{ countryCode }, { countryCode: null }] }
+              : { countryCode: null }),
+            AND: [
+              { OR: [{ validFrom: null }, { validFrom: { lte: at } }] },
+              { OR: [{ validUntil: null }, { validUntil: { gt: at } }] },
+            ],
+          },
+        },
+      },
+      select: { priceBook: { select: { currency: true } } },
+      distinct: ['priceBookId'],
+    });
+    const availableCurrencies = new Set(
+      currencies
+        .map((entry) => entry.priceBook.currency)
+        .filter((currency): currency is (typeof SUPPORTED_CURRENCIES)[number] =>
+          isSupportedCurrency(currency),
+        ),
+    );
+    return Promise.all(
+      [...availableCurrencies]
+        .sort()
+        .map((currency) => this.resolveInternal(organizationId, { ...input, currency })),
+    );
   }
 
   async resolveForSale(input: SaleCatalogInput): Promise<SaleCatalogResolution> {
@@ -436,6 +532,20 @@ export class PricingService {
       where: { organizationId: input.organizationId, id: input.productId },
       select: { price: true, currency: true },
     });
+    const legacyPrice = fallbackPrice?.price ?? null;
+    const hasLegacyPrice = legacyPrice !== null && legacyPrice.greaterThan(0);
+    if (!priceBookEntry && !input.requestedUnitPrice && !hasLegacyPrice)
+      throw catalogException(
+        HttpStatus.CONFLICT,
+        CATALOG_ERROR_CODES.PRICING_NOT_FOUND,
+        'El producto no tiene un precio vigente para la venta.',
+      );
+    if (!priceBookEntry && !hasLegacyPrice && input.requestedUnitPrice && !input.canOverridePrice)
+      throw catalogException(
+        HttpStatus.FORBIDDEN,
+        CATALOG_ERROR_CODES.FORBIDDEN,
+        'El precio manual requiere permiso.',
+      );
     const unitPrice =
       input.requestedUnitPrice ?? catalogPrice ?? fallbackPrice?.price ?? new Prisma.Decimal(0);
     const source: SaleCatalogResolution['pricingSource'] =

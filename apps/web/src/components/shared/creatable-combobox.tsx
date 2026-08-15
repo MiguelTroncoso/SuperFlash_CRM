@@ -8,6 +8,7 @@ export interface ComboboxOption {
   id: string;
   label: string;
   secondary?: string | undefined;
+  disabled?: boolean;
 }
 
 export function CreatableCombobox({
@@ -44,6 +45,8 @@ export function CreatableCombobox({
   const exactOption = options.find(
     (option) => option.label.trim().toLocaleLowerCase() === normalizedSearch,
   );
+  const selectableFiltered = filtered.filter((option) => !option.disabled);
+  const selectableExactOption = exactOption?.disabled ? undefined : exactOption;
   const canCreate = Boolean(onCreate && search.trim() && !exactOption && !isLoading);
 
   useEffect(() => {
@@ -55,6 +58,7 @@ export function CreatableCombobox({
   }, []);
 
   const select = (option: ComboboxOption | null): void => {
+    if (option?.disabled) return;
     onSelect(option);
     onSearch(option?.label ?? '');
     setOpen(false);
@@ -82,7 +86,7 @@ export function CreatableCombobox({
           }
           if (event.key !== 'Enter' || !open) return;
           event.preventDefault();
-          const option = exactOption ?? filtered[0];
+          const option = selectableExactOption ?? selectableFiltered[0];
           if (option) {
             select(option);
           } else if (canCreate && onCreate) {
@@ -112,7 +116,8 @@ export function CreatableCombobox({
               </button>
               {filtered.map((option) => (
                 <button
-                  className="w-full rounded-lg px-3 py-2 text-left text-sm text-content-primary hover:bg-surface-inset"
+                  className={`w-full rounded-lg px-3 py-2 text-left text-sm text-content-primary hover:bg-surface-inset ${option.disabled ? 'cursor-not-allowed opacity-60 hover:bg-transparent' : ''}`}
+                  disabled={option.disabled}
                   key={option.id}
                   onClick={() => select(option)}
                   type="button"

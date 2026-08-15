@@ -550,6 +550,7 @@ export function CatalogPage(): React.ReactElement {
         : api.createProduct({ ...input.body, status: 'ACTIVE', active: true }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['catalog-products'] });
+      void queryClient.invalidateQueries({ queryKey: ['catalog-offers'] });
       setDrawer(null);
       toast({ title: 'Producto guardado', tone: 'success' });
     },
@@ -569,6 +570,7 @@ export function CatalogPage(): React.ReactElement {
           : api.archiveProduct(input.id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['catalog-products'] });
+      void queryClient.invalidateQueries({ queryKey: ['catalog-offers'] });
       toast({ title: 'Producto actualizado', tone: 'success' });
     },
     onError: (error: Error) =>
@@ -601,6 +603,7 @@ export function CatalogPage(): React.ReactElement {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['catalog-products'] });
+      void queryClient.invalidateQueries({ queryKey: ['catalog-offers'] });
       toast({ title: 'Producto duplicado como borrador', tone: 'success' });
     },
     onError: (error: Error) =>
@@ -619,6 +622,7 @@ export function CatalogPage(): React.ReactElement {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['catalog-products'] });
+      void queryClient.invalidateQueries({ queryKey: ['catalog-offers'] });
       toast({ title: 'Stock actualizado', tone: 'success' });
     },
     onError: (error: Error) =>
@@ -662,6 +666,7 @@ export function CatalogPage(): React.ReactElement {
       input.id ? api.updatePriceBook(input.id, input.body) : api.createPriceBook(input.body),
     onSuccess: (saved) => {
       void queryClient.invalidateQueries({ queryKey: ['catalog-price-books'] });
+      void queryClient.invalidateQueries({ queryKey: ['catalog-offers'] });
       setPriceBook(saved);
       setPricingDrawer(null);
       toast({ title: 'Lista de precios guardada', tone: 'success' });
@@ -682,6 +687,7 @@ export function CatalogPage(): React.ReactElement {
           : Promise.reject(new Error('Selecciona una lista de precios.')),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['catalog-price-entries', priceBook?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['catalog-offers'] });
       setPricingDrawer(null);
       setPriceEntry(null);
       toast({ title: 'Precio guardado', tone: 'success' });

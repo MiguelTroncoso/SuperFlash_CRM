@@ -224,6 +224,7 @@ export function LeadIntakeDrawer({
       }),
     onSuccess: (product) => {
       void queryClient.invalidateQueries({ queryKey: ['catalog-products', 'lead-intake'] });
+      void queryClient.invalidateQueries({ queryKey: ['catalog-offers'] });
       form.setValue('productId', product.id);
       setProductSearch(product.name);
       toast({ title: 'Producto creado', tone: 'success' });

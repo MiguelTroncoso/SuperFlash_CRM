@@ -10,7 +10,7 @@ import { Drawer } from '@/components/ui/drawer';
 import { Input, Select, Textarea } from '@/components/ui/input';
 import { useToastStore } from '@/components/ui/toast';
 import { api, queryString } from '@/lib/api-client';
-import type { JsonRecord } from '@/lib/types';
+import type { JsonRecord, PricingOption } from '@/lib/types';
 import { useAuthStore } from '@/lib/auth-store';
 
 interface SaleFormValues {
@@ -25,6 +25,7 @@ interface SaleFormValues {
   paidNow: boolean;
   paymentAmount: string;
   unitPrice: string;
+  priceBookEntryId: string;
   discountAmount: string;
   paymentDueAt: string;
   priceOverrideReason: string;
@@ -57,6 +58,7 @@ export function NewSaleDrawer({
       paidNow: false,
       paymentAmount: '',
       unitPrice: '',
+      priceBookEntryId: '',
       discountAmount: '',
       paymentDueAt: '',
       priceOverrideReason: '',
@@ -71,6 +73,7 @@ export function NewSaleDrawer({
   const [productSearch, setProductSearch] = useState('');
   const [quickPhone, setQuickPhone] = useState('');
   const [quickCountry, setQuickCountry] = useState('CL');
+  const [pricingSelectionKey, setPricingSelectionKey] = useState('');
   useEffect(() => {
     if (open && defaultContactId) form.setValue('contactId', defaultContactId);
   }, [defaultContactId, form, open]);
@@ -80,12 +83,11 @@ export function NewSaleDrawer({
       api.getContacts(queryString({ page: 1, limit: 50, search: contactSearch || undefined })),
   });
   const offers = useQuery({
-    queryKey: ['catalog-offers', 'new-sale', productSearch, form.watch('currency')],
+    queryKey: ['catalog-offers', 'new-sale', productSearch],
     queryFn: () =>
       api.getOffers(
         queryString({
           customerSegment: 'ANY',
-          currency: form.watch('currency').trim().toUpperCase() || 'USD',
           search: productSearch.trim() || undefined,
           limit: 100,
         }),
@@ -94,15 +96,39 @@ export function NewSaleDrawer({
   const selectedOffer = (offers.data?.data ?? []).find(
     (offer) => offer.id === form.watch('productId'),
   );
-  const visibleOffers = (offers.data?.data ?? []).filter(
-    (offer) => !offer.stock.trackingEnabled || offer.stock.available > 0,
-  );
+  const visibleOffers = offers.data?.data ?? [];
   const selectedContact = (contacts.data?.data ?? []).find(
     (contact) => contact.id === form.watch('contactId'),
   );
   const selectedPlan = (selectedOffer?.plans ?? []).find(
     (plan) => typeof plan.id === 'string' && plan.id === form.watch('planId'),
   );
+  const pricingOptions: PricingOption[] = selectedPlan?.pricingOptions?.length
+    ? selectedPlan.pricingOptions
+    : (selectedOffer?.pricingOptions ?? []);
+  const selectedPricingOption = pricingOptions.find(
+    (option) => `${option.priceBookEntryId ?? 'legacy'}:${option.currency}` === pricingSelectionKey,
+  );
+  const hasValidPrice = Number(form.watch('unitPrice') || 0) > 0;
+  const canCreateSale = Boolean(
+    form.watch('contactId') && selectedOffer && selectedOffer.selectable && hasValidPrice,
+  );
+  const applyPricingOption = (
+    option: PricingOption | undefined,
+    defaultCurrency?: string | null,
+  ): void => {
+    if (!option) {
+      setPricingSelectionKey('');
+      form.setValue('priceBookEntryId', '');
+      form.setValue('unitPrice', '');
+      if (defaultCurrency) form.setValue('currency', defaultCurrency);
+      return;
+    }
+    setPricingSelectionKey(`${option.priceBookEntryId ?? 'legacy'}:${option.currency}`);
+    form.setValue('priceBookEntryId', option.priceBookEntryId ?? '');
+    form.setValue('currency', option.currency);
+    form.setValue('unitPrice', option.amount);
+  };
   const subtotal =
     Math.max(Number(form.watch('quantity') || 0), 0) *
     Math.max(Number(form.watch('unitPrice') || 0), 0);
@@ -118,6 +144,7 @@ export function NewSaleDrawer({
           {
             productId: values.productId,
             ...(values.planId ? { planId: values.planId } : {}),
+            ...(values.priceBookEntryId ? { priceBookEntryId: values.priceBookEntryId } : {}),
             quantity: values.quantity,
             ...(values.unitPrice.trim() ? { unitPrice: values.unitPrice.trim() } : {}),
             ...(values.priceOverrideReason.trim()
@@ -170,6 +197,7 @@ export function NewSaleDrawer({
       setProductSearch('');
       setQuickPhone('');
       setQuickCountry('CL');
+      setPricingSelectionKey('');
       onClose();
       toast({
         title: confirmed ? 'Venta confirmada' : 'Borrador guardado',
@@ -262,8 +290,8 @@ export function NewSaleDrawer({
           onSelect={(option) => {
             form.setValue('productId', option?.id ?? '');
             form.setValue('planId', '');
-            const offer = visibleOffers.find((item) => item.id === option?.id);
-            form.setValue('unitPrice', offer?.price?.amount ?? '');
+            const offer = (offers.data?.data ?? []).find((item) => item.id === option?.id);
+            applyPricingOption(offer?.pricingOptions[0], offer?.currency);
           }}
           options={visibleOffers.map((offer) => ({
             id: offer.id,
@@ -271,12 +299,18 @@ export function NewSaleDrawer({
             secondary: [
               offer.category?.name,
               offer.sku,
-              offer.price?.currency,
-              offer.price?.amount,
+              offer.pricingOptions.length
+                ? offer.pricingOptions
+                    .map((option) => `${option.currency} ${option.amount}`)
+                    .join(' · ')
+                : offer.availabilityStatus === 'NO_STOCK'
+                  ? 'Sin stock'
+                  : 'Sin precio configurado',
               offer.stock.trackingEnabled ? `stock ${offer.stock.available}` : 'stock ilimitado',
             ]
               .filter(Boolean)
               .join(' · '),
+            disabled: !offer.selectable,
           }))}
           placeholder="Buscar producto, categoría o SKU"
           search={productSearch}
@@ -285,7 +319,16 @@ export function NewSaleDrawer({
         {(selectedOffer?.plans?.length ?? 0) > 0 ? (
           <label className="space-y-1 text-sm font-semibold text-content-primary">
             <span>Plan</span>
-            <Select {...form.register('planId')}>
+            <Select
+              value={form.watch('planId')}
+              onChange={(event) => {
+                form.setValue('planId', event.target.value);
+                const plan = (selectedOffer?.plans ?? []).find(
+                  (item) => item.id === event.target.value,
+                );
+                applyPricingOption(plan?.pricingOptions[0], selectedOffer?.currency);
+              }}
+            >
               <option value="">Seleccionar plan</option>
               {(selectedOffer?.plans ?? []).map((plan) =>
                 typeof plan.id === 'string' ? (
@@ -300,13 +343,49 @@ export function NewSaleDrawer({
             ) : null}
           </label>
         ) : null}
+        {pricingOptions.length > 1 ? (
+          <label className="space-y-1 text-sm font-semibold text-content-primary">
+            <span>Precio disponible</span>
+            <Select
+              value={pricingSelectionKey}
+              onChange={(event) =>
+                applyPricingOption(
+                  pricingOptions.find(
+                    (option) =>
+                      `${option.priceBookEntryId ?? 'legacy'}:${option.currency}` ===
+                      event.target.value,
+                  ),
+                )
+              }
+            >
+              {pricingOptions.map((option) => {
+                const key = `${option.priceBookEntryId ?? 'legacy'}:${option.currency}`;
+                return (
+                  <option key={key} value={key}>
+                    {option.currency} {option.amount}
+                  </option>
+                );
+              })}
+            </Select>
+          </label>
+        ) : null}
+        {selectedOffer?.availabilityStatus === 'NO_STOCK' ? (
+          <p className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+            Sin stock disponible para este producto.
+          </p>
+        ) : null}
+        {selectedOffer?.availabilityStatus === 'NO_PRICE' && !canOverridePrice ? (
+          <p className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+            Sin precio configurado. No se puede confirmar la venta.
+          </p>
+        ) : null}
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="space-y-1 text-sm font-semibold text-content-primary">
             <span>Precio</span>
             <Input
               {...form.register('unitPrice')}
               disabled={!canOverridePrice}
-              value={form.watch('unitPrice') || selectedOffer?.price?.amount || ''}
+              value={form.watch('unitPrice') || selectedPricingOption?.amount || ''}
             />
           </label>
           {canOverridePrice ? (
@@ -356,12 +435,24 @@ export function NewSaleDrawer({
           </label>
           <label className="space-y-1 text-sm font-semibold text-content-primary">
             <span>Moneda</span>
-            <Select {...form.register('currency', { required: true })}>
-              {['USD', 'CLP', 'MXN', 'PEN', 'EUR'].map((currency) => (
-                <option key={currency} value={currency}>
-                  {currency}
-                </option>
-              ))}
+            <Select
+              value={form.watch('currency')}
+              onChange={(event) => {
+                const option = pricingOptions.find((item) => item.currency === event.target.value);
+                if (option) applyPricingOption(option);
+                else form.setValue('currency', event.target.value);
+              }}
+            >
+              {(pricingOptions.length
+                ? pricingOptions.map((option) => option.currency)
+                : ['USD', 'CLP', 'MXN', 'PEN', 'EUR']
+              )
+                .filter((currency, index, values) => values.indexOf(currency) === index)
+                .map((currency) => (
+                  <option key={currency} value={currency}>
+                    {currency}
+                  </option>
+                ))}
             </Select>
           </label>
           <label className="space-y-1 text-sm font-semibold text-content-primary">
@@ -403,11 +494,11 @@ export function NewSaleDrawer({
           <Button onClick={onClose} type="button" variant="outline">
             Cancelar
           </Button>
-          <Button disabled={create.isPending} type="submit" variant="outline">
+          <Button disabled={create.isPending || !canCreateSale} type="submit" variant="outline">
             {create.isPending ? 'Guardando…' : 'Guardar borrador'}
           </Button>
           <Button
-            disabled={create.isPending}
+            disabled={create.isPending || !canCreateSale}
             onClick={() =>
               void form.handleSubmit((values) => create.mutate({ values, confirm: true }))()
             }

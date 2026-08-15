@@ -146,7 +146,17 @@ export interface ProductOffer {
   fulfillmentMode: string;
   requiresSubscription: boolean;
   allowsDemo: boolean;
-  price: { amount?: string; currency?: string } | null;
+  currency: string | null;
+  price: {
+    amount?: string;
+    currency?: string;
+    priceBook?: { currency: string };
+    price?: { salePrice: string; minimumPrice?: string | null; taxIncluded: boolean };
+  } | null;
+  pricingOptions: PricingOption[];
+  availabilityStatus: 'AVAILABLE' | 'NO_STOCK' | 'NO_PRICE';
+  selectable: boolean;
+  manualPriceAllowed: boolean;
   stock: {
     trackingEnabled: boolean;
     quantity: number;
@@ -154,7 +164,39 @@ export interface ProductOffer {
     available: number;
     minimum: number;
   };
-  plans: JsonRecord[];
+  plans: ProductOfferPlan[];
+}
+
+export interface PricingOption {
+  priceBookEntryId: string | null;
+  priceBookId: string | null;
+  currency: string;
+  amount: string;
+  salePrice: string;
+  minimumPrice?: string | null;
+  taxIncluded: boolean;
+  pricingSource: 'PRICE_BOOK' | 'PRODUCT_LEGACY';
+  validFrom?: string | null;
+  validUntil?: string | null;
+}
+
+export interface ProductOfferPlan {
+  id: string;
+  name: string;
+  code?: string | null;
+  customerSegment?: string;
+  billingPeriodUnit?: string;
+  billingPeriodCount?: number;
+  price?: ProductOffer['price'];
+  pricingOptions: PricingOption[];
+  variants?: Array<{
+    id: string;
+    name: string;
+    code?: string | null;
+    attributes?: JsonRecord;
+    price: ProductOffer['price'];
+    pricingOptions: PricingOption[];
+  }>;
 }
 
 export interface Product {

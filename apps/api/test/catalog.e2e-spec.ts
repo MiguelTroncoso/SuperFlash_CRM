@@ -717,7 +717,83 @@ describe('Catalog and pricing HTTP flow', () => {
       token,
     );
     expect(offers.status).toBe(200);
-    expect(offers.body.data).toHaveLength(0);
+    expect(offers.body.data).toHaveLength(1);
+    expect(offers.body.data[0].id).toBe(product.id);
+    expect(offers.body.data[0].availabilityStatus).toBe('NO_PRICE');
+    expect(offers.body.data[0].pricingOptions).toEqual([]);
+  });
+
+  it('does not hide an active CLP product when offers are requested in USD', async () => {
+    const token = await login(fixture.ownerA);
+    const product = await createProduct(prisma, fixture.ownerA.organizationId, 'CHATGPT CLP');
+    const book = await createPriceBook(prisma, fixture.ownerA.organizationId, 'CLP public', {
+      currency: 'CLP',
+    });
+    const entry = await createPriceEntry(
+      prisma,
+      fixture.ownerA.organizationId,
+      book.id,
+      product.id,
+      { salePrice: '15000.00' },
+    );
+
+    const offers = await authorized(
+      'get',
+      '/api/v1/catalog/offers?customerSegment=END_CUSTOMER&currency=USD&search=CHATGPT',
+      token,
+    );
+
+    expect(offers.status).toBe(200);
+    expect(offers.body.data).toHaveLength(1);
+    expect(offers.body.data[0].id).toBe(product.id);
+    expect(offers.body.data[0].pricingOptions).toEqual([
+      expect.objectContaining({
+        priceBookEntryId: entry.id,
+        currency: 'CLP',
+        amount: '15000.00',
+      }),
+    ]);
+    expect(offers.body.data[0].price.priceBook.currency).toBe('CLP');
+    expect(offers.body.data[0].selectable).toBe(true);
+  });
+
+  it('keeps active products without price or stock visible with an explicit state', async () => {
+    const token = await login(fixture.ownerA);
+    const noPrice = await createProduct(prisma, fixture.ownerA.organizationId, 'No price');
+    const noStock = await createProduct(prisma, fixture.ownerA.organizationId, 'No stock');
+    const archived = await createProduct(prisma, fixture.ownerA.organizationId, 'Archived');
+    await prisma.product.update({
+      where: { id: noStock.id },
+      data: { stockTrackingEnabled: true, stockQuantity: 0, stockReserved: 0 },
+    });
+    await prisma.product.update({ where: { id: archived.id }, data: { deletedAt: new Date() } });
+
+    const offers = await authorized(
+      'get',
+      '/api/v1/catalog/offers?customerSegment=END_CUSTOMER&currency=USD&search=price',
+      token,
+    );
+    const noPriceOffer = offers.body.data.find((item: { id: string }) => item.id === noPrice.id);
+    expect(offers.status).toBe(200);
+    expect(noPriceOffer).toEqual(
+      expect.objectContaining({
+        availabilityStatus: 'NO_PRICE',
+        selectable: false,
+        pricingOptions: [],
+      }),
+    );
+
+    const stockOffers = await authorized(
+      'get',
+      '/api/v1/catalog/offers?customerSegment=END_CUSTOMER&currency=USD&search=stock',
+      token,
+    );
+    expect(stockOffers.body.data.find((item: { id: string }) => item.id === noStock.id)).toEqual(
+      expect.objectContaining({ availabilityStatus: 'NO_STOCK', selectable: false }),
+    );
+    expect(stockOffers.body.data.some((item: { id: string }) => item.id === archived.id)).toBe(
+      false,
+    );
   });
 });
 

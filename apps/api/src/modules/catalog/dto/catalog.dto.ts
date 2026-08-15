@@ -846,8 +846,9 @@ export class OffersQueryDto {
   countryCode?: string;
 
   @Transform(upper)
+  @IsOptional()
   @IsISO4217CurrencyCode()
-  currency = 'USD';
+  currency?: string;
 
   @IsOptional()
   @IsUUID()
