@@ -20,6 +20,7 @@ const sections: { label: string; items: NavItem[] }[] = [
     label: 'Operación diaria',
     items: [
       { label: 'Dashboard', href: '/', icon: '⌂' },
+      { label: 'Operación diaria', href: '/operations', icon: '▣', permission: 'operations.read' },
       { label: 'Mi Día', href: '/my-day', icon: '◷', permission: 'followups.read' },
       { label: 'Leads', href: '/leads', icon: '✦', permission: 'contacts.read' },
       { label: 'Pipeline', href: '/pipeline', icon: '◇', permission: 'opportunities.read' },

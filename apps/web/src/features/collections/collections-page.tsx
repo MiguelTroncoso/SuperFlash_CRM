@@ -29,6 +29,7 @@ const METHODS = [
 
 interface PaymentFormValues {
   amount: string;
+  feeAmount: string;
   method: string;
 }
 
@@ -53,7 +54,7 @@ function PaymentDrawer({
   readonly onClose: () => void;
 }): React.ReactElement {
   const form = useForm<PaymentFormValues>({
-    defaultValues: { amount: '', method: 'MANUAL' },
+    defaultValues: { amount: '', feeAmount: '', method: 'MANUAL' },
   });
   const queryClient = useQueryClient();
   const toast = useToastStore((state) => state.push);
@@ -62,6 +63,7 @@ function PaymentDrawer({
       if (!sale) throw new Error('Venta no seleccionada.');
       const payment = await api.createPayment(sale.id, {
         amount: values.amount,
+        ...(values.feeAmount.trim() ? { feeAmount: values.feeAmount.trim() } : {}),
         currency: sale.currency,
         method: values.method,
       });
@@ -117,6 +119,10 @@ function PaymentDrawer({
                 </option>
               ))}
             </Select>
+          </label>
+          <label className="space-y-1 text-sm font-semibold text-content-primary">
+            <span>Comisión del medio (opcional)</span>
+            <Input inputMode="decimal" min={0} step="0.01" {...form.register('feeAmount')} />
           </label>
           <div className="flex justify-end gap-2">
             <Button onClick={onClose} type="button" variant="outline">

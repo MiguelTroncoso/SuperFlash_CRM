@@ -292,6 +292,11 @@ enum MarketingSpendSource {
   IMPORT
 }
 
+enum DailyMetricSource {
+  MANUAL
+  IMPORT
+}
+
 enum AttributionKind {
   ORIGINAL
   CONVERSION
@@ -540,6 +545,7 @@ model Organization {
   renewals                     Renewal[]
   renewalReminders             RenewalReminder[]
   campaigns                    Campaign[]
+  dailyMetrics                 DailyMetric[]
   expenses                     Expense[]
   marketingAdSets              MarketingAdSet[]
   marketingAds                 MarketingAd[]
@@ -640,6 +646,8 @@ model User {
   renewals                      Renewal[]                          @relation("RenewalOwner")
   renewalReminders              RenewalReminder[]
   campaigns                     Campaign[]                         @relation("CampaignOwner")
+  createdDailyMetrics           DailyMetric[]                      @relation("DailyMetricCreator")
+  updatedDailyMetrics           DailyMetric[]                      @relation("DailyMetricUpdater")
   createdAttributions           Attribution[]                      @relation("AttributionCreator")
   correctedAttributions         Attribution[]                      @relation("AttributionCorrector")
   prospectStatesChanged         ProspectConversationState[]        @relation("ProspectStateActor")
@@ -1938,6 +1946,7 @@ model Campaign {
   ads           MarketingAd[]
   creatives     MarketingCreative[]
   attributions  Attribution[]
+  dailyMetrics  DailyMetric[]
 
   @@unique([organizationId, id])
   @@unique([organizationId, platform, externalId])
@@ -1945,6 +1954,41 @@ model Campaign {
   @@index([organizationId])
   @@index([platform])
   @@index([active])
+  @@index([createdAt])
+}
+
+model DailyMetric {
+  id                   String            @id @default(uuid()) @db.Uuid
+  organizationId       String            @db.Uuid
+  metricDate           DateTime          @db.Date
+  campaignId           String?           @db.Uuid
+  campaignKey          String            @default("")
+  campaignNameSnapshot String?
+  country              String
+  conversations        Int               @default(0)
+  demos                Int               @default(0)
+  salesCount           Int               @default(0)
+  adSpend              Decimal           @default(0) @db.Decimal(18, 2)
+  grossRevenue         Decimal?          @db.Decimal(18, 2)
+  currency             String            @default("USD")
+  notes                String?
+  source               DailyMetricSource @default(MANUAL)
+  createdByUserId      String?           @db.Uuid
+  updatedByUserId      String?           @db.Uuid
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  deletedAt            DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  campaign     Campaign?    @relation(fields: [organizationId, campaignId], references: [organizationId, id], onDelete: Restrict)
+  createdBy    User?        @relation("DailyMetricCreator", fields: [organizationId, createdByUserId], references: [organizationId, id], onDelete: Restrict)
+  updatedBy    User?        @relation("DailyMetricUpdater", fields: [organizationId, updatedByUserId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, metricDate, campaignKey, country])
+  @@index([organizationId, metricDate])
+  @@index([organizationId, campaignId, metricDate])
+  @@index([organizationId, country, metricDate])
   @@index([createdAt])
 }
 

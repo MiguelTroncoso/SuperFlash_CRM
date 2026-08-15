@@ -1,14 +1,15 @@
 'use client';
 
 import { useForm } from 'react-hook-form';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { Button } from '@/components/ui/button';
+import { CreatableCombobox } from '@/components/shared/creatable-combobox';
 import { Drawer } from '@/components/ui/drawer';
 import { Input, Select, Textarea } from '@/components/ui/input';
 import { useToastStore } from '@/components/ui/toast';
-import { api } from '@/lib/api-client';
+import { api, queryString } from '@/lib/api-client';
 import type { JsonRecord } from '@/lib/types';
 
 interface SaleFormValues {
@@ -22,6 +23,7 @@ interface SaleFormValues {
   paymentMethod: string;
   paidNow: boolean;
   paymentAmount: string;
+  unitPrice: string;
 }
 
 export function NewSaleDrawer({
@@ -45,16 +47,20 @@ export function NewSaleDrawer({
       paymentMethod: 'MANUAL',
       paidNow: false,
       paymentAmount: '',
+      unitPrice: '',
     },
   });
   const queryClient = useQueryClient();
   const toast = useToastStore((state) => state.push);
+  const [contactSearch, setContactSearch] = useState('');
+  const [productSearch, setProductSearch] = useState('');
   useEffect(() => {
     if (open && defaultContactId) form.setValue('contactId', defaultContactId);
   }, [defaultContactId, form, open]);
   const contacts = useQuery({
-    queryKey: ['contacts', 'new-sale'],
-    queryFn: () => api.getContacts('?page=1&limit=100'),
+    queryKey: ['contacts', 'new-sale', contactSearch],
+    queryFn: () =>
+      api.getContacts(queryString({ page: 1, limit: 50, search: contactSearch || undefined })),
   });
   const offers = useQuery({
     queryKey: ['catalog-offers', 'new-sale'],
@@ -62,6 +68,12 @@ export function NewSaleDrawer({
   });
   const selectedOffer = (offers.data?.data ?? []).find(
     (offer) => offer.id === form.watch('productId'),
+  );
+  const visibleOffers = (offers.data?.data ?? []).filter(
+    (offer) => !offer.stock.trackingEnabled || offer.stock.available > 0,
+  );
+  const selectedContact = (contacts.data?.data ?? []).find(
+    (contact) => contact.id === form.watch('contactId'),
   );
   const selectedPlan = (selectedOffer?.plans ?? []).find(
     (plan) => typeof plan.id === 'string' && plan.id === form.watch('planId'),
@@ -76,6 +88,7 @@ export function NewSaleDrawer({
             productId: values.productId,
             ...(values.planId ? { planId: values.planId } : {}),
             quantity: values.quantity,
+            ...(values.unitPrice.trim() ? { unitPrice: values.unitPrice.trim() } : {}),
             ...(selectedOffer?.type === 'SUBSCRIPTION' || selectedOffer?.requiresSubscription
               ? { subscriptionDurationDays: Number(values.subscriptionDurationDays) }
               : {}),
@@ -100,6 +113,8 @@ export function NewSaleDrawer({
       void queryClient.invalidateQueries({ queryKey: ['collections'] });
       void queryClient.invalidateQueries({ queryKey: ['executive-dashboard'] });
       form.reset();
+      setContactSearch('');
+      setProductSearch('');
       onClose();
       toast({
         title: 'Venta creada',
@@ -120,36 +135,72 @@ export function NewSaleDrawer({
       title="Nueva venta"
     >
       <form className="space-y-5" onSubmit={form.handleSubmit((values) => create.mutate(values))}>
-        <label className="space-y-1 text-sm font-semibold text-content-primary">
-          <span>Cliente</span>
-          <Select autoFocus {...form.register('contactId', { required: true })}>
-            <option value="">Seleccionar contacto</option>
-            {(contacts.data?.data ?? []).map((contact) => (
-              <option key={contact.id} value={contact.id}>
-                {contact.displayName ?? contact.email ?? contact.phone ?? contact.id.slice(0, 8)}
-              </option>
-            ))}
-          </Select>
-        </label>
-        <label className="space-y-1 text-sm font-semibold text-content-primary">
-          <span>Producto</span>
-          <Select
-            {...form.register('productId', {
-              required: true,
-              onChange: () => form.setValue('planId', ''),
-            })}
-          >
-            <option value="">Seleccionar producto</option>
-            {(offers.data?.data ?? []).map((offer) => (
-              <option key={offer.id} value={offer.id}>
-                {offer.name}
-                {offer.price?.amount
-                  ? ` · ${offer.price.currency ?? ''} ${offer.price.amount}`
-                  : ''}
-              </option>
-            ))}
-          </Select>
-        </label>
+        <CreatableCombobox
+          createLabel="Crear cliente rápido"
+          emptyLabel="Limpiar cliente"
+          isLoading={contacts.isFetching}
+          label="Cliente"
+          onCreate={(value) => {
+            const [firstName, ...lastName] = value.trim().split(/\s+/);
+            void api
+              .createContact({
+                firstName,
+                ...(lastName.length ? { lastName: lastName.join(' ') } : {}),
+                country: 'CL',
+                source: 'MANUAL',
+              })
+              .then((contact) => {
+                form.setValue('contactId', contact.id);
+                setContactSearch(contact.displayName ?? value);
+                void queryClient.invalidateQueries({ queryKey: ['contacts', 'new-sale'] });
+              })
+              .catch((error: unknown) =>
+                toast({
+                  title: 'No fue posible crear el cliente',
+                  description: error instanceof Error ? error.message : 'Revisa los datos.',
+                  tone: 'error',
+                }),
+              );
+          }}
+          onSearch={setContactSearch}
+          onSelect={(option) => form.setValue('contactId', option?.id ?? '')}
+          options={(contacts.data?.data ?? []).map((contact) => ({
+            id: contact.id,
+            label: contact.displayName ?? contact.firstName ?? contact.phone ?? 'Cliente',
+            secondary: [contact.phone, contact.country].filter(Boolean).join(' · '),
+          }))}
+          placeholder="Buscar por nombre o teléfono"
+          search={contactSearch}
+          selectedLabel={selectedContact?.displayName ?? undefined}
+        />
+        <CreatableCombobox
+          createLabel="Crear producto"
+          emptyLabel="Limpiar producto"
+          label="Producto"
+          onSearch={setProductSearch}
+          onSelect={(option) => {
+            form.setValue('productId', option?.id ?? '');
+            form.setValue('planId', '');
+            const offer = visibleOffers.find((item) => item.id === option?.id);
+            form.setValue('unitPrice', offer?.price?.amount ?? '');
+          }}
+          options={visibleOffers.map((offer) => ({
+            id: offer.id,
+            label: offer.name,
+            secondary: [
+              offer.category?.name,
+              offer.sku,
+              offer.price?.currency,
+              offer.price?.amount,
+              offer.stock.trackingEnabled ? `stock ${offer.stock.available}` : 'stock ilimitado',
+            ]
+              .filter(Boolean)
+              .join(' · '),
+          }))}
+          placeholder="Buscar producto, categoría o SKU"
+          search={productSearch}
+          selectedLabel={selectedOffer?.name}
+        />
         {(selectedOffer?.plans?.length ?? 0) > 0 ? (
           <label className="space-y-1 text-sm font-semibold text-content-primary">
             <span>Plan</span>
@@ -172,12 +223,8 @@ export function NewSaleDrawer({
           <label className="space-y-1 text-sm font-semibold text-content-primary">
             <span>Precio</span>
             <Input
-              readOnly
-              value={
-                selectedOffer?.price?.amount
-                  ? `${selectedOffer.price.currency ?? form.watch('currency')} ${selectedOffer.price.amount}`
-                  : 'Se calculará al guardar'
-              }
+              {...form.register('unitPrice')}
+              value={form.watch('unitPrice') || selectedOffer?.price?.amount || ''}
             />
           </label>
           {selectedOffer?.type === 'SUBSCRIPTION' || selectedOffer?.requiresSubscription ? (

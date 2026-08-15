@@ -1,11 +1,14 @@
 import { DateTime } from 'luxon';
 
 export const OPERATIONAL_STATE_DEFINITIONS = [
+  { key: 'NEW', label: 'Nuevo', followUpDays: null, manualFollowUp: false },
+  { key: 'MESSAGE_SENT', label: 'Mensaje enviado', followUpDays: 2, manualFollowUp: false },
   { key: 'DEMO_SENT', label: 'Demo enviada', followUpDays: 1, manualFollowUp: false },
   { key: 'NO_RESPONSE', label: 'No responde', followUpDays: 3, manualFollowUp: false },
   { key: 'TALK_LATER', label: 'Hablar más adelante', followUpDays: null, manualFollowUp: true },
   { key: 'WANTS_TO_BUY', label: 'Quiere comprar', followUpDays: null, manualFollowUp: true },
   { key: 'PURCHASED', label: 'Compró', followUpDays: null, manualFollowUp: false },
+  { key: 'LOST', label: 'Perdido', followUpDays: null, manualFollowUp: false },
 ] as const;
 
 export type OperationalStateKey = (typeof OPERATIONAL_STATE_DEFINITIONS)[number]['key'];
@@ -15,15 +18,20 @@ const STATE_BY_KEY = new Map(
 );
 
 const LEGACY_STATE_KEYS: Record<string, OperationalStateKey> = {
-  NEW: 'NO_RESPONSE',
   NEW_LEAD: 'NO_RESPONSE',
   NUEVO_LEAD: 'NO_RESPONSE',
+  NUEVO: 'NEW',
+  MENSAJE_ENVIADO: 'MESSAGE_SENT',
   DEJO_EN_VISTO: 'NO_RESPONSE',
   WAITING_CUSTOMER: 'NO_RESPONSE',
   DEMO_ENTREGADA: 'DEMO_SENT',
   LEFT_ON_READ: 'NO_RESPONSE',
   DEMO_DELIVERED: 'DEMO_SENT',
   COMPRO: 'PURCHASED',
+  DEMO_ENVIADA: 'DEMO_SENT',
+  HABLAR_MAS_ADELANTE: 'TALK_LATER',
+  QUIERE_COMPRAR: 'WANTS_TO_BUY',
+  PERDIDO: 'LOST',
   PAID: 'PURCHASED',
   WON: 'PURCHASED',
 };

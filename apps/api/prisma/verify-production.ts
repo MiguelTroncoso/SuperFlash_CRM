@@ -3,11 +3,14 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 const requiredPipelineKeys = [
+  'NEW',
+  'MESSAGE_SENT',
   'DEMO_SENT',
   'NO_RESPONSE',
   'TALK_LATER',
   'WANTS_TO_BUY',
   'PURCHASED',
+  'LOST',
 ] as const;
 
 function assert(condition: boolean, message: string): void {
@@ -23,9 +26,16 @@ async function verifyProductionData(): Promise<void> {
     where: { key: 'marketing.attribution.manage' },
     select: { id: true, deletedAt: true },
   });
+  const operationsPermission = await prisma.permission.findUnique({
+    where: { key: 'operations.manage' },
+    select: { id: true, deletedAt: true },
+  });
 
   if (!permission || permission.deletedAt !== null) {
     throw new Error('Required attribution permission is missing or deleted.');
+  }
+  if (!operationsPermission || operationsPermission.deletedAt !== null) {
+    throw new Error('Required operations permission is missing or deleted.');
   }
 
   for (const organization of organizations) {
@@ -51,6 +61,14 @@ async function verifyProductionData(): Promise<void> {
           role.permissions.some((rolePermission) => rolePermission.id === permission.id),
         ),
       `Organization ${organization.slug} has an Owner/Admin role without attribution permission.`,
+    );
+    assert(
+      systemRoles
+        .filter((role) => role.name === 'Owner' || role.name === 'Admin' || role.name === 'Sales')
+        .every((role) =>
+          role.permissions.some((rolePermission) => rolePermission.id === operationsPermission.id),
+        ),
+      `Organization ${organization.slug} has an operator role without operations permission.`,
     );
 
     const stages = await prisma.pipelineStage.findMany({

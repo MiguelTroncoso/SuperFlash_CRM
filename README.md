@@ -146,6 +146,13 @@ Renovaciones, Catálogo y Configuración. Las herramientas avanzadas permanecen
 disponibles desde Configuración sin modificar sus APIs ni reglas de negocio.
 Consulta [docs/operational-reset.md](docs/operational-reset.md).
 
+Sprint 35 consolida el dashboard operativo en `/` y `/operations`. Permite
+registrar actividad diaria por campaña y país, importar históricos idempotentes,
+consultar conversaciones, demos, seguimientos, cobros, renovaciones y stock
+crítico, y separar explícitamente las ventas informativas de la fuente
+financiera real (`Sale` + `Payment`). La guía está en
+[docs/operational-workflow.md](docs/operational-workflow.md).
+
 ## Calidad y verificación
 
 ```bash

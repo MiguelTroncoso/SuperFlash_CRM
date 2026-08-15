@@ -309,6 +309,15 @@ costos de Fulfillment sin duplicar Revenue Intelligence ni Financial
 Intelligence. WhatsApp permanece sin activación y no se envían mensajes desde
 estas reglas.
 
+### Sprint 35 — Commercial Operating Workflow
+
+El flujo operativo comercial se consolida sobre los dominios existentes sin
+crear un dominio transaccional paralelo. `DailyMetric` registra actividad
+manual e histórica por día, campaña y país; `Sale`, `Payment`, `Subscription` y
+`Renewal` continúan siendo la única fuente financiera y de ciclo. La migración
+de métricas es incremental y no modifica migraciones anteriores. Consulte
+[operational-workflow.md](../operational-workflow.md).
+
 ## Índice de ADRs
 
 - [ADR-006 — Sales Snapshot](../ADR-006-sales-snapshot.md)
