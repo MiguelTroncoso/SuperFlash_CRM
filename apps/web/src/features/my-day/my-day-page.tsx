@@ -12,7 +12,7 @@ import { api } from '@/lib/api-client';
 import { arrayValue, numberValue, stringValue } from '@/lib/utils';
 
 const OPERATING_SECTIONS = [
-  ['paymentPromises', 'Cobros pendientes', '/collections', '$'],
+  ['pendingCollections', 'Cobros pendientes', '/collections', '$'],
   ['pendingActivations', 'Activaciones', '/activations', '✓'],
   ['renewalsToday', 'Renovaciones para hoy', '/renewals/today', '↻'],
   ['lowStock', 'Stock crítico', '/catalog', '▣'],
@@ -72,9 +72,24 @@ export function MyDayPage(): React.ReactElement {
                               stringValue(row.reference, 'Actividad comercial')}
                           </p>
                           <p className="mt-1 truncate text-xs text-content-muted">
-                            {stringValue(row.detail) || stringValue(row.dueAt)}
+                            {stringValue(row.productName) ||
+                              stringValue(row.detail) ||
+                              stringValue(row.dueAt)}
                           </p>
+                          {row.balance ? (
+                            <p className="mt-1 text-xs font-bold text-amber-600">
+                              Saldo {stringValue(row.currency)} {stringValue(row.balance)}
+                            </p>
+                          ) : null}
                         </div>
+                        {row.saleId ? (
+                          <Link
+                            className="shrink-0 text-xs font-bold text-brand-600"
+                            href={`/sales?saleId=${encodeURIComponent(stringValue(row.saleId))}`}
+                          >
+                            Cobrar
+                          </Link>
+                        ) : null}
                       </div>
                     ))}
                   </div>

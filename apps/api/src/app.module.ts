@@ -38,6 +38,7 @@ import { FinancialModule } from './modules/financial/financial.module';
 import { RenewalIntelligenceModule } from './modules/renewal-intelligence/renewal-intelligence.module';
 import { ExecutiveIntelligenceModule } from './modules/executive-intelligence/executive-intelligence.module';
 import { MarketingModule } from './modules/marketing/marketing.module';
+import { CustomersModule } from './modules/customers/customers.module';
 
 @Module({
   imports: [
@@ -93,6 +94,7 @@ import { MarketingModule } from './modules/marketing/marketing.module';
     RenewalIntelligenceModule,
     ExecutiveIntelligenceModule,
     MarketingModule,
+    CustomersModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

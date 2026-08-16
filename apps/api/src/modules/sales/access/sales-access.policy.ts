@@ -18,4 +18,8 @@ export class SalesAccessPolicy {
   assertMutate(user: AuthenticatedUser, ownerUserId: string | null): void {
     this.policy.assert(this.policy.canMutate(user, 'sales.update', ownerUserId));
   }
+
+  assertDelete(user: AuthenticatedUser, ownerUserId: string | null): void {
+    this.policy.assert(this.policy.canMutate(user, 'sales.delete', ownerUserId));
+  }
 }

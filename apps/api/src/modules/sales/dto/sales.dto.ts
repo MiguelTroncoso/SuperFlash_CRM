@@ -4,6 +4,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsDecimal,
   IsDateString,
   IsEnum,
@@ -135,6 +136,16 @@ export class CreateSaleDto {
 
 export class UpdateSaleDto {
   @IsOptional()
+  @ApiPropertyOptional({ format: 'uuid', description: 'Ítem cuyo precio o duración se modifica.' })
+  @IsUUID()
+  itemId?: string;
+
+  @IsOptional()
+  @ApiPropertyOptional({ example: '15000.00' })
+  @IsDecimal({ decimal_digits: '0,2' })
+  unitPrice?: string;
+
+  @IsOptional()
   @ApiPropertyOptional({ example: '0.00' })
   @IsDecimal({ decimal_digits: '0,2' })
   discountAmount?: string;
@@ -153,7 +164,25 @@ export class UpdateSaleDto {
   @IsOptional()
   @ApiPropertyOptional({ format: 'date-time' })
   @IsDateString()
-  paymentDueAt?: string;
+  paymentDueAt?: string | null;
+
+  @IsOptional()
+  @IsEnum(PaymentMethod)
+  paymentMethod?: PaymentMethod | null;
+
+  @IsOptional()
+  @IsBoolean()
+  paidNow?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @IsIn([30, 90, 180, 365])
+  subscriptionDurationDays?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  priceOverrideReason?: string;
 }
 
 export class CancelSaleDto {

@@ -270,6 +270,10 @@ export class MyDayService {
       overdueRenewals,
       vipRenewals,
       lowStock,
+      pendingCollections,
+      pendingCollectionTotal,
+      subscriptionActivationTasks,
+      subscriptionActivationTotal,
     ] = await Promise.all([
       this.prisma.fulfillment.findMany({
         where: { ...base, status: { in: ['PENDING', 'ASSIGNED'] } },
@@ -439,6 +443,10 @@ export class MyDayService {
         },
       }),
       this.lowStockProducts(user.organizationId, limit),
+      this.pendingCollections(user.organizationId, targetUserId, limit),
+      this.pendingCollectionCount(user.organizationId, targetUserId),
+      this.pendingSubscriptionActivations(user.organizationId, targetUserId, limit),
+      this.pendingSubscriptionActivationCount(user.organizationId, targetUserId),
     ]);
     return {
       pendingFulfillments: this.operationSection(
@@ -465,14 +473,24 @@ export class MyDayService {
         limit,
       ),
       pendingActivations: this.operationSection(
-        activations.map((item) => ({
-          id: item.id,
-          status: item.status,
-          reference: item.fulfillmentId,
-          providerId: item.providerId,
-          dueAt: item.createdAt,
-        })),
-        activations.length,
+        [
+          ...activations.map((item) => ({
+            id: item.id,
+            status: item.status,
+            reference: item.fulfillmentId,
+            providerId: item.providerId,
+            dueAt: item.createdAt,
+          })),
+          ...subscriptionActivationTasks.map((item) => ({
+            id: `sale:${item.saleId}:${item.saleItemId}`,
+            status: 'PENDING',
+            reference: item.saleId,
+            providerId: null,
+            dueAt: item.createdAt,
+            detail: item.productNameSnapshot,
+          })),
+        ],
+        activations.length + subscriptionActivationTotal,
         limit,
       ),
       expiringTrials: this.operationSection(
@@ -525,6 +543,11 @@ export class MyDayService {
       paymentPromises: this.renewalSection(paymentPromises, limit),
       overdueRenewals: this.renewalSection(overdueRenewals, limit),
       vipRenewals: this.renewalSection(vipRenewals, limit),
+      pendingCollections: {
+        data: pendingCollections,
+        total: pendingCollectionTotal,
+        hasMore: pendingCollectionTotal > limit,
+      },
       lowStock: this.operationSection(
         lowStock.map((item) => ({
           id: item.id,
@@ -538,6 +561,177 @@ export class MyDayService {
         limit,
       ),
     };
+  }
+
+  private async pendingCollections(
+    organizationId: string,
+    targetUserId: string | undefined,
+    limit: number,
+  ): Promise<PublicPendingCollection[]> {
+    const ownerClause = targetUserId
+      ? Prisma.sql`AND s."userId" = ${targetUserId}::uuid`
+      : Prisma.empty;
+    const rows = await this.prisma.$queryRaw<PendingCollectionRow[]>(Prisma.sql`
+      WITH balances AS (
+        SELECT
+          s."id",
+          s."status"::text AS "status",
+          s."currency",
+          s."total"::text AS "total",
+          s."paymentDueAt",
+          c."id" AS "contactId",
+          c."firstName",
+          c."lastName",
+          c."phone",
+          c."email",
+          COALESCE(SUM(
+            CASE
+              WHEN p."status" IN ('CONFIRMED'::"PaymentStatus", 'REFUNDED'::"PaymentStatus")
+              THEN p."netAmount" - p."refundedAmount"
+              ELSE 0
+            END
+          ), 0)::text AS "paid",
+          (s."total" - COALESCE(SUM(
+            CASE
+              WHEN p."status" IN ('CONFIRMED'::"PaymentStatus", 'REFUNDED'::"PaymentStatus")
+              THEN p."netAmount" - p."refundedAmount"
+              ELSE 0
+            END
+          ), 0))::text AS "balance",
+          (
+            SELECT STRING_AGG(si."productNameSnapshot", ', ' ORDER BY si."createdAt")
+            FROM "SaleItem" si
+            WHERE si."organizationId" = s."organizationId"
+              AND si."saleId" = s."id"
+              AND si."deletedAt" IS NULL
+          ) AS "productName"
+        FROM "Sale" s
+        JOIN "Contact" c ON c."organizationId" = s."organizationId" AND c."id" = s."contactId"
+        LEFT JOIN "Payment" p ON p."organizationId" = s."organizationId"
+          AND p."saleId" = s."id" AND p."deletedAt" IS NULL
+        WHERE s."organizationId" = ${organizationId}::uuid
+          AND s."deletedAt" IS NULL
+          AND c."deletedAt" IS NULL
+          AND s."status" IN ('CONFIRMED'::"SaleStatus", 'FULFILLED'::"SaleStatus")
+          ${ownerClause}
+        GROUP BY s."id", s."status", s."currency", s."total", s."paymentDueAt",
+          c."id", c."firstName", c."lastName", c."phone", c."email"
+      )
+      SELECT * FROM balances
+      WHERE CAST("balance" AS numeric) > 0
+      ORDER BY "paymentDueAt" NULLS LAST, "id"
+      LIMIT ${limit}
+    `);
+    return rows.map((row) => ({
+      id: row.id,
+      saleId: row.id,
+      status: row.status,
+      contactId: row.contactId,
+      contactName:
+        [row.firstName, row.lastName].filter(Boolean).join(' ') ||
+        row.phone ||
+        row.email ||
+        'Cliente',
+      phone: row.phone,
+      email: row.email,
+      productName: row.productName,
+      currency: row.currency,
+      total: row.total,
+      paid: row.paid,
+      balance: row.balance,
+      paymentDueAt: row.paymentDueAt,
+      reference: row.id,
+      providerId: null,
+      dueAt: row.paymentDueAt,
+      detail: `${row.currency} ${row.balance}`,
+    }));
+  }
+
+  private pendingSubscriptionActivations(
+    organizationId: string,
+    targetUserId: string | undefined,
+    limit: number,
+  ) {
+    return this.prisma.subscription.findMany({
+      where: {
+        organizationId,
+        deletedAt: null,
+        status: 'PENDING',
+        ...(targetUserId ? { userId: targetUserId } : {}),
+        sale: {
+          deletedAt: null,
+          status: { in: ['CONFIRMED', 'FULFILLED'] },
+        },
+        activations: {
+          none: {
+            deletedAt: null,
+            status: { in: ['PENDING', 'ACTIVE', 'SUSPENDED'] },
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+      take: limit,
+      select: {
+        saleId: true,
+        saleItemId: true,
+        productNameSnapshot: true,
+        createdAt: true,
+      },
+    });
+  }
+
+  private pendingSubscriptionActivationCount(
+    organizationId: string,
+    targetUserId: string | undefined,
+  ) {
+    return this.prisma.subscription.count({
+      where: {
+        organizationId,
+        deletedAt: null,
+        status: 'PENDING',
+        ...(targetUserId ? { userId: targetUserId } : {}),
+        sale: { deletedAt: null, status: { in: ['CONFIRMED', 'FULFILLED'] } },
+        activations: {
+          none: {
+            deletedAt: null,
+            status: { in: ['PENDING', 'ACTIVE', 'SUSPENDED'] },
+          },
+        },
+      },
+    });
+  }
+
+  private async pendingCollectionCount(
+    organizationId: string,
+    targetUserId: string | undefined,
+  ): Promise<number> {
+    const ownerClause = targetUserId
+      ? Prisma.sql`AND s."userId" = ${targetUserId}::uuid`
+      : Prisma.empty;
+    const rows = await this.prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+      SELECT COUNT(*)::bigint AS count
+      FROM (
+        SELECT s."id"
+        FROM "Sale" s
+        JOIN "Contact" c ON c."organizationId" = s."organizationId" AND c."id" = s."contactId"
+        LEFT JOIN "Payment" p ON p."organizationId" = s."organizationId"
+          AND p."saleId" = s."id" AND p."deletedAt" IS NULL
+        WHERE s."organizationId" = ${organizationId}::uuid
+          AND s."deletedAt" IS NULL
+          AND c."deletedAt" IS NULL
+          AND s."status" IN ('CONFIRMED'::"SaleStatus", 'FULFILLED'::"SaleStatus")
+          ${ownerClause}
+        GROUP BY s."id", s."total"
+        HAVING s."total" - COALESCE(SUM(
+          CASE
+            WHEN p."status" IN ('CONFIRMED'::"PaymentStatus", 'REFUNDED'::"PaymentStatus")
+            THEN p."netAmount" - p."refundedAmount"
+            ELSE 0
+          END
+        ), 0) > 0
+      ) pending
+    `);
+    return Number(rows[0]?.count ?? 0);
   }
 
   private lowStockProducts(
@@ -605,6 +799,7 @@ export class MyDayService {
       pendingFulfillments,
       failedFulfillments,
       pendingActivations,
+      pendingSubscriptionActivations,
       expiringTrials,
       expiredTrials,
       credentialsToDeliver,
@@ -615,6 +810,7 @@ export class MyDayService {
       overdueRenewals,
       vipRenewals,
       lowStock,
+      pendingCollections,
     ] = await Promise.all([
       this.prisma.fulfillment.count({
         where: { ...fulfillmentBase, status: { in: ['PENDING', 'ASSIGNED'] } },
@@ -623,6 +819,7 @@ export class MyDayService {
       this.prisma.activation.count({
         where: { organizationId: user.organizationId, deletedAt: null, status: 'PENDING' },
       }),
+      this.pendingSubscriptionActivationCount(user.organizationId, targetUserId),
       this.prisma.trial.count({
         where: {
           ...trialBase,
@@ -686,11 +883,12 @@ export class MyDayService {
         },
       }),
       this.lowStockCount(user.organizationId),
+      this.pendingCollectionCount(user.organizationId, targetUserId),
     ]);
     return {
       pendingFulfillments,
       failedFulfillments,
-      pendingActivations,
+      pendingActivations: pendingActivations + pendingSubscriptionActivations,
       expiringTrials,
       expiredTrials,
       credentialsToDeliver,
@@ -701,6 +899,7 @@ export class MyDayService {
       overdueRenewals,
       vipRenewals,
       lowStock,
+      pendingCollections,
     };
   }
 
@@ -890,6 +1089,7 @@ export interface MyDayResponse {
     expiredTrials: MyDaySection<PublicOperationalItem>;
     credentialsToDeliver: MyDaySection<PublicOperationalItem>;
     provisioningRetries: MyDaySection<PublicOperationalItem>;
+    pendingCollections: MyDaySection<PublicPendingCollection>;
     lowStock: MyDaySection<PublicOperationalItem>;
   };
 }
@@ -911,6 +1111,7 @@ export interface MyDaySummary {
   expiredTrials: number;
   credentialsToDeliver: number;
   provisioningRetries: number;
+  pendingCollections: number;
   lowStock: number;
 }
 
@@ -921,6 +1122,36 @@ export interface PublicOperationalItem {
   providerId: string | null;
   dueAt: Date | null;
   detail?: string | null;
+}
+
+interface PendingCollectionRow {
+  id: string;
+  status: string;
+  currency: string;
+  total: string;
+  paymentDueAt: Date | null;
+  contactId: string;
+  firstName: string | null;
+  lastName: string | null;
+  phone: string | null;
+  email: string | null;
+  paid: string;
+  balance: string;
+  productName: string | null;
+}
+
+export interface PublicPendingCollection extends PublicOperationalItem {
+  saleId: string;
+  contactId: string;
+  contactName: string;
+  phone: string | null;
+  email: string | null;
+  productName: string | null;
+  currency: string;
+  total: string;
+  paid: string;
+  balance: string;
+  paymentDueAt: Date | null;
 }
 
 export type OperationalSections = {
@@ -934,6 +1165,7 @@ export type OperationalSections = {
   renewalsToday: MyDaySection<PublicOperationalItem>;
   urgentRenewals: MyDaySection<PublicOperationalItem>;
   paymentPromises: MyDaySection<PublicOperationalItem>;
+  pendingCollections: MyDaySection<PublicPendingCollection>;
   overdueRenewals: MyDaySection<PublicOperationalItem>;
   vipRenewals: MyDaySection<PublicOperationalItem>;
   lowStock: MyDaySection<PublicOperationalItem>;
@@ -950,6 +1182,7 @@ export type OperationalSummary = {
   renewalsToday: number;
   urgentRenewals: number;
   paymentPromises: number;
+  pendingCollections: number;
   overdueRenewals: number;
   vipRenewals: number;
   lowStock: number;

@@ -555,6 +555,10 @@ export class ExecutiveIntelligenceService {
     const term = query.search.trim();
     if (term.length < 2) return { query: term, results: [] };
     const contains = { contains: term, mode: 'insensitive' as const };
+    const uuidTerm =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(term)
+        ? term
+        : undefined;
     const org = user.organizationId;
     const limit = query.limit;
     const [
@@ -612,6 +616,9 @@ export class ExecutiveIntelligenceService {
             { note: contains },
             { contact: { firstName: contains } },
             { contact: { lastName: contains } },
+            { items: { some: { productNameSnapshot: contains } } },
+            { items: { some: { skuSnapshot: contains } } },
+            ...(uuidTerm ? [{ id: uuidTerm }] : []),
           ],
         },
         take: limit,
@@ -621,6 +628,7 @@ export class ExecutiveIntelligenceService {
           total: true,
           currency: true,
           contact: { select: { firstName: true, lastName: true } },
+          items: { select: { productNameSnapshot: true, skuSnapshot: true } },
         },
       }),
       this.prisma.payment.findMany({

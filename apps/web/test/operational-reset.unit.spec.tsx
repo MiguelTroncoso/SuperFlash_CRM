@@ -18,6 +18,7 @@ import type {
 jest.mock('next/navigation', () => ({
   usePathname: () => '/',
   useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 const user: AuthUser = {
