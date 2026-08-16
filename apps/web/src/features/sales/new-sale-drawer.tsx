@@ -1,7 +1,8 @@
 'use client';
 
 import { useForm } from 'react-hook-form';
-import { useEffect, useState } from 'react';
+import { addSubscriptionDuration } from '@superflash/utils';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { Button } from '@/components/ui/button';
@@ -34,6 +35,15 @@ interface SaleFormValues {
 interface SaleSubmission {
   values: SaleFormValues;
   confirm: boolean;
+}
+
+function formatDate(value: Date): string {
+  return value.toLocaleDateString('es-CL', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    timeZone: 'America/Santiago',
+  });
 }
 
 export function NewSaleDrawer({
@@ -96,6 +106,15 @@ export function NewSaleDrawer({
   const selectedOffer = (offers.data?.data ?? []).find(
     (offer) => offer.id === form.watch('productId'),
   );
+  const isSubscription = Boolean(
+    selectedOffer?.type === 'SUBSCRIPTION' || selectedOffer?.requiresSubscription,
+  );
+  const subscriptionDurationDays = Number(form.watch('subscriptionDurationDays'));
+  const subscriptionStartAt = useMemo(() => new Date(), []);
+  const estimatedSubscriptionEnd =
+    isSubscription && [30, 90, 180, 365].includes(subscriptionDurationDays)
+      ? addSubscriptionDuration(subscriptionStartAt, subscriptionDurationDays)
+      : null;
   const visibleOffers = offers.data?.data ?? [];
   const selectedContact = (contacts.data?.data ?? []).find(
     (contact) => contact.id === form.watch('contactId'),
@@ -132,6 +151,16 @@ export function NewSaleDrawer({
   const subtotal =
     Math.max(Number(form.watch('quantity') || 0), 0) *
     Math.max(Number(form.watch('unitPrice') || 0), 0);
+  const saleTotal = Math.max(subtotal - Math.max(Number(form.watch('discountAmount') || 0), 0), 0);
+  const paidNow = form.watch('paidNow');
+  const paymentAmount = form.watch('paymentAmount').trim();
+  const paymentCoversTotal =
+    paidNow && saleTotal > 0 && (!paymentAmount || Number(paymentAmount) >= saleTotal);
+  useEffect(() => {
+    if (paymentCoversTotal && form.getValues('paymentDueAt')) {
+      form.setValue('paymentDueAt', '');
+    }
+  }, [form, paymentCoversTotal]);
   const create = useMutation({
     mutationFn: async ({ values, confirm }: SaleSubmission) => {
       if (!values.contactId || !values.productId) {
@@ -150,7 +179,7 @@ export function NewSaleDrawer({
             ...(values.priceOverrideReason.trim()
               ? { priceOverrideReason: values.priceOverrideReason.trim() }
               : {}),
-            ...(selectedOffer?.type === 'SUBSCRIPTION' || selectedOffer?.requiresSubscription
+            ...(isSubscription
               ? { subscriptionDurationDays: Number(values.subscriptionDurationDays) }
               : {}),
           },
@@ -394,7 +423,7 @@ export function NewSaleDrawer({
               <Input placeholder="Opcional" {...form.register('priceOverrideReason')} />
             </label>
           ) : null}
-          {selectedOffer?.type === 'SUBSCRIPTION' || selectedOffer?.requiresSubscription ? (
+          {isSubscription ? (
             <label className="space-y-1 text-sm font-semibold text-content-primary">
               <span>Duración de suscripción</span>
               <Select {...form.register('subscriptionDurationDays')}>
@@ -403,6 +432,16 @@ export function NewSaleDrawer({
                 <option value="180">6 meses</option>
                 <option value="365">12 meses</option>
               </Select>
+              {estimatedSubscriptionEnd ? (
+                <span className="block rounded-xl border border-border-subtle bg-surface-muted p-3 text-xs font-normal text-content-secondary">
+                  <span className="block">
+                    Inicio de suscripción: {formatDate(subscriptionStartAt)}
+                  </span>
+                  <span className="mt-1 block font-semibold text-content-primary">
+                    Vencimiento estimado: {formatDate(estimatedSubscriptionEnd)}
+                  </span>
+                </span>
+              ) : null}
             </label>
           ) : null}
           {selectedOffer?.stock?.trackingEnabled ? (
@@ -455,10 +494,12 @@ export function NewSaleDrawer({
                 ))}
             </Select>
           </label>
-          <label className="space-y-1 text-sm font-semibold text-content-primary">
-            <span>Fecha compromiso de pago</span>
-            <Input type="date" {...form.register('paymentDueAt')} />
-          </label>
+          {!paymentCoversTotal ? (
+            <label className="space-y-1 text-sm font-semibold text-content-primary">
+              <span>Fecha compromiso de pago</span>
+              <Input type="date" {...form.register('paymentDueAt')} />
+            </label>
+          ) : null}
         </div>
         <label className="space-y-1 text-sm font-semibold text-content-primary">
           <span>Método de pago</span>

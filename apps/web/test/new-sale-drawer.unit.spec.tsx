@@ -4,7 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { NewSaleDrawer } from '@/features/sales/new-sale-drawer';
 import { api } from '@/lib/api-client';
 import { useAuthStore } from '@/lib/auth-store';
-import type { AuthUser, ProductOffer } from '@/lib/types';
+import type { AuthUser, Contact, ProductOffer } from '@/lib/types';
+import { addSubscriptionDuration } from '@superflash/utils';
 
 const baseUser: AuthUser = {
   id: 'user-1',
@@ -63,6 +64,43 @@ const noPriceOffer: ProductOffer = {
   manualPriceAllowed: false,
 };
 
+const subscriptionOffer: ProductOffer = {
+  ...clpOffer,
+  id: 'product-chatgpt-2',
+  name: 'CHATGPT 2',
+  slug: 'chatgpt-2',
+  type: 'SUBSCRIPTION',
+  requiresSubscription: true,
+};
+
+const agustin: Contact = {
+  id: 'contact-agustin',
+  firstName: 'Agustin',
+  lastName: null,
+  displayName: 'Agustin',
+  email: null,
+  phone: '+56 9 7511 6332',
+  country: 'CL',
+  source: 'MANUAL',
+  isCustomer: false,
+  archivedAt: null,
+  lastActivityAt: null,
+  assignedTo: null,
+  tags: [],
+  activeOpportunity: null,
+  createdAt: '2026-08-15T00:00:00.000Z',
+  updatedAt: '2026-08-15T00:00:00.000Z',
+};
+
+function formatDate(value: Date): string {
+  return value.toLocaleDateString('es-CL', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    timeZone: 'America/Santiago',
+  });
+}
+
 function renderDrawer(): void {
   render(
     <QueryClientProvider
@@ -119,5 +157,46 @@ describe('NewSaleDrawer catalog discovery', () => {
     expect(screen.getByRole('button', { name: /SIN PRECIO/ })).toHaveTextContent(
       'Sin precio configurado',
     );
+  });
+
+  it('previews subscription expiry immediately and keeps payment commitment separate', async () => {
+    jest.spyOn(api, 'getContacts').mockResolvedValue({
+      data: [agustin],
+      pagination: { page: 1, limit: 50, total: 1, totalPages: 1 },
+    });
+    jest.spyOn(api, 'getOffers').mockResolvedValue({ data: [subscriptionOffer] });
+    const previewStart = new Date();
+    renderDrawer();
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Producto' }), {
+      target: { value: 'CHATGPT 2' },
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /CHATGPT 2/ })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /CHATGPT 2/ }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          `Vencimiento estimado: ${formatDate(addSubscriptionDuration(previewStart, 30))}`,
+        ),
+      ).toBeInTheDocument(),
+    );
+    const duration = screen.getByRole('combobox', { name: /Duración de suscripción/ });
+    fireEvent.change(duration, { target: { value: '180' } });
+    expect(
+      screen.getByText(
+        `Vencimiento estimado: ${formatDate(addSubscriptionDuration(previewStart, 180))}`,
+      ),
+    ).toBeInTheDocument();
+
+    const paymentDueAt = screen.getByLabelText('Fecha compromiso de pago');
+    fireEvent.change(paymentDueAt, { target: { value: '2026-08-20' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Pagó ahora' }));
+    expect(screen.queryByLabelText('Fecha compromiso de pago')).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Monto pagado'), { target: { value: '1.00' } });
+    expect(screen.getByLabelText('Fecha compromiso de pago')).toBeInTheDocument();
   });
 });

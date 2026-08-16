@@ -19,6 +19,20 @@ import { NewSaleDrawer } from '@/features/sales/new-sale-drawer';
 import { api, queryString } from '@/lib/api-client';
 import type { Sale } from '@/lib/types';
 
+function formatDate(value: string | null | undefined): string {
+  return value
+    ? new Date(value).toLocaleDateString('es-CL', { timeZone: 'America/Santiago' })
+    : '—';
+}
+
+function formatSubscriptionDuration(days: number | null): string {
+  if (days === 30) return '30 días';
+  if (days === 90) return '3 meses';
+  if (days === 180) return '6 meses';
+  if (days === 365) return '12 meses';
+  return 'Según ciclo';
+}
+
 export function SalesPage(): React.ReactElement {
   const searchParams = useSearchParams();
   const [page, setPage] = useState(1);
@@ -161,6 +175,49 @@ export function SalesPage(): React.ReactElement {
                   {selected.contact?.name ?? 'Sin contacto'}
                 </p>
               </div>
+              {(selected.subscriptions ?? []).length > 0 ? (
+                <div className="space-y-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                    Suscripciones
+                  </p>
+                  {(selected.subscriptions ?? []).map((subscription) => (
+                    <div
+                      className="rounded-xl border border-border-subtle bg-surface-muted p-4 text-sm"
+                      key={subscription.id}
+                    >
+                      <p className="font-semibold text-content-primary">
+                        {subscription.productName}
+                      </p>
+                      <dl className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <dt className="text-content-muted">Duración</dt>
+                          <dd className="mt-1 font-semibold text-content-primary">
+                            {formatSubscriptionDuration(subscription.durationDays)}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-content-muted">Inicio</dt>
+                          <dd className="mt-1 font-semibold text-content-primary">
+                            {formatDate(subscription.startsAt)}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-content-muted">Vencimiento</dt>
+                          <dd className="mt-1 font-semibold text-content-primary">
+                            {formatDate(subscription.currentPeriodEnd)}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-content-muted">Próxima renovación</dt>
+                          <dd className="mt-1 font-semibold text-content-primary">
+                            {formatDate(subscription.renewal?.dueAt ?? subscription.nextBillingAt)}
+                          </dd>
+                        </div>
+                      </dl>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
               {selected.status === 'DRAFT' ? (
                 <Button disabled={confirming} onClick={() => void confirm()}>
                   {confirming ? 'Confirmando…' : 'Confirmar venta'}

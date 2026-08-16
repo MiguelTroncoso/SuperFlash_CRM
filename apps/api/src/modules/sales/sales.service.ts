@@ -14,6 +14,7 @@ import {
   SubscriptionStatus,
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
+import { addSubscriptionBillingCycle, addSubscriptionDuration } from '@superflash/utils';
 
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { CommercialEventName } from '../../infrastructure/events/application-event-bus';
@@ -52,6 +53,28 @@ const saleInclude = {
     },
   },
   items: { where: { deletedAt: null }, orderBy: { createdAt: 'asc' as const } },
+  subscriptions: {
+    where: { deletedAt: null },
+    orderBy: { createdAt: 'asc' as const },
+    select: {
+      id: true,
+      saleItemId: true,
+      status: true,
+      billingCycle: true,
+      customIntervalDays: true,
+      productNameSnapshot: true,
+      catalogSnapshot: true,
+      startsAt: true,
+      currentPeriodEnd: true,
+      nextBillingAt: true,
+      renewals: {
+        where: { deletedAt: null },
+        orderBy: { periodStart: 'asc' as const },
+        take: 1,
+        select: { id: true, status: true, dueAt: true },
+      },
+    },
+  },
 } satisfies Prisma.SaleInclude;
 
 type SaleWithDetails = Prisma.SaleGetPayload<{ include: typeof saleInclude }>;
@@ -205,6 +228,13 @@ export class SalesService {
               { note: { contains: query.search, mode: 'insensitive' } },
               { contact: { is: { firstName: { contains: query.search, mode: 'insensitive' } } } },
               { contact: { is: { lastName: { contains: query.search, mode: 'insensitive' } } } },
+              { contact: { is: { email: { contains: query.search, mode: 'insensitive' } } } },
+              { contact: { is: { phone: { contains: query.search, mode: 'insensitive' } } } },
+              {
+                contact: {
+                  is: { phoneNormalized: { contains: query.search, mode: 'insensitive' } },
+                },
+              },
               { opportunity: { is: { title: { contains: query.search, mode: 'insensitive' } } } },
             ],
           }
@@ -802,11 +832,12 @@ export class SalesService {
       });
       if (existing) continue;
       const cycle = this.subscriptionCycle(item);
-      const periodEnd = this.addSubscriptionCycle(
-        startedAt,
-        cycle.billingCycle,
-        cycle.customIntervalDays,
-      );
+      const snapshot = this.snapshotRecord(item.catalogSnapshot);
+      const durationDays = snapshot?.subscriptionDurationDays;
+      const periodEnd =
+        typeof durationDays === 'number'
+          ? addSubscriptionDuration(startedAt, durationDays)
+          : this.addSubscriptionCycle(startedAt, cycle.billingCycle, cycle.customIntervalDays);
       const subscription = await transaction.subscription.create({
         data: {
           organizationId: context.user.organizationId,
@@ -949,14 +980,10 @@ export class SalesService {
     cycle: BillingCycle,
     customIntervalDays: number | null,
   ): Date {
-    const result = new Date(start);
-    if (cycle === BillingCycle.WEEKLY) result.setDate(result.getDate() + 7);
-    else if (cycle === BillingCycle.MONTHLY) result.setMonth(result.getMonth() + 1);
-    else if (cycle === BillingCycle.QUARTERLY) result.setMonth(result.getMonth() + 3);
-    else if (cycle === BillingCycle.SEMI_ANNUAL) result.setMonth(result.getMonth() + 6);
-    else if (cycle === BillingCycle.ANNUAL) result.setFullYear(result.getFullYear() + 1);
-    else result.setDate(result.getDate() + (customIntervalDays ?? 30));
-    return result;
+    return (
+      addSubscriptionBillingCycle(start, cycle, customIntervalDays) ??
+      addSubscriptionDuration(start, 30)
+    );
   }
 
   private cycleKey(subscriptionId: string, periodStart: Date): string {
@@ -1299,10 +1326,26 @@ export class SalesService {
 
   private mapSale(sale: SaleWithDetails, user: AuthenticatedUser): Record<string, unknown> {
     const includeCosts = user.permissions.includes('catalog.costs.read');
+    const firstName = sale.contact?.firstName?.trim() ?? '';
+    const lastName = sale.contact?.lastName?.trim() ?? '';
+    const contactName =
+      [firstName, lastName].filter(Boolean).join(' ') ||
+      sale.contact?.phone?.trim() ||
+      sale.contact?.email?.trim() ||
+      'Cliente';
     return {
       id: sale.id,
       status: sale.status,
-      contact: sale.contact,
+      contact: sale.contact
+        ? {
+            id: sale.contact.id,
+            name: contactName,
+            firstName: sale.contact.firstName,
+            lastName: sale.contact.lastName,
+            phone: sale.contact.phone,
+            email: sale.contact.email,
+          }
+        : null,
       opportunity: sale.opportunity,
       owner: sale.seller,
       subtotal: sale.subtotal.toFixed(2),
@@ -1315,6 +1358,26 @@ export class SalesService {
       soldAt: sale.soldAt,
       cancelledAt: sale.cancelledAt,
       cancellationReason: sale.cancellationReason,
+      subscriptions: sale.subscriptions.map((subscription) => {
+        const snapshot = this.snapshotRecord(subscription.catalogSnapshot);
+        const durationDays = snapshot?.subscriptionDurationDays;
+        const renewal = subscription.renewals[0] ?? null;
+        return {
+          id: subscription.id,
+          saleItemId: subscription.saleItemId,
+          status: subscription.status,
+          billingCycle: subscription.billingCycle,
+          customIntervalDays: subscription.customIntervalDays,
+          productName: subscription.productNameSnapshot,
+          durationDays: typeof durationDays === 'number' ? durationDays : null,
+          startsAt: subscription.startsAt,
+          currentPeriodEnd: subscription.currentPeriodEnd,
+          nextBillingAt: subscription.nextBillingAt,
+          renewal: renewal
+            ? { id: renewal.id, status: renewal.status, dueAt: renewal.dueAt }
+            : null,
+        };
+      }),
       items: sale.items.map((item) => ({
         id: item.id,
         productId: item.productId,

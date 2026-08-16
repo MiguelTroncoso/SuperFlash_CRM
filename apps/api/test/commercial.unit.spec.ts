@@ -9,6 +9,7 @@ import {
   CommercialEventName,
 } from '../src/infrastructure/events/application-event-bus';
 import { AuthenticatedUser } from '../src/modules/auth/auth.types';
+import { addSubscriptionDuration } from '@superflash/utils';
 
 function user(
   roleName: string,
@@ -175,5 +176,18 @@ describe('Commercial value normalization', () => {
     ['1000', '1000.00'],
   ])('parses quantity %s without floating point drift', (input, expected) => {
     expect(parseQuantity(input).toFixed(2)).toBe(expected);
+  });
+});
+
+describe('Subscription duration contract', () => {
+  const start = new Date('2026-08-15T12:00:00.000Z');
+
+  it.each([
+    [30, '2026-09-14T12:00:00.000Z'],
+    [90, '2026-11-15T12:00:00.000Z'],
+    [180, '2027-02-15T12:00:00.000Z'],
+    [365, '2027-08-15T12:00:00.000Z'],
+  ])('calculates %s days with the shared calendar rule', (duration, expected) => {
+    expect(addSubscriptionDuration(start, duration).toISOString()).toBe(expected);
   });
 });
