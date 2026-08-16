@@ -1353,28 +1353,30 @@ model PriceHistory {
 }
 
 model Sale {
-  id                   String     @id @default(uuid()) @db.Uuid
-  organizationId       String     @db.Uuid
-  contactId            String     @db.Uuid
-  opportunityId        String?    @db.Uuid
-  userId               String?    @db.Uuid
+  id                   String         @id @default(uuid()) @db.Uuid
+  organizationId       String         @db.Uuid
+  contactId            String         @db.Uuid
+  opportunityId        String?        @db.Uuid
+  userId               String?        @db.Uuid
   status               SaleStatus
-  subtotal             Decimal    @db.Decimal(18, 2)
-  discountAmount       Decimal    @default(0) @db.Decimal(18, 2)
-  taxAmount            Decimal    @default(0) @db.Decimal(18, 2)
-  total                Decimal    @db.Decimal(18, 2)
+  subtotal             Decimal        @db.Decimal(18, 2)
+  discountAmount       Decimal        @default(0) @db.Decimal(18, 2)
+  taxAmount            Decimal        @default(0) @db.Decimal(18, 2)
+  total                Decimal        @db.Decimal(18, 2)
   currency             String
   baseCurrency         String?
-  exchangeRate         Decimal?   @db.Decimal(18, 8)
+  exchangeRate         Decimal?       @db.Decimal(18, 8)
   exchangeRateSnapshot Json?
   soldAt               DateTime?
   paymentDueAt         DateTime?
+  paymentMethod        PaymentMethod?
+  paidNow              Boolean        @default(false)
   cancelledAt          DateTime?
   cancellationReason   String?
   note                 String?
-  version              Int        @default(0)
-  createdAt            DateTime   @default(now())
-  updatedAt            DateTime   @updatedAt
+  version              Int            @default(0)
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
   deletedAt            DateTime?
 
   organization     Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)

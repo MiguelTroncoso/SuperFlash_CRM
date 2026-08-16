@@ -1,7 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -132,5 +135,17 @@ export class SalesController {
     @Req() request: Request,
   ): Promise<Record<string, unknown>> {
     return this.service.cancel(id, dto.reason, { user, metadata: requestMetadata(request) });
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Permissions('sales.delete')
+  @ApiOperation({ summary: 'Elimina una venta mediante soft delete y reconcilia stock' })
+  async remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ): Promise<void> {
+    await this.service.remove(id, { user, metadata: requestMetadata(request) });
   }
 }

@@ -4,6 +4,7 @@ import {
   BillingCycle,
   BillingPeriodUnit,
   FollowUpStatus,
+  PaymentMethod,
   PaymentStatus,
   PipelineStageCategory,
   Prisma,
@@ -291,10 +292,14 @@ export class SalesService {
           status: true,
           userId: true,
           version: true,
+          subtotal: true,
+          total: true,
           discountAmount: true,
           taxAmount: true,
           note: true,
           paymentDueAt: true,
+          paymentMethod: true,
+          paidNow: true,
         },
       });
       if (!current) this.notFound(COMMERCIAL_ERROR_CODES.SALE_NOT_FOUND, 'La venta no existe.');
@@ -304,6 +309,70 @@ export class SalesService {
           HttpStatus.CONFLICT,
           COMMERCIAL_ERROR_CODES.INVALID_STATE,
           'Solo se pueden modificar ventas en borrador o pendientes.',
+        );
+      }
+      const saleItems = await transaction.saleItem.findMany({
+        where: { organizationId: context.user.organizationId, saleId: id, deletedAt: null },
+        orderBy: { createdAt: 'asc' },
+        select: {
+          id: true,
+          quantity: true,
+          unitPrice: true,
+          discountAmount: true,
+          taxAmount: true,
+          total: true,
+          requiresSubscriptionSnapshot: true,
+          billingPeriodUnitSnapshot: true,
+          billingPeriodCountSnapshot: true,
+          catalogSnapshot: true,
+        },
+      });
+      const itemId = dto.itemId ?? (saleItems.length === 1 ? saleItems[0]?.id : undefined);
+      if (
+        (dto.unitPrice !== undefined ||
+          dto.subscriptionDurationDays !== undefined ||
+          dto.priceOverrideReason !== undefined) &&
+        !itemId
+      ) {
+        throw commercialException(
+          HttpStatus.BAD_REQUEST,
+          COMMERCIAL_ERROR_CODES.SALE_ITEM_NOT_FOUND,
+          'Debes indicar el ítem de la venta que deseas modificar.',
+        );
+      }
+      const targetItem = itemId ? saleItems.find((item) => item.id === itemId) : undefined;
+      if (itemId && !targetItem) {
+        throw commercialException(
+          HttpStatus.NOT_FOUND,
+          COMMERCIAL_ERROR_CODES.SALE_ITEM_NOT_FOUND,
+          'El ítem de la venta no existe.',
+        );
+      }
+      if (dto.subscriptionDurationDays !== undefined && !targetItem?.requiresSubscriptionSnapshot) {
+        throw commercialException(
+          HttpStatus.BAD_REQUEST,
+          COMMERCIAL_ERROR_CODES.SUBSCRIPTION_NOT_ELIGIBLE,
+          'La duración solo aplica a productos con suscripción.',
+        );
+      }
+      const requestedUnitPrice = dto.unitPrice === undefined ? null : parseMoney(dto.unitPrice);
+      if (requestedUnitPrice?.isNegative()) {
+        throw commercialException(
+          HttpStatus.BAD_REQUEST,
+          COMMERCIAL_ERROR_CODES.INVALID_MONEY,
+          'El precio no puede ser negativo.',
+        );
+      }
+      if (
+        requestedUnitPrice &&
+        targetItem &&
+        !requestedUnitPrice.eq(targetItem.unitPrice) &&
+        !dto.priceOverrideReason?.trim()
+      ) {
+        throw commercialException(
+          HttpStatus.UNPROCESSABLE_ENTITY,
+          COMMERCIAL_ERROR_CODES.PRICE_OVERRIDE_FORBIDDEN,
+          'El cambio de precio requiere un motivo.',
         );
       }
       const discount =
@@ -316,11 +385,20 @@ export class SalesService {
           'Los descuentos e impuestos no pueden ser negativos.',
         );
       }
-      const subtotal = await transaction.saleItem.aggregate({
-        where: { organizationId: context.user.organizationId, saleId: id, deletedAt: null },
-        _sum: { total: true },
+      const itemTotals = saleItems.map((item) => {
+        const unitPrice =
+          item.id === targetItem?.id && requestedUnitPrice ? requestedUnitPrice : item.unitPrice;
+        return {
+          item,
+          unitPrice,
+          total: item.quantity.mul(unitPrice).sub(item.discountAmount).add(item.taxAmount),
+        };
       });
-      const total = (subtotal._sum.total ?? new Prisma.Decimal(0)).sub(discount).add(tax);
+      const subtotal = itemTotals.reduce(
+        (sum, item) => sum.add(item.item.quantity.mul(item.unitPrice)),
+        new Prisma.Decimal(0),
+      );
+      const total = subtotal.sub(discount).add(tax);
       if (total.isNegative()) {
         throw commercialException(
           HttpStatus.BAD_REQUEST,
@@ -328,15 +406,63 @@ export class SalesService {
           'El total de la venta no puede ser negativo.',
         );
       }
+      if (
+        targetItem &&
+        (requestedUnitPrice ||
+          dto.subscriptionDurationDays !== undefined ||
+          dto.priceOverrideReason !== undefined)
+      ) {
+        const snapshot = this.snapshotRecord(targetItem.catalogSnapshot) ?? {};
+        const nextSnapshot = { ...snapshot } as Record<string, Prisma.JsonValue>;
+        const billing = this.durationSnapshot(dto.subscriptionDurationDays ?? 30);
+        if (requestedUnitPrice) {
+          nextSnapshot.pricingSource = 'MANUAL_OVERRIDE';
+          if (dto.priceOverrideReason !== undefined)
+            nextSnapshot.pricingOverrideReason = dto.priceOverrideReason.trim() || null;
+          nextSnapshot.salePrice = requestedUnitPrice.toFixed(2);
+        }
+        if (dto.subscriptionDurationDays !== undefined) {
+          nextSnapshot.subscriptionDurationDays = dto.subscriptionDurationDays;
+          nextSnapshot.billingPeriodUnit = billing.unit;
+          nextSnapshot.billingPeriodCount = billing.count;
+        }
+        const updatedItem = itemTotals.find((item) => item.item.id === targetItem.id);
+        await transaction.saleItem.update({
+          where: {
+            organizationId_id: { organizationId: context.user.organizationId, id: targetItem.id },
+          },
+          data: {
+            ...(requestedUnitPrice ? { unitPrice: requestedUnitPrice } : {}),
+            ...(dto.subscriptionDurationDays !== undefined
+              ? {
+                  billingPeriodUnitSnapshot: billing.unit,
+                  billingPeriodCountSnapshot: billing.count,
+                }
+              : {}),
+            ...(updatedItem ? { total: updatedItem.total } : {}),
+            catalogSnapshot: nextSnapshot as Prisma.InputJsonValue,
+          },
+        });
+      }
+      const paidNow = dto.paidNow ?? current.paidNow;
       await transaction.sale.update({
         where: { organizationId_id: { organizationId: context.user.organizationId, id } },
         data: {
+          subtotal,
           discountAmount: discount,
           taxAmount: tax,
           total,
           note: dto.note === undefined ? current.note : dto.note?.trim() || null,
-          paymentDueAt:
-            dto.paymentDueAt === undefined ? current.paymentDueAt : new Date(dto.paymentDueAt),
+          paymentMethod:
+            dto.paymentMethod === undefined ? current.paymentMethod : dto.paymentMethod,
+          paidNow,
+          paymentDueAt: paidNow
+            ? null
+            : dto.paymentDueAt === undefined
+              ? current.paymentDueAt
+              : dto.paymentDueAt
+                ? new Date(dto.paymentDueAt)
+                : null,
           version: { increment: 1 },
         },
       });
@@ -358,20 +484,159 @@ export class SalesService {
         tableName: 'Sale',
         recordId: id,
         previousValue: jsonObject({
+          subtotal: current.subtotal.toFixed(2),
+          total: current.total.toFixed(2),
           discountAmount: current.discountAmount.toFixed(2),
           taxAmount: current.taxAmount.toFixed(2),
           note: current.note,
+          paymentMethod: current.paymentMethod,
+          paidNow: current.paidNow,
         }),
         newValue: jsonObject({
+          subtotal: subtotal.toFixed(2),
+          total: total.toFixed(2),
           discountAmount: discount.toFixed(2),
           taxAmount: tax.toFixed(2),
           note: dto.note ?? current.note,
+          paymentMethod: dto.paymentMethod ?? current.paymentMethod,
+          paidNow,
         }),
         ip: context.metadata.ipAddress,
         requestId: context.metadata.requestId,
       });
     });
     return this.findOne(id, context.user);
+  }
+
+  async remove(id: string, context: CommercialRequestContext): Promise<void> {
+    await this.prisma.$transaction(async (transaction) => {
+      await transaction.$queryRaw<Array<{ id: string }>>(
+        Prisma.sql`SELECT "id" FROM "Sale" WHERE "id" = ${id}::uuid AND "organizationId" = ${context.user.organizationId}::uuid FOR UPDATE`,
+      );
+      const sale = await transaction.sale.findFirst({
+        where: { id, organizationId: context.user.organizationId, deletedAt: null },
+        select: { id: true, status: true, userId: true, contactId: true, opportunityId: true },
+      });
+      if (!sale) this.notFound(COMMERCIAL_ERROR_CODES.SALE_NOT_FOUND, 'La venta no existe.');
+      this.access.assertDelete(context.user, sale.userId);
+      const totals = await transaction.payment.aggregate({
+        where: {
+          organizationId: context.user.organizationId,
+          saleId: id,
+          deletedAt: null,
+          status: { in: [PaymentStatus.CONFIRMED, PaymentStatus.REFUNDED] },
+        },
+        _sum: { netAmount: true, refundedAmount: true },
+      });
+      const netPaid = (totals._sum.netAmount ?? new Prisma.Decimal(0)).sub(
+        totals._sum.refundedAmount ?? new Prisma.Decimal(0),
+      );
+      if (netPaid.gt(0)) {
+        throw commercialException(
+          HttpStatus.CONFLICT,
+          COMMERCIAL_ERROR_CODES.SALE_CANCELLED_WITH_BALANCE,
+          'La venta no se puede eliminar mientras tenga pagos netos.',
+        );
+      }
+      const now = new Date();
+      if (sale.status === SaleStatus.CONFIRMED || sale.status === SaleStatus.FULFILLED) {
+        const items = await transaction.saleItem.findMany({
+          where: { organizationId: context.user.organizationId, saleId: id, deletedAt: null },
+          select: { productId: true, quantity: true },
+        });
+        const quantities = new Map<string, Prisma.Decimal>();
+        for (const item of items) {
+          if (item.productId) {
+            quantities.set(
+              item.productId,
+              (quantities.get(item.productId) ?? new Prisma.Decimal(0)).add(item.quantity),
+            );
+          }
+        }
+        for (const [productId, quantity] of [...quantities.entries()].sort(([a], [b]) =>
+          a.localeCompare(b),
+        )) {
+          const locked = await transaction.$queryRaw<
+            Array<{ stockQuantity: number; stockTrackingEnabled: boolean }>
+          >(
+            Prisma.sql`SELECT "stockQuantity", "stockTrackingEnabled" FROM "Product" WHERE "organizationId" = ${context.user.organizationId}::uuid AND "id" = ${productId}::uuid AND "deletedAt" IS NULL FOR UPDATE`,
+          );
+          const product = locked[0];
+          if (!product?.stockTrackingEnabled) continue;
+          const quantityBefore = product.stockQuantity;
+          const quantityAfter = quantityBefore + quantity.toNumber();
+          await transaction.product.update({
+            where: {
+              organizationId_id: { organizationId: context.user.organizationId, id: productId },
+            },
+            data: { stockQuantity: quantityAfter },
+          });
+          await transaction.productStockMovement.create({
+            data: {
+              organizationId: context.user.organizationId,
+              productId,
+              userId: context.user.userId,
+              quantityBefore,
+              quantityDelta: quantity.toNumber(),
+              quantityAfter,
+              movementType: ProductStockMovementType.RETURN,
+              reason: `Venta eliminada ${id}`,
+            },
+          });
+        }
+      }
+      await transaction.payment.updateMany({
+        where: {
+          organizationId: context.user.organizationId,
+          saleId: id,
+          status: { in: [PaymentStatus.PENDING, PaymentStatus.FAILED] },
+          deletedAt: null,
+        },
+        data: { deletedAt: now },
+      });
+      await transaction.renewal.updateMany({
+        where: { organizationId: context.user.organizationId, sourceSaleId: id, deletedAt: null },
+        data: { deletedAt: now, status: RenewalStatus.CANCELLED, workflowStatus: 'CANCELLED' },
+      });
+      await transaction.subscription.updateMany({
+        where: { organizationId: context.user.organizationId, saleId: id, deletedAt: null },
+        data: { deletedAt: now, status: SubscriptionStatus.CANCELLED, cancelledAt: now },
+      });
+      await transaction.sale.update({
+        where: { organizationId_id: { organizationId: context.user.organizationId, id } },
+        data: {
+          deletedAt: now,
+          status: SaleStatus.CANCELLED,
+          cancelledAt: now,
+          cancellationReason: 'Venta eliminada por operación comercial',
+          version: { increment: 1 },
+        },
+      });
+      await transaction.activity.create({
+        data: {
+          organizationId: context.user.organizationId,
+          userId: context.user.userId,
+          contactId: sale.contactId,
+          opportunityId: sale.opportunityId,
+          saleId: id,
+          type: ActivityType.SYSTEM,
+          title: 'Venta eliminada',
+          metadata: jsonObject({ reason: 'soft_delete', stockReconciled: true }),
+          requestId: context.metadata.requestId ?? null,
+        },
+      });
+      await this.audit.recordWithClient(transaction, {
+        organizationId: context.user.organizationId,
+        userId: context.user.userId,
+        action: 'SALE_DELETED',
+        tableName: 'Sale',
+        recordId: id,
+        previousValue: jsonObject({ status: sale.status }),
+        newValue: jsonObject({ status: SaleStatus.CANCELLED, deletedAt: now.toISOString() }),
+        ip: context.metadata.ipAddress,
+        requestId: context.metadata.requestId,
+      });
+    });
   }
 
   async confirm(
@@ -676,6 +941,16 @@ export class SalesService {
       };
     }
     return { billingPeriodUnit: BillingPeriodUnit.MONTH, billingPeriodCount: 1 };
+  }
+
+  private durationSnapshot(durationDays: number): {
+    unit: BillingPeriodUnit;
+    count: number;
+  } {
+    if (durationDays === 30) return { unit: BillingPeriodUnit.DAY, count: 30 };
+    if (durationDays === 90) return { unit: BillingPeriodUnit.MONTH, count: 3 };
+    if (durationDays === 180) return { unit: BillingPeriodUnit.MONTH, count: 6 };
+    return { unit: BillingPeriodUnit.YEAR, count: 1 };
   }
 
   private async consumeTrackedStock(
@@ -1139,7 +1414,16 @@ export class SalesService {
         this.notFound(COMMERCIAL_ERROR_CODES.SALE_NOT_FOUND, 'La venta no existe.');
       const sale = await transaction.sale.findFirst({
         where: { id, organizationId: context.user.organizationId, deletedAt: null },
-        select: { status: true, userId: true, contactId: true, opportunityId: true },
+        select: {
+          status: true,
+          userId: true,
+          contactId: true,
+          opportunityId: true,
+          currency: true,
+          total: true,
+          paymentMethod: true,
+          paidNow: true,
+        },
       });
       if (!sale) this.notFound(COMMERCIAL_ERROR_CODES.SALE_NOT_FOUND, 'La venta no existe.');
       this.access.assertMutate(context.user, sale.userId);
@@ -1189,8 +1473,23 @@ export class SalesService {
       if (target === SaleStatus.CONFIRMED) {
         await this.ensureSubscriptionsForSale(transaction, id, context, transitionAt);
         await this.markOpportunityPurchased(transaction, id, context, transitionAt);
-        if (payment)
-          await this.createConfirmedPayment(transaction, id, payment, context, transitionAt);
+        const immediatePayment =
+          payment ??
+          (sale.paidNow
+            ? {
+                amount: sale.total.toFixed(2),
+                currency: sale.currency,
+                method: sale.paymentMethod ?? PaymentMethod.MANUAL,
+              }
+            : undefined);
+        if (immediatePayment)
+          await this.createConfirmedPayment(
+            transaction,
+            id,
+            immediatePayment,
+            context,
+            transitionAt,
+          );
       }
       await transaction.activity.create({
         data: {
@@ -1353,6 +1652,8 @@ export class SalesService {
       taxAmount: sale.taxAmount.toFixed(2),
       total: sale.total.toFixed(2),
       currency: sale.currency,
+      paymentMethod: sale.paymentMethod,
+      paidNow: sale.paidNow,
       note: sale.note,
       paymentDueAt: sale.paymentDueAt,
       soldAt: sale.soldAt,

@@ -126,12 +126,34 @@ export interface Sale {
   discountAmount: string;
   taxAmount: string;
   total: string;
+  paymentMethod?: string | null;
+  paidNow?: boolean;
+  note?: string | null;
   contact: SaleContact | null;
   opportunity: NamedRelation | null;
   seller: Person | null;
   items: JsonRecord[];
   subscriptions?: SaleSubscription[];
   paymentDueAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomerSummary {
+  id: string;
+  name: string;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  phone: string | null;
+  country: string | null;
+  notes: string | null;
+  purchaseCount: number;
+  purchasedTotals: Array<{ currency: string; amount: string }>;
+  lastPurchaseAt: string | null;
+  status: 'ACTIVE' | 'INACTIVE';
+  isCustomer: boolean;
+  archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -143,6 +144,8 @@ function PaymentDrawer({
 }
 
 export function CollectionsPage(): React.ReactElement {
+  const searchParams = useSearchParams();
+  const saleId = searchParams.get('saleId');
   const [selected, setSelected] = useState<Sale | null>(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [view, setView] = useState<'pending' | 'history'>('pending');
@@ -156,9 +159,26 @@ export function CollectionsPage(): React.ReactElement {
     queryKey: ['collections', 'payments'],
     queryFn: () => api.getPayments(queryString({ page: 1, limit: 100 })),
   });
+  const linkedSale = useQuery({
+    queryKey: ['collections', 'sale', saleId],
+    queryFn: () => api.getSale(saleId as string),
+    enabled: Boolean(saleId),
+  });
+  const linkedPayments = useQuery({
+    queryKey: ['collections', 'payments', saleId],
+    queryFn: () => api.getPayments(queryString({ page: 1, limit: 100, saleId: saleId as string })),
+    enabled: Boolean(saleId),
+  });
+  useEffect(() => {
+    if (linkedSale.data) {
+      setSelected(linkedSale.data);
+      setPaymentOpen(true);
+    }
+  }, [linkedSale.data]);
+  const paymentRows = saleId ? (linkedPayments.data?.data ?? []) : (payments.data?.data ?? []);
   const payFull = useMutation({
     mutationFn: async (sale: Sale) => {
-      const balance = saleBalance(sale, payments.data?.data ?? []);
+      const balance = saleBalance(sale, paymentRows);
       const payment = await api.createPayment(sale.id, {
         amount: balance.toFixed(2),
         currency: sale.currency,
@@ -188,9 +208,18 @@ export function CollectionsPage(): React.ReactElement {
   const salesById = new Map((sales.data?.data ?? []).map((sale) => [sale.id, sale]));
   return (
     <QueryState
-      isError={sales.isError || payments.isError}
-      isLoading={sales.isLoading || payments.isLoading}
-      onRetry={() => void Promise.all([sales.refetch(), payments.refetch()])}
+      isError={sales.isError || payments.isError || linkedSale.isError || linkedPayments.isError}
+      isLoading={
+        sales.isLoading || payments.isLoading || linkedSale.isLoading || linkedPayments.isLoading
+      }
+      onRetry={() =>
+        void Promise.all([
+          sales.refetch(),
+          payments.refetch(),
+          linkedSale.refetch(),
+          linkedPayments.refetch(),
+        ])
+      }
     >
       <PageGrid>
         <PageHeader
@@ -345,7 +374,7 @@ export function CollectionsPage(): React.ReactElement {
         </Card>
       </PageGrid>
       <PaymentDrawer
-        balance={selected ? saleBalance(selected, payments.data?.data ?? []) : 0}
+        balance={selected ? saleBalance(selected, paymentRows) : 0}
         onClose={() => {
           setPaymentOpen(false);
           setSelected(null);

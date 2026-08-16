@@ -19,6 +19,7 @@ import type {
   FinancialExpense,
   BusinessIntelligenceResponse,
   Customer360Response,
+  CustomerSummary,
   GlobalSearchResponse,
   IntelligenceDashboard,
   OperationalAgendaResponse,
@@ -198,6 +199,16 @@ export const api = {
   getPipelineIntelligence: (query = '') =>
     request<PipelineIntelligenceResponse>(`/pipeline/intelligence${query}`),
   getContacts: (query = '') => request<Paginated<Contact>>(`/contacts${query}`),
+  getCustomers: (query = '') => request<Paginated<CustomerSummary>>(`/customers${query}`),
+  createCustomer: (body: JsonRecord) =>
+    request<CustomerSummary>('/customers', { method: 'POST', ...jsonBody(body) }),
+  updateCustomer: (id: string, body: JsonRecord) =>
+    request<CustomerSummary>(`/customers/${id}`, { method: 'PATCH', ...jsonBody(body) }),
+  deactivateCustomer: (id: string) =>
+    request<CustomerSummary>(`/customers/${id}/deactivate`, { method: 'POST' }),
+  activateCustomer: (id: string) =>
+    request<CustomerSummary>(`/customers/${id}/activate`, { method: 'POST' }),
+  deleteCustomer: (id: string) => request<void>(`/customers/${id}`, { method: 'DELETE' }),
   getContactAssignees: () => request<Person[]>('/contacts/assignees'),
   createContact: (body: JsonRecord) =>
     request<ContactCreateResult>('/contacts', { method: 'POST', ...jsonBody(body) }),
@@ -232,6 +243,9 @@ export const api = {
     request<Sale>(`/sales/from-opportunity/${opportunityId}`, { method: 'POST' }),
   confirmSale: (id: string, body?: JsonRecord) =>
     request<Sale>(`/sales/${id}/confirm`, { method: 'POST', ...(body ? jsonBody(body) : {}) }),
+  updateSale: (id: string, body: JsonRecord) =>
+    request<Sale>(`/sales/${id}`, { method: 'PATCH', ...jsonBody(body) }),
+  deleteSale: (id: string) => request<void>(`/sales/${id}`, { method: 'DELETE' }),
   createPayment: (saleId: string, body: JsonRecord) =>
     request<JsonRecord>(`/sales/${saleId}/payments`, { method: 'POST', ...jsonBody(body) }),
   getPayments: (query = '') =>

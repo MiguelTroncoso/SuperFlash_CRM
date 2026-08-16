@@ -312,6 +312,101 @@ describe('Commercial core HTTP flow', () => {
     expect(await prisma.renewalReminder.count({ where: { renewalId: renewal.id } })).toBe(3);
   });
 
+  it('supports sale editing before confirmation and stores payment intent separately from commitment date', async () => {
+    const token = await login(fixture.ownerA);
+    const created = await authorized('post', '/api/v1/sales', token).send({
+      contactId: fixture.contactA,
+      currency: 'USD',
+      items: [{ productId: fixture.productA, unitPrice: '50.00' }],
+    });
+    const saleId = String(body(created).id);
+    const updated = await authorized('patch', `/api/v1/sales/${saleId}`, token).send({
+      itemId: String(record((body(created).items as unknown[])[0]).id),
+      unitPrice: '60.00',
+      discountAmount: '5.00',
+      paymentMethod: 'TRANSFER',
+      paidNow: false,
+      paymentDueAt: '2026-08-20T12:00:00.000Z',
+      priceOverrideReason: 'Validación de edición comercial',
+    });
+    expect(updated.status).toBe(200);
+    expect(body(updated).total).toBe('55.00');
+    expect(body(updated).paymentMethod).toBe('TRANSFER');
+    expect(body(updated).paidNow).toBe(false);
+    expect(body(updated).paymentDueAt).toBe('2026-08-20T12:00:00.000Z');
+  });
+
+  it('soft-deletes a confirmed unpaid sale and reconciles its stock and subscription', async () => {
+    const token = await login(fixture.ownerA);
+    await prisma.product.update({
+      where: { id: fixture.productA },
+      data: { stockTrackingEnabled: true, stockQuantity: 4, stockMinimum: 1 },
+    });
+    const created = await authorized('post', '/api/v1/sales', token).send({
+      contactId: fixture.contactA,
+      currency: 'USD',
+      items: [{ productId: fixture.productA, unitPrice: '50.00', subscriptionDurationDays: 180 }],
+    });
+    const saleId = String(body(created).id);
+    await authorized('post', `/api/v1/sales/${saleId}/confirm`, token);
+    expect(
+      (await prisma.product.findUniqueOrThrow({ where: { id: fixture.productA } })).stockQuantity,
+    ).toBe(3);
+    const removed = await authorized('delete', `/api/v1/sales/${saleId}`, token);
+    expect(removed.status).toBe(204);
+    expect(
+      (await prisma.sale.findUniqueOrThrow({ where: { id: saleId } })).deletedAt,
+    ).not.toBeNull();
+    expect(
+      (await prisma.product.findUniqueOrThrow({ where: { id: fixture.productA } })).stockQuantity,
+    ).toBe(4);
+    expect(await prisma.subscription.count({ where: { saleId, deletedAt: null } })).toBe(0);
+    expect(await prisma.renewal.count({ where: { sourceSaleId: saleId, deletedAt: null } })).toBe(
+      0,
+    );
+  });
+
+  it('feeds pending collections and activation work into My Day from real sale data', async () => {
+    const token = await login(fixture.ownerA);
+    const created = await authorized('post', '/api/v1/sales', token).send({
+      contactId: fixture.contactA,
+      currency: 'USD',
+      items: [{ productId: fixture.productA, unitPrice: '50.00', subscriptionDurationDays: 180 }],
+    });
+    const saleId = String(body(created).id);
+    await authorized('post', `/api/v1/sales/${saleId}/confirm`, token);
+    const myDay = await authorized('get', '/api/v1/my-day?limitPerSection=25', token);
+    expect(myDay.status).toBe(200);
+    const sections = record(body(myDay).sections);
+    expect(record(sections.pendingCollections).total).toBeGreaterThan(0);
+    expect(record(sections.pendingActivations).total).toBeGreaterThan(0);
+    const summary = await authorized('get', '/api/v1/my-day/summary', token);
+    expect(record(body(summary)).pendingCollections).toBeGreaterThan(0);
+  });
+
+  it('lists, edits and deactivates customers while protecting commercial history', async () => {
+    const token = await login(fixture.ownerA);
+    const listed = await authorized('get', '/api/v1/customers?page=1&limit=25', token);
+    expect(listed.status).toBe(200);
+    expect(
+      (body(listed).data as unknown[]).some((item) => record(item).id === fixture.contactA),
+    ).toBe(true);
+    const updated = await authorized('patch', `/api/v1/customers/${fixture.contactA}`, token).send({
+      firstName: 'Cliente actualizado',
+    });
+    expect(updated.status).toBe(200);
+    await createSale(token, '25.00');
+    const deactivated = await authorized(
+      'post',
+      `/api/v1/customers/${fixture.contactA}/deactivate`,
+      token,
+    );
+    expect(deactivated.status).toBe(201);
+    const rejected = await authorized('delete', `/api/v1/customers/${fixture.contactA}`, token);
+    expect(rejected.status).toBe(409);
+    expect(body(rejected).code).toBe('CUSTOMER_HAS_COMMERCIAL_HISTORY');
+  });
+
   it.each([30, 90, 180, 365])(
     'keeps the %s-day subscription preview rule aligned with Subscription and Renewal',
     async (durationDays) => {
@@ -717,9 +812,19 @@ describe('Commercial core HTTP flow', () => {
     return { id };
   }
 
-  function authorized(method: 'get' | 'post' | 'patch', path: string, token: string): request.Test {
+  function authorized(
+    method: 'get' | 'post' | 'patch' | 'delete',
+    path: string,
+    token: string,
+  ): request.Test {
     const builder =
-      method === 'get' ? api.get(path) : method === 'patch' ? api.patch(path) : api.post(path);
+      method === 'get'
+        ? api.get(path)
+        : method === 'patch'
+          ? api.patch(path)
+          : method === 'delete'
+            ? api.delete(path)
+            : api.post(path);
     return builder
       .set('Authorization', `Bearer ${token}`)
       .set('X-Forwarded-For', `10.24.1.${++ipSequence}`);
@@ -736,6 +841,11 @@ async function createFixture(prisma: PrismaClient): Promise<Fixture> {
     }),
   ]);
   const permissionKeys = [
+    'contacts.read',
+    'contacts.create',
+    'contacts.update',
+    'contacts.delete',
+    'followups.read',
     'sales.read',
     'sales.create',
     'sales.update',
