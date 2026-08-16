@@ -13,6 +13,7 @@ import {
 } from '@prisma/client';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import { addSubscriptionDuration } from '@superflash/utils';
 
 import { configureApplication } from '../src/app-setup';
 import { AppModule } from '../src/app.module';
@@ -109,6 +110,62 @@ describe('Commercial core HTTP flow', () => {
     expect(response.status).toBe(200);
     expect(record(body(response).pagination).total).toBe(1);
     expect(Array.isArray(body(response).data)).toBe(true);
+  });
+
+  it('returns a stable Sale contact contract and searches by contact name and phone', async () => {
+    const token = await login(fixture.ownerA);
+    const agustin = await prisma.contact.create({
+      data: {
+        organizationId: fixture.organizationA,
+        firstName: 'Agustin',
+        phone: '+56 9 7511 6332',
+        phoneNormalized: '+56975116332',
+      },
+    });
+    const miguel = await prisma.contact.create({
+      data: {
+        organizationId: fixture.organizationA,
+        firstName: 'Miguel',
+        lastName: 'Troncoso',
+        email: 'miguel.troncoso@example.com',
+      },
+    });
+    const agustinSale = await authorized('post', '/api/v1/sales', token).send({
+      contactId: agustin.id,
+      currency: 'USD',
+      items: [{ productId: fixture.productA, unitPrice: '10.00' }],
+    });
+    const miguelSale = await authorized('post', '/api/v1/sales', token).send({
+      contactId: miguel.id,
+      currency: 'USD',
+      items: [{ productId: fixture.productA, unitPrice: '10.00' }],
+    });
+    expect(agustinSale.status).toBe(201);
+    expect(miguelSale.status).toBe(201);
+
+    const byName = await authorized('get', '/api/v1/sales?search=Agustin', token);
+    const agustinListed = (body(byName).data as unknown[]).find(
+      (sale) => record(sale).id === body(agustinSale).id,
+    );
+    expect(record(record(agustinListed).contact).name).toBe('Agustin');
+    expect(record(record(agustinListed).contact)).toMatchObject({
+      firstName: 'Agustin',
+      lastName: null,
+      phone: '+56 9 7511 6332',
+    });
+
+    const byPhone = await authorized('get', '/api/v1/sales?search=%2B56975116332', token);
+    expect(
+      (body(byPhone).data as unknown[]).some((sale) => record(sale).id === body(agustinSale).id),
+    ).toBe(true);
+
+    const miguelListed = (
+      body(await authorized('get', '/api/v1/sales?search=Miguel', token)).data as unknown[]
+    ).find((sale) => record(sale).id === body(miguelSale).id);
+    expect(record(record(miguelListed).contact).name).toBe('Miguel Troncoso');
+
+    const detail = await authorized('get', `/api/v1/sales/${String(body(agustinSale).id)}`, token);
+    expect(record(body(detail).contact).name).toBe('Agustin');
   });
 
   it('does not expose a Sale across organizations', async () => {
@@ -254,6 +311,41 @@ describe('Commercial core HTTP flow', () => {
     expect(renewal.status).toBe('PENDING');
     expect(await prisma.renewalReminder.count({ where: { renewalId: renewal.id } })).toBe(3);
   });
+
+  it.each([30, 90, 180, 365])(
+    'keeps the %s-day subscription preview rule aligned with Subscription and Renewal',
+    async (durationDays) => {
+      const token = await login(fixture.ownerA);
+      const created = await authorized('post', '/api/v1/sales', token).send({
+        contactId: fixture.contactA,
+        currency: 'USD',
+        items: [
+          {
+            productId: fixture.productA,
+            quantity: '1',
+            unitPrice: '50.00',
+            subscriptionDurationDays: durationDays,
+          },
+        ],
+      });
+      const confirmed = await authorized(
+        'post',
+        `/api/v1/sales/${String(body(created).id)}/confirm`,
+        token,
+      );
+      expect(confirmed.status).toBe(201);
+      const subscription = await prisma.subscription.findFirstOrThrow({
+        where: { saleId: String(body(created).id), deletedAt: null },
+      });
+      const renewal = await prisma.renewal.findFirstOrThrow({
+        where: { subscriptionId: subscription.id, deletedAt: null },
+      });
+      const expectedEnd = addSubscriptionDuration(subscription.startsAt, durationDays);
+      expect(subscription.currentPeriodEnd?.toISOString()).toBe(expectedEnd.toISOString());
+      expect(subscription.nextBillingAt?.toISOString()).toBe(expectedEnd.toISOString());
+      expect(renewal.dueAt.toISOString()).toBe(expectedEnd.toISOString());
+    },
+  );
 
   it('converts an Opportunity exactly once under concurrency', async () => {
     const token = await login(fixture.ownerA);

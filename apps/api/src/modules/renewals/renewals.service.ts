@@ -10,6 +10,7 @@ import {
   SubscriptionStatus,
 } from '@prisma/client';
 import { createHash, randomUUID } from 'node:crypto';
+import { addSubscriptionBillingCycle } from '@superflash/utils';
 
 import { CommercialEventName } from '../../infrastructure/events/application-event-bus';
 import { OutboxService } from '../../infrastructure/outbox/outbox.service';
@@ -680,16 +681,7 @@ export class RenewalsService {
     cycle: BillingCycle,
     customDays: number | null | undefined,
   ): Date | null {
-    const next = new Date(start);
-    if (cycle === BillingCycle.TRIAL) next.setUTCDate(next.getUTCDate() + 14);
-    else if (cycle === BillingCycle.WEEKLY) next.setUTCDate(next.getUTCDate() + 7);
-    else if (cycle === BillingCycle.MONTHLY) next.setUTCMonth(next.getUTCMonth() + 1);
-    else if (cycle === BillingCycle.QUARTERLY) next.setUTCMonth(next.getUTCMonth() + 3);
-    else if (cycle === BillingCycle.SEMI_ANNUAL) next.setUTCMonth(next.getUTCMonth() + 6);
-    else if (cycle === BillingCycle.ANNUAL) next.setUTCFullYear(next.getUTCFullYear() + 1);
-    else if (customDays && customDays > 0) next.setUTCDate(next.getUTCDate() + customDays);
-    else return null;
-    return next;
+    return addSubscriptionBillingCycle(start, cycle, customDays);
   }
 
   private cycleKey(subscriptionId: string, periodStart: Date): string {

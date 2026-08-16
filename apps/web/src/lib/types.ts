@@ -126,13 +126,37 @@ export interface Sale {
   discountAmount: string;
   taxAmount: string;
   total: string;
-  contact: NamedRelation | null;
+  contact: SaleContact | null;
   opportunity: NamedRelation | null;
   seller: Person | null;
   items: JsonRecord[];
+  subscriptions?: SaleSubscription[];
   paymentDueAt?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SaleContact {
+  id: string;
+  name: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  phone?: string | null;
+  email?: string | null;
+}
+
+export interface SaleSubscription {
+  id: string;
+  saleItemId: string;
+  status: string;
+  billingCycle: string;
+  customIntervalDays: number | null;
+  productName: string;
+  durationDays: number | null;
+  startsAt: string;
+  currentPeriodEnd: string | null;
+  nextBillingAt: string | null;
+  renewal: { id: string; status: string; dueAt: string } | null;
 }
 
 export interface ProductOffer {
