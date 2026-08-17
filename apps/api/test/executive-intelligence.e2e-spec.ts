@@ -105,6 +105,7 @@ describe('Executive Intelligence HTTP flow', () => {
         contactId: contact.id,
         opportunityId: opportunity.id,
         userId: user.id,
+        saleNumber: 'TEST-EXECUTIVE-SALE',
         status: SaleStatus.CONFIRMED,
         subtotal: 100,
         discountAmount: 0,

@@ -5,6 +5,7 @@ import { SalesPage } from '@/features/sales/sales-page';
 import { api } from '@/lib/api-client';
 
 jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
   useSearchParams: () => new URLSearchParams(),
 }));
 
@@ -16,6 +17,7 @@ describe('Sales frontend contract', () => {
       data: [
         {
           id: 'sale-agustin',
+          saleNumber: 'SF-20260815-000001',
           status: 'CONFIRMED',
           currency: 'CLP',
           subtotal: '15000.00',
@@ -56,7 +58,7 @@ describe('Sales frontend contract', () => {
 
     await waitFor(() => expect(screen.getByText('Agustin')).toBeInTheDocument());
     expect(screen.queryByText('Sin contacto')).not.toBeInTheDocument();
-    screen.getByRole('button', { name: '#sale-agu' }).click();
+    screen.getByRole('button', { name: 'SF-20260815-000001' }).click();
     await waitFor(() => expect(screen.getAllByText('Agustin')).toHaveLength(2));
   });
 });

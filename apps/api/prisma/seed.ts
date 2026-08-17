@@ -5,6 +5,7 @@ import {
   CustomerSegment,
   FulfillmentMode,
   PipelineStageCategory,
+  PaymentMethod,
   Prisma,
   PrismaClient,
   ProductStatus,
@@ -153,6 +154,21 @@ const expenseCategories = [
   'Transporte',
   'Otros',
 ] as const;
+
+const paymentCommissionDefaults: ReadonlyArray<{
+  method: PaymentMethod;
+  percentage: string;
+  fixedFee: string;
+}> = [
+  { method: PaymentMethod.TRANSFER, percentage: '0', fixedFee: '0' },
+  { method: PaymentMethod.PAYPAL, percentage: '4.95', fixedFee: '0.49' },
+  { method: PaymentMethod.BINANCE, percentage: '0', fixedFee: '0' },
+  { method: PaymentMethod.MERCADOPAGO, percentage: '0', fixedFee: '0' },
+  { method: PaymentMethod.STRIPE, percentage: '0', fixedFee: '0' },
+  { method: PaymentMethod.CASH, percentage: '0', fixedFee: '0' },
+  { method: PaymentMethod.MANUAL, percentage: '0', fixedFee: '0' },
+  { method: PaymentMethod.OTHER, percentage: '0', fixedFee: '0' },
+];
 
 const pipelineStages = [
   {
@@ -412,6 +428,24 @@ async function synchronizePipelineStages(transaction: Prisma.TransactionClient):
   }
 }
 
+async function synchronizePaymentCommissionDefaults(
+  transaction: Prisma.TransactionClient,
+  organizationId: string,
+): Promise<void> {
+  for (const config of paymentCommissionDefaults) {
+    await transaction.paymentFeeConfig.upsert({
+      where: { organizationId_method: { organizationId, method: config.method } },
+      update: { deletedAt: null },
+      create: {
+        organizationId,
+        method: config.method,
+        percentage: new Prisma.Decimal(config.percentage),
+        fixedFee: new Prisma.Decimal(config.fixedFee),
+      },
+    });
+  }
+}
+
 async function nextPipelineOrder(
   transaction: Prisma.TransactionClient,
   organizationId: string,
@@ -577,6 +611,7 @@ async function seed(): Promise<void> {
 
       await synchronizeSystemRolePermissions(transaction);
       await synchronizePipelineStages(transaction);
+      await synchronizePaymentCommissionDefaults(transaction, organization.id);
 
       if (catalogExamplesEnabled) {
         const examples = [

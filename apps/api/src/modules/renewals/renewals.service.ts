@@ -15,6 +15,7 @@ import { addSubscriptionBillingCycle } from '@superflash/utils';
 import { CommercialEventName } from '../../infrastructure/events/application-event-bus';
 import { OutboxService } from '../../infrastructure/outbox/outbox.service';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import { nextSaleNumber } from '../commercial/sale-number';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/auth.types';
 import { COMMERCIAL_ERROR_CODES, commercialException } from '../commercial/commercial.errors';
@@ -301,6 +302,7 @@ export class RenewalsService {
       const sale = await transaction.sale.create({
         data: {
           organizationId: context.user.organizationId,
+          saleNumber: await nextSaleNumber(transaction, context.user.organizationId),
           contactId: subscription.contactId,
           userId: subscription.userId ?? context.user.userId,
           status: SaleStatus.CONFIRMED,

@@ -511,12 +511,13 @@ enum ActivationStatus {
 }
 
 model Organization {
-  id        String    @id @default(uuid()) @db.Uuid
-  name      String
-  slug      String    @unique
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
+  id           String    @id @default(uuid()) @db.Uuid
+  name         String
+  slug         String    @unique
+  saleSequence Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
 
   users                        User[]
   authSessions                 AuthSession[]
@@ -584,6 +585,7 @@ model Organization {
   expenseCategories            ExpenseCategory[]
   recurringExpenses            RecurringExpense[]
   productStockMovements        ProductStockMovement[]
+  paymentFeeConfigs            PaymentFeeConfig[]
 
   @@index([createdAt])
 }
@@ -1355,6 +1357,7 @@ model PriceHistory {
 model Sale {
   id                   String         @id @default(uuid()) @db.Uuid
   organizationId       String         @db.Uuid
+  saleNumber           String
   contactId            String         @db.Uuid
   opportunityId        String?        @db.Uuid
   userId               String?        @db.Uuid
@@ -1394,6 +1397,7 @@ model Sale {
   attributions     Attribution[]
 
   @@unique([organizationId, id])
+  @@unique([organizationId, saleNumber])
   @@index([organizationId])
   @@index([organizationId, opportunityId])
   @@index([organizationId, contactId])
@@ -1490,6 +1494,27 @@ model Payment {
   @@index([organizationId, saleId])
   @@index([organizationId, status])
   @@index([paymentDate])
+  @@index([createdAt])
+}
+
+model PaymentFeeConfig {
+  id                      String        @id @default(uuid()) @db.Uuid
+  organizationId          String        @db.Uuid
+  method                  PaymentMethod
+  percentage              Decimal       @default(0) @db.Decimal(8, 4)
+  fixedFee                Decimal       @default(0) @db.Decimal(18, 2)
+  internationalPercentage Decimal       @default(0) @db.Decimal(8, 4)
+  conversionPercentage    Decimal       @default(0) @db.Decimal(8, 4)
+  active                  Boolean       @default(true)
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
+  deletedAt               DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, method])
+  @@index([organizationId, active])
   @@index([createdAt])
 }
 

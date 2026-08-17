@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams, usePathname } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -161,12 +161,9 @@ function RenewalTable({ records }: { readonly records: RenewalCenterItem[] }): R
           {records.map((record) => (
             <tr className="bg-surface-card" key={record.id}>
               <td className="px-4 py-3">
-                <Link
-                  className="font-semibold text-brand-600 hover:underline"
-                  href={`/renewals/customers/${record.customer.id}`}
-                >
+                <span className="font-semibold text-content-primary">
                   {record.customer.name ?? 'Sin nombre'}
-                </Link>
+                </span>
                 <div className="text-xs text-content-muted">
                   {record.customer.country ?? 'Sin país'}
                 </div>
@@ -584,121 +581,6 @@ export function RenewalReportsPage(): React.ReactElement {
           <EmptyState
             title="Sin datos para reportar"
             description="Los reportes se calculan sobre los ciclos existentes."
-          />
-        )}
-      </QueryState>
-    </PageGrid>
-  );
-}
-
-export function CustomerLifecyclePage(): React.ReactElement {
-  const pathname = usePathname();
-  const params = useParams<{ id: string }>();
-  const lifecycle = useQuery({
-    queryKey: ['customer-lifecycle', params.id],
-    queryFn: () => api.getCustomerLifecycle(params.id),
-    enabled: Boolean(params.id),
-  });
-  const contact = lifecycle.data?.contact as
-    | {
-        firstName?: string | null;
-        lastName?: string | null;
-        email?: string | null;
-        phone?: string | null;
-        country?: string | null;
-      }
-    | undefined;
-  const products = (lifecycle.data?.products as Array<Record<string, unknown>> | undefined) ?? [];
-  return (
-    <PageGrid>
-      <PageHeader
-        eyebrow="Renewals · Lifecycle"
-        title="Ciclo de vida del cliente"
-        description="Productos activos, vencimientos, renovaciones, MRR y LTV."
-      />
-      {tabs(pathname)}
-      <QueryState
-        isLoading={lifecycle.isLoading}
-        isError={lifecycle.isError}
-        onRetry={() => void lifecycle.refetch()}
-      >
-        {lifecycle.data ? (
-          <>
-            <Card>
-              <CardContent className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
-                <div>
-                  <p className="text-xs uppercase text-content-muted">Cliente</p>
-                  <p className="mt-1 font-semibold text-content-primary">
-                    {`${contact?.firstName ?? ''} ${contact?.lastName ?? ''}`.trim() ||
-                      'Sin nombre'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase text-content-muted">Correo</p>
-                  <p className="mt-1 text-sm text-content-secondary">{contact?.email ?? '—'}</p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase text-content-muted">Teléfono</p>
-                  <p className="mt-1 text-sm text-content-secondary">{contact?.phone ?? '—'}</p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase text-content-muted">Estado</p>
-                  <p className="mt-1 text-sm font-semibold text-content-primary">
-                    {String(lifecycle.data.currentStatus ?? 'PENDING')}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <MetricCard
-                icon="↻"
-                label="Renovaciones"
-                value={String(lifecycle.data.renewalCount ?? 0)}
-              />
-              <MetricCard icon="$" label="LTV" value={JSON.stringify(lifecycle.data.ltv ?? [])} />
-            </div>
-            <div className="space-y-4">
-              {products.map((product) => (
-                <Card key={String(product.id)}>
-                  <CardHeader>
-                    <CardTitle>{String(product.productName ?? 'Producto')}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid gap-2 text-sm text-content-secondary sm:grid-cols-3">
-                      <span>Inicio: {String(product.startsAt ?? '—')}</span>
-                      <span>Vence: {String(product.expiresAt ?? '—')}</span>
-                      <span>Próxima: {String(product.nextRenewalAt ?? '—')}</span>
-                    </div>
-                    <div className="mt-4 space-y-2">
-                      {(Array.isArray(product.renewals) ? product.renewals : []).map((renewal) => {
-                        const row = renewal as Record<string, unknown>;
-                        return (
-                          <div
-                            className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border-subtle p-3 text-sm"
-                            key={String(row.id)}
-                          >
-                            <span className="text-content-secondary">
-                              Vence {String(row.dueAt ?? '—')}
-                            </span>
-                            <StatusBadge
-                              status={String(row.workflowStatus ?? row.status ?? 'PENDING')}
-                            />
-                            <span className="font-semibold text-content-primary">
-                              {String(row.currency ?? '')} {String(row.amount ?? '')}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </>
-        ) : (
-          <EmptyState
-            title="Cliente no encontrado"
-            description="No existe información de ciclo de vida para este contacto."
           />
         )}
       </QueryState>

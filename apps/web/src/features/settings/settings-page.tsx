@@ -19,6 +19,7 @@ const settingsGroups = [
       { label: 'Revenue Intelligence', href: '/revenue' },
       { label: 'Marketing y atribución', href: '/marketing' },
       { label: 'Finanzas', href: '/financial' },
+      { label: 'Comisiones de pago', href: '/settings/commissions' },
     ],
   },
   {

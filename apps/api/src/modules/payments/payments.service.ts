@@ -17,6 +17,7 @@ import { COMMERCIAL_ERROR_CODES, commercialException } from '../commercial/comme
 import { isSupportedCurrency } from '../commercial/currency';
 import { ListPaymentsQueryDto, CreatePaymentDto, RefundPaymentDto } from './dto/payments.dto';
 import { PaymentsAccessPolicy } from './payments.policy';
+import { CommissionsService } from '../commissions/commissions.service';
 
 function paymentFingerprint(input: {
   saleId: string;
@@ -51,6 +52,7 @@ export class PaymentsService {
     private readonly audit: AuditService,
     private readonly outbox: OutboxService,
     private readonly access: PaymentsAccessPolicy,
+    private readonly commissions: CommissionsService,
   ) {}
 
   async create(
@@ -60,10 +62,7 @@ export class PaymentsService {
   ): Promise<Record<string, unknown>> {
     this.access.assertCreate(context.user);
     const gross = parseMoney(dto.amount ?? dto.grossAmount);
-    const fee = parseMoney(dto.feeAmount);
     positive(gross, 'amount');
-    if (fee.isNegative() || fee.gt(gross)) this.invalidMoney();
-    const net = gross.sub(fee);
     const currency = normalizeCurrency(dto.currency);
     if (!isSupportedCurrency(currency))
       throw commercialException(
@@ -71,6 +70,13 @@ export class PaymentsService {
         COMMERCIAL_ERROR_CODES.UNSUPPORTED_CURRENCY,
         'La moneda no está admitida.',
       );
+    const fee = await this.commissions.calculate({
+      organizationId: context.user.organizationId,
+      method: dto.method,
+      grossAmount: gross,
+    });
+    if (fee.isNegative() || fee.gt(gross)) this.invalidMoney();
+    const net = gross.sub(fee);
     const reference = dto.reference?.trim() || null;
     const paymentDate = dto.paymentDate ? new Date(dto.paymentDate) : new Date();
     const note = dto.note?.trim() || null;

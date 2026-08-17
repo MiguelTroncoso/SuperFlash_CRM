@@ -1018,7 +1018,7 @@ export function CatalogPage(): React.ReactElement {
                         return (
                           <tr key={entry.id}>
                             <td className="px-4 py-3 font-semibold text-content-primary">
-                              {catalogProduct?.name ?? entry.productId.slice(0, 8)}
+                              {catalogProduct?.name ?? 'Producto'}
                             </td>
                             <td className="px-4 py-3 text-content-primary">
                               {priceBook.currency} {entry.salePrice}

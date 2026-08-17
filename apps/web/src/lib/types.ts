@@ -120,6 +120,7 @@ export interface PipelineResponse {
 
 export interface Sale {
   id: string;
+  saleNumber: string;
   status: string;
   currency: string;
   subtotal: string;
@@ -133,6 +134,17 @@ export interface Sale {
   opportunity: NamedRelation | null;
   seller: Person | null;
   items: JsonRecord[];
+  payments?: JsonRecord[];
+  renewals?: JsonRecord[];
+  fulfillments?: JsonRecord[];
+  activities?: JsonRecord[];
+  balance?: {
+    currency: string;
+    total: string;
+    confirmed: string;
+    refunded: string;
+    balance: string;
+  };
   subscriptions?: SaleSubscription[];
   paymentDueAt?: string | null;
   createdAt: string;
@@ -165,6 +177,7 @@ export interface SaleContact {
   lastName?: string | null;
   phone?: string | null;
   email?: string | null;
+  country?: string | null;
 }
 
 export interface SaleSubscription {
@@ -559,6 +572,7 @@ export interface IntelligenceDashboard {
       amount: string;
     }>;
     mrrHistory: Array<{ month: string; currency: string; mrr: string }>;
+    paymentMethods: Array<{ method: string; currency: string; amount: string; count: number }>;
   };
 }
 
@@ -962,6 +976,7 @@ export interface FinancialDashboard {
   month: string;
   currency: string | null;
   revenue: string;
+  realIncome: string;
   expenses: string;
   grossProfit: string;
   netProfit: string;

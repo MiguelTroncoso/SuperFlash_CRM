@@ -7,6 +7,7 @@ export interface FinancialDashboard {
   readonly month: string;
   readonly currency: string | null;
   readonly revenue: string;
+  readonly realIncome: string;
   readonly expenses: string;
   readonly grossProfit: string;
   readonly netProfit: string;
