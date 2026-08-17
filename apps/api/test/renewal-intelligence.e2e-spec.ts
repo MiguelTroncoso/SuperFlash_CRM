@@ -87,6 +87,7 @@ describe('Renewal Intelligence HTTP flow', () => {
         organizationId: organization.id,
         contactId: contact.id,
         userId: user.id,
+        saleNumber: 'TEST-RENEWAL-SALE',
         status: SaleStatus.CONFIRMED,
         subtotal: 100,
         discountAmount: 0,

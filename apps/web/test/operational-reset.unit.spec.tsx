@@ -83,6 +83,7 @@ const dashboard: IntelligenceDashboard = {
     funnel: [],
     renewalsTrend: [],
     mrrHistory: [],
+    paymentMethods: [],
   },
 };
 
@@ -209,7 +210,7 @@ describe('operational CRM reset', () => {
     expect(screen.getByText('Egresos del mes')).toBeInTheDocument();
     expect(screen.getByText('Renovaciones')).toBeInTheDocument();
     expect(screen.getByText('Stock crítico')).toBeInTheDocument();
-    expect(screen.getByText('Clientes')).toBeInTheDocument();
+    expect(screen.getByText('Clientes activos')).toBeInTheDocument();
     expect(screen.getByText('Productos')).toBeInTheDocument();
     expect(screen.getByText('Conversaciones hoy')).toBeInTheDocument();
     expect(screen.getByText('Conversión')).toBeInTheDocument();

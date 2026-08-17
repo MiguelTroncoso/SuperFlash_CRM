@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 
@@ -46,6 +46,7 @@ function itemRequiresSubscription(item: Record<string, unknown>): boolean {
 
 export function SalesPage(): React.ReactElement {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Sale | null>(null);
@@ -53,6 +54,8 @@ export function SalesPage(): React.ReactElement {
   const [confirming, setConfirming] = useState(false);
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [renewing, setRenewing] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
   const [editValues, setEditValues] = useState({
     unitPrice: '',
     discountAmount: '',
@@ -138,7 +141,6 @@ export function SalesPage(): React.ReactElement {
       setSelected(null);
       void queryClient.invalidateQueries({ queryKey: ['sales'] });
       void queryClient.invalidateQueries({ queryKey: ['my-day'] });
-      void queryClient.invalidateQueries({ queryKey: ['customers'] });
       toast({
         title: 'Venta eliminada',
         description: 'Stock y colas operativas fueron reconciliados.',
@@ -148,25 +150,84 @@ export function SalesPage(): React.ReactElement {
     onError: (error: Error) =>
       toast({ title: 'No se puede eliminar la venta', description: error.message, tone: 'error' }),
   });
-  const openEditor = (): void => {
-    if (!selected) return;
-    const item = selected.items[0] as Record<string, unknown> | undefined;
-    const subscription = selected.subscriptions?.[0];
+  const openEditorFor = (sale: Sale): void => {
+    const item = sale.items[0] as Record<string, unknown> | undefined;
+    const subscription = sale.subscriptions?.[0];
     setEditValues({
       unitPrice: String(item?.unitPrice ?? ''),
-      discountAmount: selected.discountAmount,
-      paymentDueAt: selected.paymentDueAt?.slice(0, 10) ?? '',
-      paymentMethod: selected.paymentMethod ?? 'MANUAL',
-      paidNow: selected.paidNow ?? false,
-      note: selected.note ?? '',
+      discountAmount: sale.discountAmount,
+      paymentDueAt: sale.paymentDueAt?.slice(0, 10) ?? '',
+      paymentMethod: sale.paymentMethod ?? 'MANUAL',
+      paidNow: sale.paidNow ?? false,
+      note: sale.note ?? '',
       subscriptionDurationDays: subscription?.durationDays ? String(subscription.durationDays) : '',
       priceOverrideReason: '',
     });
+    setSelected(sale);
     setEditing(true);
+  };
+  const openEditor = (): void => {
+    if (selected) openEditorFor(selected);
+  };
+  const renew = async (sale: Sale | null = selected): Promise<void> => {
+    const subscription = sale?.subscriptions?.find((candidate) => candidate.status !== 'CANCELLED');
+    if (!subscription) {
+      toast({ title: 'No hay una suscripción renovable', tone: 'error' });
+      return;
+    }
+    setRenewing(true);
+    try {
+      await api.createRenewal(subscription.id);
+      await queryClient.invalidateQueries({ queryKey: ['sales'] });
+      toast({ title: 'Renovación creada', tone: 'success' });
+      if (sale) setSelected(await api.getSale(sale.id));
+    } catch (error: unknown) {
+      toast({
+        title: 'No fue posible renovar',
+        description: error instanceof Error ? error.message : 'Error inesperado.',
+        tone: 'error',
+      });
+    } finally {
+      setRenewing(false);
+    }
+  };
+  const duplicate = async (sale: Sale | null = selected): Promise<void> => {
+    if (!sale?.contact?.id || sale.items.length === 0) return;
+    const source = sale.items[0] as Record<string, unknown>;
+    setDuplicating(true);
+    try {
+      const duplicated = await api.createSale({
+        contactId: sale.contact.id,
+        currency: sale.currency,
+        note: `Duplicada de ${sale.saleNumber}`,
+        items: [
+          {
+            productId: source.productId,
+            planId: source.planId ?? undefined,
+            variantId: source.variantId ?? undefined,
+            quantity: source.quantity ?? '1',
+            unitPrice: source.unitPrice,
+            discountAmount: source.discountAmount,
+            taxAmount: source.taxAmount,
+          },
+        ],
+      });
+      await queryClient.invalidateQueries({ queryKey: ['sales'] });
+      setSelected(duplicated);
+      toast({ title: 'Venta duplicada', description: duplicated.saleNumber, tone: 'success' });
+    } catch (error: unknown) {
+      toast({
+        title: 'No fue posible duplicar',
+        description: error instanceof Error ? error.message : 'Error inesperado.',
+        tone: 'error',
+      });
+    } finally {
+      setDuplicating(false);
+    }
   };
   const columns: ColumnDef<Sale, unknown>[] = [
     {
-      accessorKey: 'id',
+      accessorKey: 'saleNumber',
       header: 'Venta',
       cell: ({ row }) => (
         <button
@@ -174,7 +235,7 @@ export function SalesPage(): React.ReactElement {
           onClick={() => setSelected(row.original)}
           type="button"
         >
-          #{row.original.id.slice(0, 8)}
+          {row.original.saleNumber}
         </button>
       ),
     },
@@ -183,6 +244,67 @@ export function SalesPage(): React.ReactElement {
       header: 'Cliente',
       cell: ({ row }) => (
         <span className="font-semibold">{row.original.contact?.name ?? 'Sin contacto'}</span>
+      ),
+    },
+    {
+      id: 'actions',
+      header: 'Acciones',
+      cell: ({ row }) => (
+        <div className="flex flex-wrap gap-1">
+          <Button
+            aria-label={`Ver ${row.original.saleNumber}`}
+            onClick={() => setSelected(row.original)}
+            size="sm"
+            variant="ghost"
+          >
+            Ver
+          </Button>
+          <Button
+            aria-label={`Editar ${row.original.saleNumber}`}
+            onClick={() => openEditorFor(row.original)}
+            size="sm"
+            variant="outline"
+          >
+            Editar
+          </Button>
+          <Button
+            aria-label={`Cobrar ${row.original.saleNumber}`}
+            onClick={() => router.push(`/collections?saleId=${row.original.id}`)}
+            size="sm"
+            variant="outline"
+          >
+            Cobrar
+          </Button>
+          <Button
+            aria-label={`Renovar ${row.original.saleNumber}`}
+            disabled={!row.original.subscriptions?.some((item) => item.status !== 'CANCELLED')}
+            onClick={() => void renew(row.original)}
+            size="sm"
+            variant="outline"
+          >
+            Renovar
+          </Button>
+          <Button
+            aria-label={`Duplicar venta ${row.original.saleNumber}`}
+            disabled={!row.original.contact?.id || row.original.items.length === 0}
+            onClick={() => void duplicate(row.original)}
+            size="sm"
+            variant="outline"
+          >
+            Duplicar venta
+          </Button>
+          <Button
+            aria-label={`Eliminar venta ${row.original.saleNumber}`}
+            onClick={() => {
+              setSelected(row.original);
+              setDeleting(true);
+            }}
+            size="sm"
+            variant="danger"
+          >
+            Eliminar venta
+          </Button>
+        </div>
       ),
     },
     {
@@ -253,7 +375,7 @@ export function SalesPage(): React.ReactElement {
           description="Detalle de la venta y su snapshot comercial."
           onClose={() => setSelected(null)}
           open={Boolean(selected)}
-          title={selected ? `Venta #${selected.id.slice(0, 8)}` : 'Venta'}
+          title={selected ? selected.saleNumber : 'Venta'}
         >
           {selected ? (
             <div className="space-y-5">
@@ -276,6 +398,56 @@ export function SalesPage(): React.ReactElement {
                 <p className="mt-2 text-sm font-semibold">
                   {selected.contact?.name ?? 'Sin contacto'}
                 </p>
+                <p className="mt-1 text-sm text-content-secondary">
+                  {[selected.contact?.phone, selected.contact?.email, selected.contact?.country]
+                    .filter(Boolean)
+                    .join(' · ') || 'Sin datos de contacto'}
+                </p>
+              </div>
+              <div className="space-y-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                  Productos
+                </p>
+                {selected.items.map((item) => (
+                  <div
+                    className="rounded-xl border border-border-subtle bg-surface-muted p-4 text-sm"
+                    key={String(item.id)}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-semibold text-content-primary">
+                        {String(item.productName ?? 'Producto')}
+                      </span>
+                      <span className="font-bold">
+                        {selected.currency} {String(item.total ?? selected.total)}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-content-muted">
+                      Cantidad: {String(item.quantity ?? '1')}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-xs text-content-muted">Método</p>
+                  <p className="mt-1 font-semibold">{selected.paymentMethod ?? 'Pendiente'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-content-muted">Compromiso</p>
+                  <p className="mt-1 font-semibold">{formatDate(selected.paymentDueAt)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-content-muted">Pagado</p>
+                  <p className="mt-1 font-semibold">
+                    {selected.balance ? `${selected.currency} ${selected.balance.confirmed}` : '—'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-content-muted">Saldo</p>
+                  <p className="mt-1 font-semibold text-amber-600">
+                    {selected.balance ? `${selected.currency} ${selected.balance.balance}` : '—'}
+                  </p>
+                </div>
               </div>
               {(selected.subscriptions ?? []).length > 0 ? (
                 <div className="space-y-3">
@@ -320,24 +492,42 @@ export function SalesPage(): React.ReactElement {
                   ))}
                 </div>
               ) : null}
-              {selected.status === 'DRAFT' ? (
-                <div className="flex flex-wrap gap-2">
-                  <Button onClick={openEditor} variant="outline">
-                    Editar
+              <div className="flex flex-wrap gap-2">
+                {selected.status === 'DRAFT' ? (
+                  <>
+                    <Button onClick={openEditor} variant="outline">
+                      Editar
+                    </Button>
+                    <Button disabled={confirming} onClick={() => void confirm()}>
+                      {confirming ? 'Confirmando…' : 'Confirmar venta'}
+                    </Button>
+                    <Button onClick={() => setDeleting(true)} variant="danger">
+                      Eliminar
+                    </Button>
+                  </>
+                ) : null}
+                {selected.status !== 'CANCELLED' ? (
+                  <Button
+                    onClick={() => router.push(`/collections?saleId=${selected.id}`)}
+                    variant="outline"
+                  >
+                    Cobrar
                   </Button>
-                  <Button disabled={confirming} onClick={() => void confirm()}>
-                    {confirming ? 'Confirmando…' : 'Confirmar venta'}
+                ) : null}
+                {(selected.subscriptions ?? []).length > 0 && selected.status !== 'CANCELLED' ? (
+                  <Button disabled={renewing} onClick={() => void renew()} variant="outline">
+                    {renewing ? 'Renovando…' : 'Renovar'}
                   </Button>
-                  <Button onClick={() => setDeleting(true)} variant="danger">
-                    Eliminar
-                  </Button>
-                </div>
-              ) : null}
-              {selected.status !== 'DRAFT' && selected.status !== 'CANCELLED' ? (
-                <Button onClick={() => setDeleting(true)} variant="danger">
-                  Eliminar venta
+                ) : null}
+                <Button disabled={duplicating} onClick={() => void duplicate()} variant="outline">
+                  {duplicating ? 'Duplicando…' : 'Duplicar venta'}
                 </Button>
-              ) : null}
+                {selected.status !== 'DRAFT' && selected.status !== 'CANCELLED' ? (
+                  <Button onClick={() => setDeleting(true)} variant="danger">
+                    Eliminar venta
+                  </Button>
+                ) : null}
+              </div>
               <div>
                 <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Notas</p>
                 <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">

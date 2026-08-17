@@ -94,6 +94,7 @@ describe('Revenue Intelligence HTTP flow', () => {
         contactId: contact.id,
         opportunityId: opportunity.id,
         userId: user.id,
+        saleNumber: 'TEST-REVENUE-SALE',
         status: SaleStatus.CONFIRMED,
         subtotal: 100,
         discountAmount: 0,

@@ -193,9 +193,9 @@ export function ContactsPage({
           </button>
           <Link
             className="mt-2 inline-block text-[11px] font-bold text-brand-600 hover:text-brand-700"
-            href={`/customers/${row.original.id}`}
+            href={`/sales?contactId=${row.original.id}`}
           >
-            Ver Customer 360 →
+            Ver ventas →
           </Link>
         </div>
       ),

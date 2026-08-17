@@ -358,6 +358,7 @@ describe('Opportunities and pipeline HTTP flow', () => {
         organizationId: fixture.organizationA,
         contactId: fixture.contactA,
         opportunityId: body(created).id,
+        saleNumber: 'TEST-OPPORTUNITY-SALE',
         status: 'CONFIRMED',
         subtotal: new Prisma.Decimal('10'),
         total: new Prisma.Decimal('10'),

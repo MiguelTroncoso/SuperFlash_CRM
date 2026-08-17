@@ -3,6 +3,7 @@ import { Prisma, ProductStatus, SaleStatus, TrialStatus } from '@prisma/client';
 
 import { OutboxService } from '../../infrastructure/outbox/outbox.service';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import { nextSaleNumber } from '../commercial/sale-number';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/auth.types';
 import { operationsException, OPERATIONS_ERROR_CODES } from '../operations/operations.errors';
@@ -381,6 +382,7 @@ export class TrialsService {
       const sale = await transaction.sale.create({
         data: {
           organizationId: context.user.organizationId,
+          saleNumber: await nextSaleNumber(transaction, context.user.organizationId),
           contactId: trial.contactId,
           opportunityId: trial.opportunityId,
           userId: trial.ownerId,

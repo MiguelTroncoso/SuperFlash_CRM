@@ -95,11 +95,9 @@ export function FulfillmentPage(): React.ReactElement {
                     }}
                     type="button"
                   >
-                    <p className="font-mono text-xs font-bold text-brand-600">
-                      #{item.id.slice(0, 8)}
-                    </p>
+                    <p className="text-xs font-bold text-brand-600">Entrega operativa</p>
                     <p className="mt-1 text-xs text-slate-400">
-                      Venta #{item.saleId.slice(0, 8)} · {item.mode} · {item.attemptCount} intentos
+                      Venta comercial · {item.mode} · {item.attemptCount} intentos
                     </p>
                   </button>
                   <div className="flex flex-wrap items-center gap-2">

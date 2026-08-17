@@ -15,6 +15,7 @@ import { MetricCard } from '@/components/ui/metric-card';
 import { useToastStore } from '@/components/ui/toast';
 import { api, queryString } from '@/lib/api-client';
 import type {
+  Contact,
   MarketingAttribution,
   MarketingCampaign,
   MarketingLossReason,
@@ -23,6 +24,16 @@ import type {
 } from '@/lib/types';
 
 type MarketingView = 'overview' | 'campaigns' | 'spend' | 'attribution' | 'prospects' | 'imports';
+
+function contactLabel(contact: Contact): string {
+  return (
+    contact.displayName ||
+    `${contact.firstName ?? ''} ${contact.lastName ?? ''}`.trim() ||
+    contact.email ||
+    contact.phone ||
+    'Contacto sin nombre'
+  );
+}
 
 const tabs: Array<{ href: string; view: MarketingView; label: string }> = [
   { href: '/marketing', view: 'overview', label: 'Rendimiento' },
@@ -610,6 +621,10 @@ export function MarketingAttributionPage(): React.ReactElement {
     queryKey: ['marketing-campaigns'],
     queryFn: () => api.getMarketingCampaigns(),
   });
+  const contacts = useQuery({
+    queryKey: ['marketing-contact-options'],
+    queryFn: () => api.getContacts('?page=1&limit=100&archived=false'),
+  });
   const queryClient = useQueryClient();
   const toast = useToastStore();
   const create = useMutation({
@@ -649,13 +664,19 @@ export function MarketingAttributionPage(): React.ReactElement {
               create.mutate();
             }}
           >
-            <Input
-              aria-label="ID de contacto"
-              placeholder="UUID del contacto"
+            <Select
+              aria-label="Contacto"
               value={contactId}
               onChange={(event) => setContactId(event.target.value)}
               required
-            />
+            >
+              <option value="">Selecciona un contacto</option>
+              {(contacts.data?.data ?? []).map((contact) => (
+                <option key={contact.id} value={contact.id}>
+                  {contactLabel(contact)}
+                </option>
+              ))}
+            </Select>
             <Select
               aria-label="Campaña"
               value={campaignId}
@@ -761,6 +782,10 @@ export function MarketingProspectsPage(): React.ReactElement {
     queryKey: ['marketing-loss-reasons'],
     queryFn: () => api.getMarketingLossReasons(),
   });
+  const contacts = useQuery({
+    queryKey: ['marketing-contact-options'],
+    queryFn: () => api.getContacts('?page=1&limit=100&archived=false'),
+  });
   const [contactId, setContactId] = useState('');
   const [state, setState] = useState('NEW_UNANSWERED');
   const [reasonId, setReasonId] = useState('');
@@ -795,13 +820,19 @@ export function MarketingProspectsPage(): React.ReactElement {
               change.mutate();
             }}
           >
-            <Input
-              aria-label="ID de contacto"
-              placeholder="UUID del contacto"
+            <Select
+              aria-label="Contacto"
               value={contactId}
               onChange={(event) => setContactId(event.target.value)}
               required
-            />
+            >
+              <option value="">Selecciona un contacto</option>
+              {(contacts.data?.data ?? []).map((contact) => (
+                <option key={contact.id} value={contact.id}>
+                  {contactLabel(contact)}
+                </option>
+              ))}
+            </Select>
             <Select
               aria-label="Estado"
               value={state}

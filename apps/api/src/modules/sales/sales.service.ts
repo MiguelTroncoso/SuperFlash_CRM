@@ -42,9 +42,12 @@ import {
   UpdateSaleDto,
 } from './dto/sales.dto';
 import { SalesAccessPolicy } from './access/sales-access.policy';
+import { nextSaleNumber } from '../commercial/sale-number';
 
 const saleInclude = {
-  contact: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+  contact: {
+    select: { id: true, firstName: true, lastName: true, email: true, phone: true, country: true },
+  },
   seller: { select: { id: true, firstName: true, lastName: true, email: true } },
   opportunity: {
     select: {
@@ -75,6 +78,58 @@ const saleInclude = {
         select: { id: true, status: true, dueAt: true },
       },
     },
+  },
+  payments: {
+    where: { deletedAt: null },
+    orderBy: { paymentDate: 'desc' as const },
+    select: {
+      id: true,
+      grossAmount: true,
+      feeAmount: true,
+      netAmount: true,
+      refundedAmount: true,
+      currency: true,
+      method: true,
+      reference: true,
+      status: true,
+      paymentDate: true,
+      confirmedAt: true,
+    },
+  },
+  renewalItems: {
+    where: { deletedAt: null },
+    orderBy: { periodStart: 'desc' as const },
+    select: {
+      id: true,
+      status: true,
+      workflowStatus: true,
+      dueAt: true,
+      paidAt: true,
+      amount: true,
+      currency: true,
+    },
+  },
+  fulfillments: {
+    where: { deletedAt: null },
+    orderBy: { createdAt: 'desc' as const },
+    select: {
+      id: true,
+      status: true,
+      mode: true,
+      attemptCount: true,
+      completedAt: true,
+      provider: { select: { name: true } },
+      activations: {
+        where: { deletedAt: null },
+        select: { status: true, activatedAt: true, expiresAt: true },
+      },
+    },
+  },
+  activities: {
+    where: { deletedAt: null },
+    orderBy: { occurredAt: 'desc' as const },
+    take: 20,
+    select: { id: true, type: true, title: true, occurredAt: true, metadata: true },
   },
 } satisfies Prisma.SaleInclude;
 
@@ -226,6 +281,7 @@ export class SalesService {
       ...(query.search
         ? {
             OR: [
+              { saleNumber: { contains: query.search, mode: 'insensitive' } },
               { note: { contains: query.search, mode: 'insensitive' } },
               { contact: { is: { firstName: { contains: query.search, mode: 'insensitive' } } } },
               { contact: { is: { lastName: { contains: query.search, mode: 'insensitive' } } } },
@@ -237,6 +293,22 @@ export class SalesService {
                 },
               },
               { opportunity: { is: { title: { contains: query.search, mode: 'insensitive' } } } },
+              {
+                items: {
+                  some: {
+                    deletedAt: null,
+                    productNameSnapshot: { contains: query.search, mode: 'insensitive' },
+                  },
+                },
+              },
+              {
+                items: {
+                  some: {
+                    deletedAt: null,
+                    skuSnapshot: { contains: query.search, mode: 'insensitive' },
+                  },
+                },
+              },
             ],
           }
         : {}),
@@ -764,9 +836,11 @@ export class SalesService {
         'El total de la venta no puede ser negativo.',
       );
     }
+    const saleNumber = await nextSaleNumber(transaction, user.organizationId);
     const sale = await transaction.sale.create({
       data: {
         organizationId: user.organizationId,
+        saleNumber,
         contactId: dto.contactId,
         opportunityId,
         userId: user.userId,
@@ -1634,6 +1708,7 @@ export class SalesService {
       'Cliente';
     return {
       id: sale.id,
+      saleNumber: sale.saleNumber,
       status: sale.status,
       contact: sale.contact
         ? {
@@ -1643,6 +1718,7 @@ export class SalesService {
             lastName: sale.contact.lastName,
             phone: sale.contact.phone,
             email: sale.contact.email,
+            country: sale.contact.country,
           }
         : null,
       opportunity: sale.opportunity,
@@ -1695,6 +1771,37 @@ export class SalesService {
         snapshotVersion: item.snapshotVersion,
         catalogSnapshot: sanitizeSnapshot(item.catalogSnapshot, includeCosts),
       })),
+      payments: sale.payments.map((payment) => ({
+        id: payment.id,
+        grossAmount: payment.grossAmount.toFixed(2),
+        feeAmount: payment.feeAmount.toFixed(2),
+        netAmount: payment.netAmount.toFixed(2),
+        refundedAmount: payment.refundedAmount.toFixed(2),
+        currency: payment.currency,
+        method: payment.method,
+        reference: payment.reference,
+        status: payment.status,
+        paymentDate: payment.paymentDate,
+      })),
+      renewals: sale.renewalItems.map((renewal) => ({
+        id: renewal.id,
+        status: renewal.status,
+        workflowStatus: renewal.workflowStatus,
+        dueAt: renewal.dueAt,
+        paidAt: renewal.paidAt,
+        amount: renewal.amount.toFixed(2),
+        currency: renewal.currency,
+      })),
+      fulfillments: sale.fulfillments.map((fulfillment) => ({
+        id: fulfillment.id,
+        status: fulfillment.status,
+        mode: fulfillment.mode,
+        attemptCount: fulfillment.attemptCount,
+        completedAt: fulfillment.completedAt,
+        provider: fulfillment.provider?.name ?? null,
+        activations: fulfillment.activations,
+      })),
+      activities: sale.activities,
       createdAt: sale.createdAt,
       updatedAt: sale.updatedAt,
     };

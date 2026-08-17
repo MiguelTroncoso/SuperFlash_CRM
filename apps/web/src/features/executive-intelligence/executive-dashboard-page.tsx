@@ -2,6 +2,17 @@
 
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
 import { PageGrid, PageHeader } from '@/components/shared/page-header';
 import { QueryState } from '@/components/shared/query-state';
@@ -32,11 +43,6 @@ export function ExecutiveDashboardPage(): React.ReactElement {
     queryFn: () => api.getFinancialDashboard(),
     staleTime: 30_000,
   });
-  const contacts = useQuery({
-    queryKey: ['contacts', 'executive-count'],
-    queryFn: () => api.getContacts('?page=1&limit=1'),
-    staleTime: 60_000,
-  });
   const products = useQuery({
     queryKey: ['catalog-products', 'executive-count'],
     queryFn: () => api.getProducts('?page=1&limit=1&active=true'),
@@ -44,28 +50,18 @@ export function ExecutiveDashboardPage(): React.ReactElement {
   });
   const kpis = dashboard.data?.kpis;
   const today = operations.data?.today;
+  const paymentMethods = dashboard.data?.charts.paymentMethods ?? [];
   return (
     <QueryState
-      isError={
-        dashboard.isError ||
-        operations.isError ||
-        financial.isError ||
-        contacts.isError ||
-        products.isError
-      }
+      isError={dashboard.isError || operations.isError || financial.isError || products.isError}
       isLoading={
-        dashboard.isLoading ||
-        operations.isLoading ||
-        financial.isLoading ||
-        contacts.isLoading ||
-        products.isLoading
+        dashboard.isLoading || operations.isLoading || financial.isLoading || products.isLoading
       }
       onRetry={() =>
         void Promise.all([
           dashboard.refetch(),
           operations.refetch(),
           financial.refetch(),
-          contacts.refetch(),
           products.refetch(),
         ])
       }
@@ -92,6 +88,32 @@ export function ExecutiveDashboardPage(): React.ReactElement {
                 label="Ventas del mes"
                 value={String(operations.data.month.sales)}
                 trend={money(kpis.salesMonth)}
+              />
+            </Link>
+            <Link href="/collections">
+              <MetricCard
+                icon="$"
+                label="Ingresos hoy"
+                value={money(kpis.billingToday)}
+                trend="Pagos netos confirmados"
+              />
+            </Link>
+            <Link href="/collections">
+              <MetricCard
+                icon="$"
+                label="Ingresos del mes"
+                value={money(kpis.billingMonth)}
+                trend="Pagos netos confirmados"
+              />
+            </Link>
+            <Link href="/financial">
+              <MetricCard
+                icon="✓"
+                label="Ingreso real"
+                value={money([
+                  { currency: financial.data.currency ?? '—', amount: financial.data.realIncome },
+                ])}
+                trend="Después de comisiones y reembolsos"
               />
             </Link>
             <Link href="/collections">
@@ -138,11 +160,11 @@ export function ExecutiveDashboardPage(): React.ReactElement {
                 trend="Productos bajo mínimo"
               />
             </Link>
-            <Link href="/contacts">
+            <Link href="/sales">
               <MetricCard
                 icon="◎"
-                label="Clientes"
-                value={contacts.data?.pagination.total ?? 0}
+                label="Clientes activos"
+                value={kpis.activeCustomers}
                 trend={`${kpis.activeCustomers} activos`}
               />
             </Link>
@@ -162,6 +184,22 @@ export function ExecutiveDashboardPage(): React.ReactElement {
                 trend={`${today?.demos ?? 0} demos`}
               />
             </Link>
+            <Link href="/operations">
+              <MetricCard
+                icon="⚡"
+                label="Activaciones pendientes"
+                value={kpis.pendingActivations}
+                trend="Entrega operativa"
+              />
+            </Link>
+            <Link href="/renewals">
+              <MetricCard
+                icon="↻"
+                label="Renovaciones próximas"
+                value={kpis.pendingRenewals}
+                trend={`${kpis.renewalsMonth} pagadas este mes`}
+              />
+            </Link>
             <Link href="/business-intelligence/funnels">
               <MetricCard
                 icon="%"
@@ -171,8 +209,111 @@ export function ExecutiveDashboardPage(): React.ReactElement {
               />
             </Link>
           </div>
+          <div className="grid gap-4 xl:grid-cols-2">
+            <ChartCard title="Ventas e ingresos · últimos 30 días">
+              <ResponsiveContainer height={260} width="100%">
+                <LineChart
+                  data={dashboard.data.charts.revenueDaily.map((row) => ({
+                    ...row,
+                    value: Number(row.revenue),
+                  }))}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border-subtle))" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Line
+                    dataKey="value"
+                    dot={false}
+                    name="Ingresos"
+                    stroke="#2563eb"
+                    strokeWidth={3}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartCard>
+            <ChartCard title="Ventas por país">
+              <ResponsiveContainer height={260} width="100%">
+                <BarChart
+                  data={dashboard.data.charts.salesCountry.map((row) => ({
+                    ...row,
+                    value: Number(row.revenue),
+                  }))}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border-subtle))" />
+                  <XAxis dataKey="country" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Bar dataKey="value" fill="#0ea5e9" name="Ventas" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+            <ChartCard title="Productos más vendidos">
+              <ResponsiveContainer height={260} width="100%">
+                <BarChart
+                  data={dashboard.data.charts.salesProduct
+                    .slice(0, 8)
+                    .map((row) => ({ ...row, value: Number(row.revenue) }))}
+                  layout="vertical"
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border-subtle))" />
+                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                  <YAxis dataKey="product" type="category" width={100} tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Bar dataKey="value" fill="#8b5cf6" name="Ingresos" radius={[0, 6, 6, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+            <ChartCard title="Renovaciones por periodo">
+              <ResponsiveContainer height={260} width="100%">
+                <BarChart
+                  data={dashboard.data.charts.renewalsTrend.map((row) => ({
+                    ...row,
+                    value: row.count,
+                  }))}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border-subtle))" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Bar dataKey="value" fill="#22c55e" name="Renovaciones" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+            <ChartCard title="Ingreso real por medio de pago">
+              <ResponsiveContainer height={260} width="100%">
+                <BarChart
+                  data={paymentMethods.map((row) => ({
+                    ...row,
+                    value: Number(row.amount),
+                  }))}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border-subtle))" />
+                  <XAxis dataKey="method" tick={{ fontSize: 10 }} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Bar dataKey="value" fill="#f97316" name="Ingreso real" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          </div>
         </PageGrid>
       ) : null}
     </QueryState>
+  );
+}
+
+function ChartCard({
+  title,
+  children,
+}: {
+  readonly title: string;
+  readonly children: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <div className="min-w-0 rounded-2xl border border-border-subtle bg-surface-card p-4 shadow-sm sm:p-5">
+      <h2 className="mb-4 text-sm font-bold text-content-primary">{title}</h2>
+      <div className="min-w-0">{children}</div>
+    </div>
   );
 }

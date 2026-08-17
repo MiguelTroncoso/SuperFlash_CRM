@@ -362,7 +362,7 @@ export function NewSaleDrawer({
               {(selectedOffer?.plans ?? []).map((plan) =>
                 typeof plan.id === 'string' ? (
                   <option key={plan.id} value={plan.id}>
-                    {typeof plan.name === 'string' ? plan.name : plan.id}
+                    {typeof plan.name === 'string' ? plan.name : 'Plan comercial'}
                   </option>
                 ) : null,
               )}

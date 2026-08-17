@@ -133,6 +133,16 @@ Renovaciones y Catálogo; las capacidades avanzadas continúan accesibles desde
 Configuración. La decisión y sus límites están documentados en
 [docs/operational-reset.md](../operational-reset.md).
 
+### Cierre operativo maestro
+
+El flujo de uso diario queda definido como `Venta → Cliente automático → Cobro
+→ Activación → Renovación → Historial`. La experiencia principal no expone un
+módulo separado de Clientes ni Customer 360; la venta es la superficie de
+consulta comercial. Los UUID permanecen como identificadores técnicos, pero no
+se muestran en la UI. Las comisiones de pago se calculan mediante una
+configuración por organización y el ingreso real considera netos confirmados y
+reembolsos.
+
 ## Reglas de versionado
 
 - Una versión de arquitectura se identifica como `vMAJOR.MINOR`.

@@ -603,6 +603,7 @@ export class FinancialService {
       trendSales,
       trendExpenses,
       subscriptions,
+      confirmedPayments,
     ] = await Promise.all([
       this.prisma.sale.aggregate({ where: saleWhere(range.from, range.to), _sum: { total: true } }),
       this.prisma.expense.aggregate({
@@ -665,8 +666,22 @@ export class FinancialService {
             select: { amount: true, billingCycle: true, customIntervalDays: true },
           })
         : Promise.resolve([]),
+      this.prisma.payment.findMany({
+        where: {
+          organizationId: user.organizationId,
+          deletedAt: null,
+          status: { in: ['CONFIRMED', 'REFUNDED'] },
+          paymentDate: { gte: range.from, lt: range.to },
+          ...(currency ? { currency } : {}),
+        },
+        select: { netAmount: true, refundedAmount: true },
+      }),
     ]);
     const revenue = Number(sales._sum.total ?? 0);
+    const realIncome = confirmedPayments.reduce(
+      (sum, payment) => sum + Number(payment.netAmount) - Number(payment.refundedAmount),
+      0,
+    );
     const expensesTotal = Number(expenses._sum.amount ?? 0);
     const previousRevenue = Number(previousSales._sum.total ?? 0);
     const previousExpenseTotal = Number(previousExpenses._sum.amount ?? 0);
@@ -709,16 +724,17 @@ export class FinancialService {
         netProfit: (monthRevenue - monthExpenses).toFixed(2),
       };
     });
-    const netProfit = revenue - expensesTotal;
-    const grossProfit = revenue - variableCost;
+    const netProfit = realIncome - expensesTotal;
+    const grossProfit = realIncome - variableCost;
     return {
       month: range.key,
       currency: currency ?? null,
       revenue: revenue.toFixed(2),
+      realIncome: realIncome.toFixed(2),
       expenses: expensesTotal.toFixed(2),
       grossProfit: grossProfit.toFixed(2),
       netProfit: netProfit.toFixed(2),
-      marginPercent: revenue > 0 ? Number(((netProfit / revenue) * 100).toFixed(2)) : 0,
+      marginPercent: realIncome > 0 ? Number(((netProfit / realIncome) * 100).toFixed(2)) : 0,
       mrr: mrr.toFixed(2),
       arr: (mrr * 12).toFixed(2),
       estimatedCash: netProfit.toFixed(2),

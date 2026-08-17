@@ -40,9 +40,7 @@ const columns: ColumnDef<AutomationExecution, unknown>[] = [
   {
     accessorKey: 'requestId',
     header: 'Request ID',
-    cell: ({ row }) => (
-      <span className="font-mono text-[11px]">{row.original.requestId.slice(0, 12)}…</span>
-    ),
+    cell: () => <span className="text-[11px]">Ejecución operativa</span>,
   },
   {
     accessorKey: 'createdAt',

@@ -140,11 +140,15 @@ comerciales.
 ## Operación comercial diaria
 
 La interfaz principal está organizada alrededor del flujo
-`Registrar Lead → Demo → Seguimiento → Cobro → Activación → Renovación`.
-El menú diario contiene Dashboard, Mi Día, Leads, Pipeline, Ventas, Cobros,
+`Venta → Cliente automático → Cobro → Activación → Renovación → Historial`.
+El centro operativo diario contiene Dashboard, Mi Día, Pipeline, Ventas, Cobros,
 Renovaciones, Catálogo y Configuración. Las herramientas avanzadas permanecen
 disponibles desde Configuración sin modificar sus APIs ni reglas de negocio.
 Consulta [docs/operational-reset.md](docs/operational-reset.md).
+
+No existe un módulo principal separado de Clientes ni una pantalla Customer 360:
+la información comercial del cliente se consulta desde la venta y sus operaciones
+relacionadas. Las rutas API legacy se conservan únicamente por compatibilidad.
 
 Sprint 35 consolida el dashboard operativo en `/` y `/operations`. Permite
 registrar actividad diaria por campaña y país, importar históricos idempotentes,
@@ -515,6 +519,10 @@ El módulo `financial/` ofrece dashboard, gastos, categorías y gastos recurrent
 [docs/financial-intelligence.md](docs/financial-intelligence.md), [docs/expenses.md](docs/expenses.md) y
 [docs/recurring-expenses.md](docs/recurring-expenses.md).
 
+Las comisiones de medios de pago se administran en Configuración → Comisiones de pago.
+El cálculo es interno, auditable y persistente por organización; PayPal parte de
+4,95% + USD 0,49 y el ingreso real se calcula como neto confirmado menos reembolsos.
+
 ## Renewal Intelligence & Customer Lifecycle
 
 Architecture v2.6 incorpora el Centro de Renovaciones con dashboard, listas rápidas, calendario,
@@ -532,7 +540,7 @@ el Pipeline.
 
 ## Sprint 28 · Executive Intelligence & CRM Maturity
 
-El Dashboard ejecutivo (`/`) y Business Intelligence consumen métricas reales del núcleo comercial sin duplicar lógica transaccional. También están disponibles Customer 360 (`/customers/:id`), Agenda Operativa (`/agenda`), Pipeline Intelligence (`/pipeline/intelligence`) y búsqueda global mediante `Ctrl/⌘ K`.
+El Dashboard ejecutivo (`/`) y Business Intelligence consumen métricas reales del núcleo comercial sin duplicar lógica transaccional. Agenda Operativa (`/agenda`), Pipeline Intelligence (`/pipeline/intelligence`) y búsqueda global mediante `Ctrl/⌘ K` permanecen disponibles como capacidades read-side; Customer 360 queda únicamente como API legacy de compatibilidad, sin ruta ni navegación frontend principal.
 
 La API agrega las rutas read-side `/api/v1/executive/dashboard`, `/api/v1/business-intelligence/:view`, `/api/v1/customer-360/:contactId`, `/api/v1/global-search`, `/api/v1/agenda/operational` y `/api/v1/pipeline/intelligence`. Requieren los permisos existentes `reports.read`, `contacts.read`, `followups.read` u `opportunities.read`.
 

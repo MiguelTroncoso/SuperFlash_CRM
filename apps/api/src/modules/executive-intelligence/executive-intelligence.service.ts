@@ -108,12 +108,13 @@ export class ExecutiveIntelligenceService {
       funnel,
       renewalsTrend,
       mrrHistory,
+      paymentMethods,
     ] = await Promise.all([
       this.salesMoney(user.organizationId, this.dayStart(range.to), range.to, query),
       this.salesMoney(user.organizationId, weekStart, range.to, query),
       this.salesMoney(user.organizationId, month, nextMonth, query),
-      this.salesMoney(user.organizationId, this.dayStart(range.to), range.to, query),
-      this.salesMoney(user.organizationId, month, nextMonth, query),
+      this.paymentMoney(user.organizationId, this.dayStart(range.to), range.to, query),
+      this.paymentMoney(user.organizationId, month, nextMonth, query),
       this.mrr(user.organizationId, query),
       this.prisma.contact.count({
         where: { organizationId: user.organizationId, deletedAt: null, isCustomer: true },
@@ -165,6 +166,7 @@ export class ExecutiveIntelligenceService {
       this.funnel(user.organizationId, range, query),
       this.renewalsTrend(user.organizationId, range, query),
       this.mrrHistory(user.organizationId, range.to, query),
+      this.paymentMethods(user.organizationId, range, query),
     ]);
     const conversion = await this.generalConversion(user.organizationId, range, query);
     const money = (rows: MoneyRow[]) =>
@@ -203,6 +205,7 @@ export class ExecutiveIntelligenceService {
         funnel,
         renewalsTrend,
         mrrHistory,
+        paymentMethods,
       },
     };
   }
@@ -1243,6 +1246,60 @@ export class ExecutiveIntelligenceService {
     return this.raw<MoneyRow>(
       Prisma.sql`SELECT s."currency", SUM(s."total")::numeric AS amount, COUNT(*)::bigint AS count FROM "Sale" s WHERE ${Prisma.join(parts, ' AND ')} GROUP BY s."currency" ORDER BY s."currency"`,
     );
+  }
+
+  private async paymentMoney(
+    org: string,
+    from: Date,
+    to: Date,
+    query: IntelligenceQueryDto,
+  ): Promise<MoneyRow[]> {
+    const saleParts = this.salesFilters(org, query);
+    return this.raw<MoneyRow>(
+      Prisma.sql`SELECT p."currency", SUM(p."netAmount" - p."refundedAmount")::numeric AS amount, COUNT(*)::bigint AS count FROM "Payment" p JOIN "Sale" s ON s."organizationId" = p."organizationId" AND s."id" = p."saleId" WHERE ${Prisma.join(
+        [
+          ...saleParts,
+          Prisma.sql`p."organizationId" = ${org}::uuid`,
+          Prisma.sql`p."deletedAt" IS NULL`,
+          Prisma.sql`p."status" IN ('CONFIRMED', 'REFUNDED')`,
+          Prisma.sql`p."paymentDate" >= ${from}`,
+          Prisma.sql`p."paymentDate" < ${to}`,
+        ],
+        ' AND ',
+      )} GROUP BY p."currency" ORDER BY p."currency"`,
+    );
+  }
+
+  private async paymentMethods(
+    org: string,
+    range: { from: Date; to: Date },
+    query: IntelligenceQueryDto,
+  ): Promise<Array<Record<string, unknown>>> {
+    const saleParts = this.salesFilters(org, query);
+    const rows = await this.raw<{
+      method: string;
+      currency: string;
+      amount: string | number | Prisma.Decimal;
+      count: string | bigint;
+    }>(
+      Prisma.sql`SELECT p."method", p."currency", SUM(p."netAmount" - p."refundedAmount")::numeric AS amount, COUNT(*)::bigint AS count FROM "Payment" p JOIN "Sale" s ON s."organizationId" = p."organizationId" AND s."id" = p."saleId" WHERE ${Prisma.join(
+        [
+          ...saleParts,
+          Prisma.sql`p."organizationId" = ${org}::uuid`,
+          Prisma.sql`p."deletedAt" IS NULL`,
+          Prisma.sql`p."status" IN ('CONFIRMED', 'REFUNDED')`,
+          Prisma.sql`p."paymentDate" >= ${range.from}`,
+          Prisma.sql`p."paymentDate" < ${range.to}`,
+        ],
+        ' AND ',
+      )} GROUP BY p."method", p."currency" ORDER BY amount DESC`,
+    );
+    return rows.map((row) => ({
+      method: row.method,
+      currency: row.currency,
+      amount: decimalValue(row.amount),
+      count: numberValue(row.count),
+    }));
   }
 
   private async mrr(org: string, query: IntelligenceQueryDto): Promise<MoneyRow[]> {

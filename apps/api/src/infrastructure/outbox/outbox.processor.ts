@@ -36,6 +36,7 @@ export class OutboxProcessor implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
+    if (process.env.NODE_ENV === 'test') return;
     void this.processAvailable();
     this.interval = setInterval(() => void this.processAvailable(), 1_000);
     this.interval.unref();

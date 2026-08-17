@@ -135,20 +135,16 @@ export function ProvidersPage(): React.ReactElement {
 export function FulfillmentPage(): React.ReactElement {
   const columns: ColumnDef<Fulfillment, unknown>[] = [
     {
-      accessorKey: 'id',
+      accessorKey: 'status',
       header: 'Fulfillment',
-      cell: ({ row }) => (
-        <span className="font-mono text-xs font-bold text-brand-600">
-          #{row.original.id.slice(0, 8)}
-        </span>
+      cell: () => (
+        <span className="font-mono text-xs font-bold text-brand-600">Entrega operativa</span>
       ),
     },
     {
-      accessorKey: 'saleId',
+      accessorKey: 'mode',
       header: 'Venta',
-      cell: ({ row }) => (
-        <span className="font-mono text-xs text-slate-500">#{row.original.saleId.slice(0, 8)}</span>
-      ),
+      cell: () => <span className="text-xs text-slate-500">Venta comercial</span>,
     },
     { accessorKey: 'mode', header: 'Modo', cell: ({ row }) => <span>{row.original.mode}</span> },
     {
@@ -180,22 +176,16 @@ export function FulfillmentPage(): React.ReactElement {
 export function TrialsPage(): React.ReactElement {
   const columns: ColumnDef<Trial, unknown>[] = [
     {
-      accessorKey: 'id',
+      accessorKey: 'status',
       header: 'Trial',
-      cell: ({ row }) => (
-        <span className="font-mono text-xs font-bold text-brand-600">
-          #{row.original.id.slice(0, 8)}
-        </span>
+      cell: () => (
+        <span className="font-mono text-xs font-bold text-brand-600">Demo comercial</span>
       ),
     },
     {
-      accessorKey: 'contactId',
+      accessorKey: 'status',
       header: 'Contacto',
-      cell: ({ row }) => (
-        <span className="font-mono text-xs text-slate-500">
-          #{row.original.contactId.slice(0, 8)}
-        </span>
-      ),
+      cell: () => <span className="font-mono text-xs text-slate-500">Cliente comercial</span>,
     },
     {
       accessorKey: 'durationMinutes',
@@ -236,22 +226,16 @@ export function ActivationsPage(): React.ReactElement {
   const query = useQuery({ queryKey: ['activations'], queryFn: () => api.getActivations() });
   const columns: ColumnDef<Activation, unknown>[] = [
     {
-      accessorKey: 'id',
+      accessorKey: 'status',
       header: 'Activación',
-      cell: ({ row }) => (
-        <span className="font-mono text-xs font-bold text-brand-600">
-          #{row.original.id.slice(0, 8)}
-        </span>
+      cell: () => (
+        <span className="font-mono text-xs font-bold text-brand-600">Activación operativa</span>
       ),
     },
     {
-      accessorKey: 'fulfillmentId',
+      accessorKey: 'status',
       header: 'Fulfillment',
-      cell: ({ row }) => (
-        <span className="font-mono text-xs text-slate-500">
-          #{row.original.fulfillmentId.slice(0, 8)}
-        </span>
-      ),
+      cell: () => <span className="font-mono text-xs text-slate-500">Entrega asociada</span>,
     },
     {
       accessorKey: 'externalReference',
@@ -312,12 +296,12 @@ export function CredentialsPage(): React.ReactElement {
   });
   const columns: ColumnDef<CredentialRecord, unknown>[] = [
     {
-      accessorKey: 'id',
+      accessorKey: 'status',
       header: 'Registro',
-      cell: ({ row }) => (
+      cell: () => (
         <div>
           <p className="font-mono text-xs font-bold text-slate-800 dark:text-slate-100">
-            #{row.original.id.slice(0, 10)}
+            Credencial segura
           </p>
           <p className="mt-1 text-xs text-slate-400">Los secretos están enmascarados.</p>
         </div>

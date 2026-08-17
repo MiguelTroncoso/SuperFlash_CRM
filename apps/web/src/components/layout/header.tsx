@@ -17,7 +17,6 @@ const PAGE_LABELS: Record<string, string> = {
   collections: 'Cobros',
   contacts: 'Contactos',
   credentials: 'Credenciales',
-  customers: 'Customer 360',
   fulfillment: 'Fulfillment',
   'my-day': 'Mi Día',
   leads: 'Leads',

@@ -246,6 +246,11 @@ export const api = {
   updateSale: (id: string, body: JsonRecord) =>
     request<Sale>(`/sales/${id}`, { method: 'PATCH', ...jsonBody(body) }),
   deleteSale: (id: string) => request<void>(`/sales/${id}`, { method: 'DELETE' }),
+  createRenewal: (subscriptionId: string) =>
+    request<JsonRecord>(`/renewals/from-subscription/${subscriptionId}`, {
+      method: 'POST',
+      ...jsonBody({}),
+    }),
   createPayment: (saleId: string, body: JsonRecord) =>
     request<JsonRecord>(`/sales/${saleId}/payments`, { method: 'POST', ...jsonBody(body) }),
   getPayments: (query = '') =>
@@ -569,6 +574,9 @@ export const api = {
   },
   getFinancialDashboard: (query = '') =>
     request<FinancialDashboard>(`/financial/dashboard${query}`),
+  getCommissionConfigs: () => request<JsonRecord[]>('/commissions'),
+  updateCommissionConfig: (body: JsonRecord) =>
+    request<JsonRecord>('/commissions', { method: 'PATCH', ...jsonBody(body) }),
   getMarketingCampaigns: (query = '') =>
     request<Paginated<MarketingCampaign>>(`/marketing/campaigns${query}`),
   createMarketingCampaign: (body: JsonRecord) =>

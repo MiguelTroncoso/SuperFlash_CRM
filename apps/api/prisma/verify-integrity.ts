@@ -529,6 +529,7 @@ async function verifyIntegrity(): Promise<void> {
     const sale = await prisma.sale.create({
       data: {
         organizationId: organizationA.id,
+        saleNumber: `VERIFY-${organizationA.id.slice(0, 8)}-001`,
         contactId: manualContactA.id,
         opportunityId: opportunity.id,
         userId: userA.id,
@@ -543,6 +544,7 @@ async function verifyIntegrity(): Promise<void> {
       prisma.sale.create({
         data: {
           organizationId: organizationA.id,
+          saleNumber: `VERIFY-${organizationA.id.slice(0, 8)}-002`,
           contactId: manualContactA.id,
           opportunityId: opportunity.id,
           status: SaleStatus.PENDING,
@@ -556,6 +558,7 @@ async function verifyIntegrity(): Promise<void> {
     await prisma.sale.create({
       data: {
         organizationId: organizationA.id,
+        saleNumber: `VERIFY-${organizationA.id.slice(0, 8)}-003`,
         contactId: manualContactA.id,
         opportunityId: opportunity.id,
         status: SaleStatus.CANCELLED,

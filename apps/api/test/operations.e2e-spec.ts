@@ -556,6 +556,7 @@ async function createFixture(prisma: PrismaClient): Promise<Fixture> {
     data: {
       organizationId: organizationA.id,
       contactId: contactA.id,
+      saleNumber: 'TEST-OPERATIONS-SALE',
       status: SaleStatus.CONFIRMED,
       subtotal: '25.00',
       discountAmount: 0,

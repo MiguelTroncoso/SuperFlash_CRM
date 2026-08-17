@@ -30,7 +30,6 @@ const METHODS = [
 
 interface PaymentFormValues {
   amount: string;
-  feeAmount: string;
   method: string;
 }
 
@@ -55,7 +54,7 @@ function PaymentDrawer({
   readonly onClose: () => void;
 }): React.ReactElement {
   const form = useForm<PaymentFormValues>({
-    defaultValues: { amount: '', feeAmount: '', method: 'MANUAL' },
+    defaultValues: { amount: '', method: 'MANUAL' },
   });
   const queryClient = useQueryClient();
   const toast = useToastStore((state) => state.push);
@@ -64,7 +63,6 @@ function PaymentDrawer({
       if (!sale) throw new Error('Venta no seleccionada.');
       const payment = await api.createPayment(sale.id, {
         amount: values.amount,
-        ...(values.feeAmount.trim() ? { feeAmount: values.feeAmount.trim() } : {}),
         currency: sale.currency,
         method: values.method,
       });
@@ -124,10 +122,6 @@ function PaymentDrawer({
                 </option>
               ))}
             </Select>
-          </label>
-          <label className="space-y-1 text-sm font-semibold text-content-primary">
-            <span>Comisión del medio (opcional)</span>
-            <Input inputMode="decimal" min={0} step="0.01" {...form.register('feeAmount')} />
           </label>
           <div className="flex justify-end gap-2">
             <Button onClick={onClose} type="button" variant="outline">
@@ -252,6 +246,7 @@ export function CollectionsPage(): React.ReactElement {
                 <thead className="bg-surface-muted text-xs uppercase tracking-wide text-content-muted">
                   <tr>
                     <th className="px-4 py-3">Cliente</th>
+                    <th className="px-4 py-3">Producto</th>
                     <th className="px-4 py-3">Total</th>
                     <th className="px-4 py-3">Pagado</th>
                     <th className="px-4 py-3">Saldo</th>
@@ -266,6 +261,9 @@ export function CollectionsPage(): React.ReactElement {
                     <tr key={sale.id}>
                       <td className="px-4 py-3 font-semibold text-content-primary">
                         {sale.contact?.name ?? 'Cliente sin nombre'}
+                      </td>
+                      <td className="px-4 py-3 text-content-secondary">
+                        {String(sale.items[0]?.productName ?? '—')}
                       </td>
                       <td className="px-4 py-3 font-bold text-content-primary">
                         {money(sale.currency, amount(sale.total))}
@@ -305,7 +303,7 @@ export function CollectionsPage(): React.ReactElement {
                           {sale.contact ? (
                             <a
                               className="inline-flex items-center rounded-xl px-2 py-2 text-xs font-bold text-brand-600 hover:bg-surface-muted"
-                              href={`/customers/${sale.contact.id}`}
+                              href={`/sales?contactId=${sale.contact.id}`}
                             >
                               Recordatorio
                             </a>
@@ -324,6 +322,7 @@ export function CollectionsPage(): React.ReactElement {
                   <thead className="bg-surface-muted text-xs uppercase tracking-wide text-content-muted">
                     <tr>
                       <th className="px-4 py-3">Cliente</th>
+                      <th className="px-4 py-3">Producto</th>
                       <th className="px-4 py-3">Fecha</th>
                       <th className="px-4 py-3">Monto</th>
                       <th className="px-4 py-3">Método</th>
@@ -337,6 +336,9 @@ export function CollectionsPage(): React.ReactElement {
                         <tr key={String(payment.id)}>
                           <td className="px-4 py-3 font-semibold text-content-primary">
                             {sale?.contact?.name ?? 'Cliente'}
+                          </td>
+                          <td className="px-4 py-3 text-content-secondary">
+                            {String(sale?.items[0]?.productName ?? '—')}
                           </td>
                           <td className="px-4 py-3 text-content-secondary">
                             {payment.paymentDate
