@@ -40,6 +40,7 @@ import { ExecutiveIntelligenceModule } from './modules/executive-intelligence/ex
 import { MarketingModule } from './modules/marketing/marketing.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { CommissionsModule } from './modules/commissions/commissions.module';
+import { HealthModule } from './modules/health/health.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { CommissionsModule } from './modules/commissions/commissions.module';
         return typeof request.ip === 'string' ? request.ip : 'unknown-ip';
       },
     }),
+    HealthModule,
     PrismaModule,
     EventsModule,
     AuthModule,

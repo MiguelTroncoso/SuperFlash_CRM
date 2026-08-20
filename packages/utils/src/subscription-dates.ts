@@ -13,11 +13,7 @@ function addCalendarMonths(start: Date, months: number): Date {
 }
 
 export function addSubscriptionDuration(start: Date, durationDays: number): Date {
-  if (durationDays === 30) {
-    const result = new Date(start);
-    result.setUTCDate(result.getUTCDate() + 30);
-    return result;
-  }
+  if (durationDays === 30) return addCalendarMonths(start, 1);
   if (durationDays === 90) return addCalendarMonths(start, 3);
   if (durationDays === 180) return addCalendarMonths(start, 6);
   if (durationDays === 365) return addCalendarMonths(start, 12);

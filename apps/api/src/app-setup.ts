@@ -8,7 +8,7 @@ import { HttpExceptionFilter } from './infrastructure/http/http-exception.filter
 import { requestCorrelationMiddleware } from './infrastructure/http/request-correlation';
 
 export function configureApplication(app: INestApplication, configuration: AppConfiguration): void {
-  app.setGlobalPrefix('api/v1');
+  app.setGlobalPrefix('api/v1', { exclude: ['health'] });
   app.use(requestCorrelationMiddleware);
   app.use(helmet());
   app.use(cookieParser());

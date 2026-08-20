@@ -363,6 +363,8 @@ export class SalesService {
           id: true,
           status: true,
           userId: true,
+          contactId: true,
+          soldAt: true,
           version: true,
           subtotal: true,
           total: true,
@@ -376,12 +378,133 @@ export class SalesService {
       });
       if (!current) this.notFound(COMMERCIAL_ERROR_CODES.SALE_NOT_FOUND, 'La venta no existe.');
       this.access.assertMutate(context.user, current.userId);
-      if (current.status !== SaleStatus.DRAFT && current.status !== SaleStatus.PENDING) {
+      if (current.status === SaleStatus.CANCELLED) {
         throw commercialException(
           HttpStatus.CONFLICT,
           COMMERCIAL_ERROR_CODES.INVALID_STATE,
-          'Solo se pueden modificar ventas en borrador o pendientes.',
+          'No se puede modificar una venta cancelada.',
         );
+      }
+      if (current.status === SaleStatus.CONFIRMED || current.status === SaleStatus.FULFILLED) {
+        if (
+          dto.unitPrice !== undefined ||
+          dto.discountAmount !== undefined ||
+          dto.taxAmount !== undefined
+        ) {
+          throw commercialException(
+            HttpStatus.UNPROCESSABLE_ENTITY,
+            COMMERCIAL_ERROR_CODES.INVALID_STATE,
+            'Los importes económicos de una venta confirmada son inmutables. Solo se permite actualizar datos operativos (contacto, notas, fechas, duración).',
+          );
+        }
+        let nextContactId = current.contactId;
+        if (dto.contactId && dto.contactId !== current.contactId) {
+          const contactExists = await transaction.contact.findFirst({
+            where: {
+              id: dto.contactId,
+              organizationId: context.user.organizationId,
+              deletedAt: null,
+            },
+            select: { id: true },
+          });
+          if (!contactExists) {
+            throw commercialException(
+              HttpStatus.NOT_FOUND,
+              COMMERCIAL_ERROR_CODES.NOT_FOUND,
+              'El contacto especificado no existe.',
+            );
+          }
+          nextContactId = dto.contactId;
+          await transaction.subscription.updateMany({
+            where: { organizationId: context.user.organizationId, saleId: id, deletedAt: null },
+            data: { contactId: nextContactId },
+          });
+        }
+        if (dto.subscriptionDurationDays !== undefined) {
+          const subscriptions = await transaction.subscription.findMany({
+            where: { organizationId: context.user.organizationId, saleId: id, deletedAt: null },
+          });
+          for (const sub of subscriptions) {
+            const startedAt = sub.startsAt;
+            const newEnd = addSubscriptionDuration(startedAt, dto.subscriptionDurationDays);
+            await transaction.subscription.update({
+              where: {
+                organizationId_id: { organizationId: context.user.organizationId, id: sub.id },
+              },
+              data: {
+                currentPeriodEnd: newEnd,
+                nextBillingAt: newEnd,
+              },
+            });
+            await transaction.renewal.updateMany({
+              where: {
+                organizationId: context.user.organizationId,
+                subscriptionId: sub.id,
+                status: RenewalStatus.PENDING,
+                deletedAt: null,
+              },
+              data: {
+                dueAt: newEnd,
+                periodStart: startedAt,
+                periodEnd: newEnd,
+              },
+            });
+          }
+        }
+        await transaction.sale.update({
+          where: { organizationId_id: { organizationId: context.user.organizationId, id } },
+          data: {
+            contactId: nextContactId,
+            note: dto.note === undefined ? current.note : dto.note?.trim() || null,
+            soldAt:
+              dto.soldAt === undefined ? current.soldAt : dto.soldAt ? new Date(dto.soldAt) : null,
+            paymentDueAt:
+              dto.paymentDueAt === undefined
+                ? current.paymentDueAt
+                : dto.paymentDueAt
+                  ? new Date(dto.paymentDueAt)
+                  : null,
+            paymentMethod:
+              dto.paymentMethod === undefined ? current.paymentMethod : dto.paymentMethod,
+            version: { increment: 1 },
+          },
+        });
+        await transaction.activity.create({
+          data: {
+            organizationId: context.user.organizationId,
+            userId: context.user.userId,
+            saleId: id,
+            type: ActivityType.SYSTEM,
+            title: 'Venta actualizada (corrección operativa)',
+            metadata: jsonObject({ status: current.status }),
+            requestId: context.metadata.requestId ?? null,
+          },
+        });
+        await this.audit.recordWithClient(transaction, {
+          organizationId: context.user.organizationId,
+          userId: context.user.userId,
+          action: 'SALE_OPERATIONAL_UPDATED',
+          tableName: 'Sale',
+          recordId: id,
+          previousValue: jsonObject({
+            contactId: current.contactId,
+            note: current.note,
+            soldAt: current.soldAt?.toISOString() ?? null,
+            paymentDueAt: current.paymentDueAt?.toISOString() ?? null,
+            paymentMethod: current.paymentMethod,
+          }),
+          newValue: jsonObject({
+            contactId: nextContactId,
+            note: dto.note ?? current.note,
+            soldAt: dto.soldAt ?? current.soldAt?.toISOString() ?? null,
+            paymentDueAt: dto.paymentDueAt ?? current.paymentDueAt?.toISOString() ?? null,
+            paymentMethod: dto.paymentMethod ?? current.paymentMethod,
+            subscriptionDurationDays: dto.subscriptionDurationDays ?? null,
+          }),
+          ip: context.metadata.ipAddress,
+          requestId: context.metadata.requestId,
+        });
+        return;
       }
       const saleItems = await transaction.saleItem.findMany({
         where: { organizationId: context.user.organizationId, saleId: id, deletedAt: null },
@@ -1000,7 +1123,7 @@ export class SalesService {
   ): { billingPeriodUnit: BillingPeriodUnit | null; billingPeriodCount: number | null } {
     if (durationDays !== undefined) {
       if (durationDays === 30)
-        return { billingPeriodUnit: BillingPeriodUnit.DAY, billingPeriodCount: 30 };
+        return { billingPeriodUnit: BillingPeriodUnit.MONTH, billingPeriodCount: 1 };
       if (durationDays === 90)
         return { billingPeriodUnit: BillingPeriodUnit.MONTH, billingPeriodCount: 3 };
       if (durationDays === 180)
@@ -1021,7 +1144,7 @@ export class SalesService {
     unit: BillingPeriodUnit;
     count: number;
   } {
-    if (durationDays === 30) return { unit: BillingPeriodUnit.DAY, count: 30 };
+    if (durationDays === 30) return { unit: BillingPeriodUnit.MONTH, count: 1 };
     if (durationDays === 90) return { unit: BillingPeriodUnit.MONTH, count: 3 };
     if (durationDays === 180) return { unit: BillingPeriodUnit.MONTH, count: 6 };
     return { unit: BillingPeriodUnit.YEAR, count: 1 };

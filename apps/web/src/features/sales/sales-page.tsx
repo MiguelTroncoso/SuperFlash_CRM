@@ -101,6 +101,21 @@ export function SalesPage(): React.ReactElement {
   const update = useMutation({
     mutationFn: () => {
       if (!selected) throw new Error('Venta no seleccionada.');
+      const isConfirmed = selected.status === 'CONFIRMED' || selected.status === 'FULFILLED';
+      if (isConfirmed) {
+        return api.updateSale(selected.id, {
+          paymentDueAt:
+            editValues.paidNow || !editValues.paymentDueAt
+              ? null
+              : `${editValues.paymentDueAt}T12:00:00.000Z`,
+          paymentMethod: editValues.paymentMethod,
+          paidNow: editValues.paidNow,
+          note: editValues.note,
+          ...(editValues.subscriptionDurationDays
+            ? { subscriptionDurationDays: Number(editValues.subscriptionDurationDays) }
+            : {}),
+        });
+      }
       const item = selected.items[0] as Record<string, unknown> | undefined;
       return api.updateSale(selected.id, {
         ...(item?.id && editValues.unitPrice
@@ -505,6 +520,10 @@ export function SalesPage(): React.ReactElement {
                       Eliminar
                     </Button>
                   </>
+                ) : selected.status !== 'CANCELLED' ? (
+                  <Button onClick={openEditor} variant="outline">
+                    Editar
+                  </Button>
                 ) : null}
                 {selected.status !== 'CANCELLED' ? (
                   <Button
@@ -539,10 +558,18 @@ export function SalesPage(): React.ReactElement {
           ) : null}
         </Drawer>
         <Drawer
-          description="Solo se editan ventas en borrador o pendientes; las confirmadas conservan su snapshot económico."
+          description={
+            selected?.status === 'CONFIRMED' || selected?.status === 'FULFILLED'
+              ? 'Corrección operativa: los importes económicos son inmutables. Puedes corregir notas, método de pago, fecha compromiso y duración.'
+              : 'Modifica precios, descuentos, fechas y condiciones comerciales antes de confirmar.'
+          }
           onClose={() => setEditing(false)}
           open={editing}
-          title="Editar venta"
+          title={
+            selected?.status === 'CONFIRMED' || selected?.status === 'FULFILLED'
+              ? 'Corregir venta (operativo)'
+              : 'Editar venta'
+          }
         >
           <form
             className="space-y-4"
@@ -551,30 +578,42 @@ export function SalesPage(): React.ReactElement {
               update.mutate();
             }}
           >
-            <label className="block space-y-1 text-sm font-semibold text-content-primary">
-              <span>Precio del ítem</span>
-              <Input
-                inputMode="decimal"
-                min="0"
-                step="0.01"
-                value={editValues.unitPrice}
-                onChange={(event) =>
-                  setEditValues((current) => ({ ...current, unitPrice: event.target.value }))
-                }
-              />
-            </label>
-            <label className="block space-y-1 text-sm font-semibold text-content-primary">
-              <span>Descuento</span>
-              <Input
-                inputMode="decimal"
-                min="0"
-                step="0.01"
-                value={editValues.discountAmount}
-                onChange={(event) =>
-                  setEditValues((current) => ({ ...current, discountAmount: event.target.value }))
-                }
-              />
-            </label>
+            {selected?.status === 'DRAFT' || selected?.status === 'PENDING' ? (
+              <>
+                <label className="block space-y-1 text-sm font-semibold text-content-primary">
+                  <span>Precio del ítem</span>
+                  <Input
+                    inputMode="decimal"
+                    min="0"
+                    step="0.01"
+                    value={editValues.unitPrice}
+                    onChange={(event) =>
+                      setEditValues((current) => ({ ...current, unitPrice: event.target.value }))
+                    }
+                  />
+                </label>
+                <label className="block space-y-1 text-sm font-semibold text-content-primary">
+                  <span>Descuento</span>
+                  <Input
+                    inputMode="decimal"
+                    min="0"
+                    step="0.01"
+                    value={editValues.discountAmount}
+                    onChange={(event) =>
+                      setEditValues((current) => ({
+                        ...current,
+                        discountAmount: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+              </>
+            ) : (
+              <div className="rounded-xl border border-border-subtle bg-surface-muted p-3 text-xs text-content-muted">
+                Los importes de precio y descuento son históricos e inmutables para esta venta
+                confirmada.
+              </div>
+            )}
             <label className="block space-y-1 text-sm font-semibold text-content-primary">
               <span>Método de pago</span>
               <Select

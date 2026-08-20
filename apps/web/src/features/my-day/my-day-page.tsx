@@ -11,6 +11,16 @@ import { MetricCard } from '@/components/ui/metric-card';
 import { api } from '@/lib/api-client';
 import { arrayValue, numberValue, stringValue } from '@/lib/utils';
 
+function formatMoney(amount: unknown, currency: unknown): string {
+  const num = Number(amount);
+  if (!Number.isFinite(num)) return '';
+  const curr = String(currency || '');
+  if (curr === 'CLP') {
+    return `$${Math.round(num).toLocaleString('es-CL')}`;
+  }
+  return `${curr} ${num.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 const OPERATING_SECTIONS = [
   ['pendingCollections', 'Cobros pendientes', '/collections', '$'],
   ['pendingActivations', 'Activaciones', '/activations', '✓'],
@@ -68,17 +78,18 @@ export function MyDayPage(): React.ReactElement {
                       >
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-content-primary">
-                            {stringValue(row.title) ||
+                            {stringValue(row.contactName) ||
+                              stringValue(row.title) ||
                               stringValue(row.reference, 'Actividad comercial')}
                           </p>
                           <p className="mt-1 truncate text-xs text-content-muted">
                             {stringValue(row.productName) ||
                               stringValue(row.detail) ||
-                              stringValue(row.dueAt)}
+                              (row.dueAt ? String(row.dueAt).slice(0, 10) : '')}
                           </p>
                           {row.balance ? (
                             <p className="mt-1 text-xs font-bold text-amber-600">
-                              Saldo {stringValue(row.currency)} {stringValue(row.balance)}
+                              Saldo {formatMoney(row.balance, row.currency)}
                             </p>
                           ) : null}
                         </div>

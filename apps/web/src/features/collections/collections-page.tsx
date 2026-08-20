@@ -58,6 +58,10 @@ function PaymentDrawer({
   });
   const queryClient = useQueryClient();
   const toast = useToastStore((state) => state.push);
+  const commissionConfigs = useQuery({
+    queryKey: ['commission-configs'],
+    queryFn: () => api.getCommissionConfigs(),
+  });
   const registerPayment = useMutation({
     mutationFn: async (values: PaymentFormValues) => {
       if (!sale) throw new Error('Venta no seleccionada.');
@@ -123,6 +127,35 @@ function PaymentDrawer({
               ))}
             </Select>
           </label>
+          {(() => {
+            const enteredAmount = amount(form.watch('amount'));
+            const selectedMethod = form.watch('method');
+            const configs = commissionConfigs.data ?? [];
+            const config = configs.find((c) => c.method === selectedMethod && c.active);
+            if (!config || enteredAmount <= 0) return null;
+            const percentage = Number(config.percentage) || 0;
+            const fixed = Number(config.fixedFee) || 0;
+            const fee = (enteredAmount * percentage) / 100 + fixed;
+            const net = Math.max(0, enteredAmount - fee);
+            return (
+              <div className="rounded-xl border border-border-subtle bg-surface-muted p-3 text-xs space-y-1">
+                <div className="flex justify-between text-content-secondary">
+                  <span>Bruto recibido:</span>
+                  <span className="font-semibold">{money(sale.currency, enteredAmount)}</span>
+                </div>
+                <div className="flex justify-between text-amber-600">
+                  <span>
+                    Comisión estimada ({percentage}% + {fixed}):
+                  </span>
+                  <span className="font-semibold">- {money(sale.currency, fee)}</span>
+                </div>
+                <div className="flex justify-between text-content-primary font-bold border-t border-border-subtle pt-1">
+                  <span>Ingreso neto estimado:</span>
+                  <span>{money(sale.currency, net)}</span>
+                </div>
+              </div>
+            );
+          })()}
           <div className="flex justify-end gap-2">
             <Button onClick={onClose} type="button" variant="outline">
               Cancelar

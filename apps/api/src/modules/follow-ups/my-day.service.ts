@@ -477,17 +477,18 @@ export class MyDayService {
           ...activations.map((item) => ({
             id: item.id,
             status: item.status,
-            reference: item.fulfillmentId,
+            reference: 'Activación en curso',
             providerId: item.providerId,
             dueAt: item.createdAt,
+            detail: 'Pendiente de entrega',
           })),
           ...subscriptionActivationTasks.map((item) => ({
             id: `sale:${item.saleId}:${item.saleItemId}`,
             status: 'PENDING',
-            reference: item.saleId,
+            reference: item.productNameSnapshot || 'Activación de suscripción',
             providerId: null,
             dueAt: item.createdAt,
-            detail: item.productNameSnapshot,
+            detail: item.productNameSnapshot || 'Suscripción pendiente',
           })),
         ],
         activations.length + subscriptionActivationTotal,
@@ -533,7 +534,7 @@ export class MyDayService {
           reference: item.fulfillmentId,
           providerId: null,
           dueAt: item.createdAt,
-          detail: `attempt-${item.attemptNumber}`,
+          detail: `Intento #${item.attemptNumber}`,
         })),
         retries.length,
         limit,
@@ -555,7 +556,7 @@ export class MyDayService {
           reference: item.name,
           providerId: null,
           dueAt: null,
-          detail: `${item.stockQuantity}/${item.stockMinimum}`,
+          detail: `Stock disponible: ${item.stockQuantity} (Mínimo: ${item.stockMinimum})`,
         })),
         lowStock.length,
         limit,
@@ -622,29 +623,35 @@ export class MyDayService {
       ORDER BY "paymentDueAt" NULLS LAST, "id"
       LIMIT ${limit}
     `);
-    return rows.map((row) => ({
-      id: row.id,
-      saleId: row.id,
-      status: row.status,
-      contactId: row.contactId,
-      contactName:
+    return rows.map((row) => {
+      const contactName =
         [row.firstName, row.lastName].filter(Boolean).join(' ') ||
         row.phone ||
         row.email ||
-        'Cliente',
-      phone: row.phone,
-      email: row.email,
-      productName: row.productName,
-      currency: row.currency,
-      total: row.total,
-      paid: row.paid,
-      balance: row.balance,
-      paymentDueAt: row.paymentDueAt,
-      reference: row.id,
-      providerId: null,
-      dueAt: row.paymentDueAt,
-      detail: `${row.currency} ${row.balance}`,
-    }));
+        'Cliente';
+      return {
+        id: row.id,
+        saleId: row.id,
+        status: row.status,
+        contactId: row.contactId,
+        contactName,
+        title: contactName,
+        phone: row.phone,
+        email: row.email,
+        productName: row.productName,
+        currency: row.currency,
+        total: row.total,
+        paid: row.paid,
+        balance: row.balance,
+        paymentDueAt: row.paymentDueAt,
+        reference: row.productName || 'Venta comercial',
+        providerId: null,
+        dueAt: row.paymentDueAt,
+        detail: row.productName
+          ? `${row.productName} · Saldo ${row.currency} ${row.balance}`
+          : `Saldo ${row.currency} ${row.balance}`,
+      };
+    });
   }
 
   private pendingSubscriptionActivations(

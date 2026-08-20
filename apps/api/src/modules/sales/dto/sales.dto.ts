@@ -136,6 +136,11 @@ export class CreateSaleDto {
 
 export class UpdateSaleDto {
   @IsOptional()
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsUUID()
+  contactId?: string;
+
+  @IsOptional()
   @ApiPropertyOptional({ format: 'uuid', description: 'Ítem cuyo precio o duración se modifica.' })
   @IsUUID()
   itemId?: string;
@@ -160,6 +165,11 @@ export class UpdateSaleDto {
   @IsString()
   @MaxLength(4000)
   note?: string;
+
+  @IsOptional()
+  @ApiPropertyOptional({ format: 'date-time' })
+  @IsDateString()
+  soldAt?: string | null;
 
   @IsOptional()
   @ApiPropertyOptional({ format: 'date-time' })

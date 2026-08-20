@@ -52,4 +52,52 @@ describe('payment commission engine', () => {
       }),
     ).resolves.toEqual(new Prisma.Decimal('4.50'));
   });
+
+  it('guarantees grossAmount - feeAmount = netAmount', async () => {
+    const gross = new Prisma.Decimal('100.00');
+    const service = new CommissionsService(
+      {
+        paymentFeeConfig: {
+          findFirst: jest.fn().mockResolvedValue({
+            percentage: new Prisma.Decimal('5.40'),
+            fixedFee: new Prisma.Decimal('0.30'),
+            internationalPercentage: new Prisma.Decimal('0'),
+            conversionPercentage: new Prisma.Decimal('0'),
+          }),
+        },
+      } as never,
+      {} as never,
+    );
+
+    const fee = await service.calculate({
+      organizationId: 'organization-a',
+      method: PaymentMethod.PAYPAL,
+      grossAmount: gross,
+    });
+    // 100 * 0.054 + 0.30 = 5.70
+    expect(fee).toEqual(new Prisma.Decimal('5.70'));
+    const net = gross.sub(fee);
+    expect(net).toEqual(new Prisma.Decimal('94.30'));
+    expect(gross.sub(fee)).toEqual(net);
+  });
+
+  it('returns zero fee when no fee config exists for method', async () => {
+    const service = new CommissionsService(
+      {
+        paymentFeeConfig: {
+          findFirst: jest.fn().mockResolvedValue(null),
+        },
+      } as never,
+      {} as never,
+    );
+
+    const gross = new Prisma.Decimal('50.00');
+    const fee = await service.calculate({
+      organizationId: 'organization-a',
+      method: PaymentMethod.TRANSFER,
+      grossAmount: gross,
+    });
+    expect(fee).toEqual(new Prisma.Decimal(0));
+    expect(gross.sub(fee)).toEqual(gross);
+  });
 });

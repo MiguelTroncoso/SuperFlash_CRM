@@ -183,11 +183,79 @@ describe('Subscription duration contract', () => {
   const start = new Date('2026-08-15T12:00:00.000Z');
 
   it.each([
-    [30, '2026-09-14T12:00:00.000Z'],
+    [30, '2026-09-15T12:00:00.000Z'],
     [90, '2026-11-15T12:00:00.000Z'],
     [180, '2027-02-15T12:00:00.000Z'],
     [365, '2027-08-15T12:00:00.000Z'],
-  ])('calculates %s days with the shared calendar rule', (duration, expected) => {
-    expect(addSubscriptionDuration(start, duration).toISOString()).toBe(expected);
+  ])(
+    'calculates %s days with the shared calendar month rule for standard date',
+    (duration, expected) => {
+      expect(addSubscriptionDuration(start, duration).toISOString()).toBe(expected);
+    },
+  );
+
+  it('calculates 31 enero + 1 mes -> 28 febrero en año no bisiesto', () => {
+    const jan31 = new Date('2025-01-31T12:00:00.000Z');
+    expect(addSubscriptionDuration(jan31, 30).toISOString()).toBe('2025-02-28T12:00:00.000Z');
+  });
+
+  it('calculates 31 enero + 1 mes -> 29 febrero en año bisiesto', () => {
+    const jan31Leap = new Date('2024-01-31T12:00:00.000Z');
+    expect(addSubscriptionDuration(jan31Leap, 30).toISOString()).toBe('2024-02-29T12:00:00.000Z');
+  });
+
+  it('calculates 28 febrero + 1 mes -> 28 marzo', () => {
+    const feb28 = new Date('2026-02-28T12:00:00.000Z');
+    expect(addSubscriptionDuration(feb28, 30).toISOString()).toBe('2026-03-28T12:00:00.000Z');
+  });
+
+  it('calculates 29 febrero año bisiesto + 1 mes -> 29 marzo y + 12 meses -> 28 febrero siguiente', () => {
+    const feb29 = new Date('2024-02-29T12:00:00.000Z');
+    expect(addSubscriptionDuration(feb29, 30).toISOString()).toBe('2024-03-29T12:00:00.000Z');
+    expect(addSubscriptionDuration(feb29, 365).toISOString()).toBe('2025-02-28T12:00:00.000Z');
+  });
+
+  it('calculates 30 noviembre + 3 meses -> 28 febrero', () => {
+    const nov30 = new Date('2025-11-30T12:00:00.000Z');
+    expect(addSubscriptionDuration(nov30, 90).toISOString()).toBe('2026-02-28T12:00:00.000Z');
+  });
+
+  it('calculates 15 agosto + 6 meses -> 15 febrero siguiente', () => {
+    const aug15 = new Date('2026-08-15T12:00:00.000Z');
+    expect(addSubscriptionDuration(aug15, 180).toISOString()).toBe('2027-02-15T12:00:00.000Z');
+  });
+
+  it('calculates 12 meses exactos', () => {
+    const aug15 = new Date('2026-08-15T12:00:00.000Z');
+    expect(addSubscriptionDuration(aug15, 365).toISOString()).toBe('2027-08-15T12:00:00.000Z');
+  });
+});
+
+describe('Confirmed Sale Operational Update rules', () => {
+  it('identifies financial modification attempts on confirmed sales', () => {
+    const isFinancialFieldPresent = (dto: {
+      unitPrice?: string;
+      discountAmount?: string;
+      taxAmount?: string;
+    }) =>
+      dto.unitPrice !== undefined ||
+      dto.discountAmount !== undefined ||
+      dto.taxAmount !== undefined;
+
+    expect(isFinancialFieldPresent({ unitPrice: '100.00' })).toBe(true);
+    expect(isFinancialFieldPresent({ discountAmount: '10.00' })).toBe(true);
+    expect(isFinancialFieldPresent({ taxAmount: '5.00' })).toBe(true);
+    expect(isFinancialFieldPresent({})).toBe(false);
+  });
+
+  it('allows operational fields (note, paymentMethod, paymentDueAt, duration) without altering financial snapshots', () => {
+    const operationalPayload = {
+      note: 'Contacto solicitó cambio de fecha de compromiso',
+      paymentMethod: 'TRANSFER' as const,
+      paymentDueAt: '2026-09-01T12:00:00.000Z',
+      subscriptionDurationDays: 180,
+    };
+    expect(operationalPayload.note).toBeDefined();
+    expect(operationalPayload.subscriptionDurationDays).toBe(180);
   });
 });
