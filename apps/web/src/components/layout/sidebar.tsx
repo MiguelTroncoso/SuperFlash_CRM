@@ -20,7 +20,6 @@ const sections: { label: string; items: NavItem[] }[] = [
     label: 'Operación diaria',
     items: [
       { label: 'Dashboard', href: '/', icon: '⌂' },
-      { label: 'Operación diaria', href: '/operations', icon: '▣', permission: 'operations.read' },
       { label: 'Mi Día', href: '/my-day', icon: '◷', permission: 'followups.read' },
       { label: 'Ventas', href: '/sales', icon: '↗', permission: 'sales.read' },
       { label: 'Cobros', href: '/collections', icon: '$', permission: 'payments.read' },

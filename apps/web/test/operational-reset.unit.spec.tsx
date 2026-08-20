@@ -174,7 +174,6 @@ describe('operational CRM reset', () => {
     render(<Sidebar />);
     for (const label of [
       'Dashboard',
-      'Operación diaria',
       'Mi Día',
       'Ventas',
       'Cobros',
@@ -185,6 +184,7 @@ describe('operational CRM reset', () => {
     ]) {
       expect(screen.getByRole('link', { name: label })).toBeInTheDocument();
     }
+    expect(screen.queryByRole('link', { name: 'Operación diaria' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'WhatsApp' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Revenue Intelligence' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Contactos' })).not.toBeInTheDocument();

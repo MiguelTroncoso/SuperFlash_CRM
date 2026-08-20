@@ -15,9 +15,22 @@ import { useToastStore } from '@/components/ui/toast';
 import { api, queryString } from '@/lib/api-client';
 import type { DailyMetric, JsonRecord } from '@/lib/types';
 
+function formatMoneyItem(item?: { currency: string; amount: string } | null): string {
+  if (!item) return '—';
+  const num = Number(item.amount);
+  if (!Number.isFinite(num)) return '—';
+  if (item.currency === 'CLP') {
+    return `$${Math.round(num).toLocaleString('es-CL')}`;
+  }
+  if (item.currency === 'USD') {
+    return `US$ ${num.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+  return `${item.currency} ${num.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 function money(items: Array<{ currency: string; amount: string }>): string {
   const item = items[0];
-  return item ? `${item.currency} ${Number(item.amount).toLocaleString('es-CL')}` : '—';
+  return formatMoneyItem(item);
 }
 
 function metric(value: number | string): string {
