@@ -132,9 +132,9 @@ describe('NewSaleDrawer catalog discovery', () => {
     const productSearch = screen.getByRole('combobox', { name: 'Producto' });
     fireEvent.change(productSearch, { target: { value: 'CHATGPT' } });
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /CHATGPT/ })).toBeInTheDocument(),
+      expect(screen.getByRole('option', { name: /CHATGPT/ })).toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByRole('button', { name: /CHATGPT/ }));
+    fireEvent.click(screen.getByRole('option', { name: /CHATGPT/ }));
 
     await waitFor(() => expect(screen.getByLabelText('Precio')).toHaveValue('15000.00'));
     expect(screen.getByDisplayValue('CLP')).toBeInTheDocument();
@@ -153,8 +153,8 @@ describe('NewSaleDrawer catalog discovery', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'Producto' }), {
       target: { value: 'SIN PRECIO' },
     });
-    await waitFor(() => expect(screen.getByRole('button', { name: /SIN PRECIO/ })).toBeDisabled());
-    expect(screen.getByRole('button', { name: /SIN PRECIO/ })).toHaveTextContent(
+    await waitFor(() => expect(screen.getByRole('option', { name: /SIN PRECIO/ })).toBeDisabled());
+    expect(screen.getByRole('option', { name: /SIN PRECIO/ })).toHaveTextContent(
       'Sin precio configurado',
     );
   });
@@ -172,9 +172,9 @@ describe('NewSaleDrawer catalog discovery', () => {
       target: { value: 'CHATGPT 2' },
     });
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /CHATGPT 2/ })).toBeInTheDocument(),
+      expect(screen.getByRole('option', { name: /CHATGPT 2/ })).toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByRole('button', { name: /CHATGPT 2/ }));
+    fireEvent.click(screen.getByRole('option', { name: /CHATGPT 2/ }));
 
     await waitFor(() =>
       expect(
