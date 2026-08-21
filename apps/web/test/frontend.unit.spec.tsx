@@ -172,8 +172,8 @@ describe('frontend foundation', () => {
     expect(document.body.style.overflow).toBe('');
   });
 
-  it('uses the shared ten-country catalog and detects prefix mismatch', () => {
-    expect(COUNTRIES).toHaveLength(10);
+  it('uses the shared 20-country catalog and detects prefix mismatch', () => {
+    expect(COUNTRIES).toHaveLength(20);
     expect(COUNTRIES.find((country) => country.code === 'CL')?.dialCode).toBe('+56');
     expect(phoneMatchesCountry('+56912345678', 'CL')).toBe(true);
     expect(phoneMatchesCountry('+573001234567', 'CL')).toBe(false);

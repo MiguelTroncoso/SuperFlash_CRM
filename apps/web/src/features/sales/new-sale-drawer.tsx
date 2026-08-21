@@ -1,7 +1,7 @@
 'use client';
 
 import { useForm } from 'react-hook-form';
-import { addSubscriptionDuration } from '@superflash/utils';
+import { addSubscriptionDuration, COUNTRIES } from '@superflash/utils';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -13,6 +13,7 @@ import { useToastStore } from '@/components/ui/toast';
 import { api, queryString } from '@/lib/api-client';
 import type { JsonRecord, PricingOption } from '@/lib/types';
 import { useAuthStore } from '@/lib/auth-store';
+import { useDebounce } from '@/hooks/use-debounce';
 
 interface SaleFormValues {
   contactId: string;
@@ -81,27 +82,45 @@ export function NewSaleDrawer({
   );
   const [contactSearch, setContactSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
+  const [showQuickClient, setShowQuickClient] = useState(false);
+  const [quickFirstName, setQuickFirstName] = useState('');
+  const [quickLastName, setQuickLastName] = useState('');
   const [quickPhone, setQuickPhone] = useState('');
   const [quickCountry, setQuickCountry] = useState('CL');
   const [pricingSelectionKey, setPricingSelectionKey] = useState('');
+
+  const debouncedContactSearch = useDebounce(contactSearch, 300);
+  const debouncedProductSearch = useDebounce(productSearch, 300);
+
   useEffect(() => {
     if (open && defaultContactId) form.setValue('contactId', defaultContactId);
   }, [defaultContactId, form, open]);
+
   const contacts = useQuery({
-    queryKey: ['contacts', 'new-sale', contactSearch],
+    queryKey: ['contacts', 'new-sale', debouncedContactSearch],
     queryFn: () =>
-      api.getContacts(queryString({ page: 1, limit: 50, search: contactSearch || undefined })),
+      api.getContacts(
+        queryString({
+          page: 1,
+          limit: 50,
+          search:
+            debouncedContactSearch.trim().length >= 2 ? debouncedContactSearch.trim() : undefined,
+        }),
+      ),
+    enabled: open,
   });
+
   const offers = useQuery({
-    queryKey: ['catalog-offers', 'new-sale', productSearch],
+    queryKey: ['catalog-offers', 'new-sale', debouncedProductSearch],
     queryFn: () =>
       api.getOffers(
         queryString({
           customerSegment: 'ANY',
-          search: productSearch.trim() || undefined,
+          search: debouncedProductSearch.trim() || undefined,
           limit: 100,
         }),
       ),
+    enabled: open,
   });
   const selectedOffer = (offers.data?.data ?? []).find(
     (offer) => offer.id === form.watch('productId'),
@@ -253,64 +272,149 @@ export function NewSaleDrawer({
         className="space-y-5"
         onSubmit={form.handleSubmit((values) => create.mutate({ values, confirm: false }))}
       >
-        <CreatableCombobox
-          createLabel="Crear cliente rápido"
-          emptyLabel="Limpiar cliente"
-          isLoading={contacts.isFetching}
-          label="Cliente"
-          onCreate={(value) => {
-            const [firstName, ...lastName] = value.trim().split(/\s+/);
-            void api
-              .createContact({
-                firstName,
-                ...(lastName.length ? { lastName: lastName.join(' ') } : {}),
-                ...(quickPhone.trim() ? { phone: quickPhone.trim() } : {}),
-                country: quickCountry,
-                source: 'MANUAL',
-              })
-              .then((contact) => {
-                form.setValue('contactId', contact.id);
-                setContactSearch(contact.displayName ?? value);
-                void queryClient.invalidateQueries({ queryKey: ['contacts', 'new-sale'] });
-              })
-              .catch((error: unknown) =>
-                toast({
-                  title: 'No fue posible crear el cliente',
-                  description: error instanceof Error ? error.message : 'Revisa los datos.',
-                  tone: 'error',
-                }),
-              );
-          }}
-          onSearch={setContactSearch}
-          onSelect={(option) => form.setValue('contactId', option?.id ?? '')}
-          options={(contacts.data?.data ?? []).map((contact) => ({
-            id: contact.id,
-            label: contact.displayName ?? contact.firstName ?? contact.phone ?? 'Cliente',
-            secondary: [contact.phone, contact.country].filter(Boolean).join(' · '),
-          }))}
-          placeholder="Buscar por nombre o teléfono"
-          search={contactSearch}
-          selectedLabel={selectedContact?.displayName ?? undefined}
-        />
-        <div className="grid gap-3 rounded-xl border border-border-subtle bg-surface-muted p-3 sm:grid-cols-2">
-          <label className="space-y-1 text-xs font-semibold text-content-secondary">
-            <span>Teléfono cliente rápido (opcional)</span>
-            <Input
-              value={quickPhone}
-              onChange={(event) => setQuickPhone(event.target.value)}
-              placeholder="+56912345678"
+        {selectedContact ? (
+          <div className="flex items-center justify-between rounded-xl border border-brand-500/20 bg-brand-50/50 p-3 dark:bg-brand-950/20">
+            <div>
+              <p className="text-xs font-semibold text-brand-600 dark:text-brand-400">
+                Cliente seleccionado
+              </p>
+              <p className="text-sm font-bold text-content-primary">
+                {selectedContact.displayName ??
+                  selectedContact.firstName ??
+                  selectedContact.phone ??
+                  'Cliente'}
+              </p>
+              <p className="text-xs text-content-muted">
+                {[selectedContact.phone, selectedContact.country].filter(Boolean).join(' · ')}
+              </p>
+            </div>
+            <Button
+              onClick={() => {
+                form.setValue('contactId', '');
+                setContactSearch('');
+              }}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              Cambiar cliente
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <CreatableCombobox
+              createLabel="Crear cliente rápido"
+              emptyLabel=""
+              isLoading={contacts.isFetching}
+              label="Cliente"
+              onCreate={(value) => {
+                const [first, ...rest] = value.trim().split(/\s+/);
+                setQuickFirstName(first ?? '');
+                setQuickLastName(rest.join(' '));
+                setShowQuickClient(true);
+              }}
+              onSearch={setContactSearch}
+              onSelect={(option) => form.setValue('contactId', option?.id ?? '')}
+              options={(contacts.data?.data ?? []).map((contact) => ({
+                id: contact.id,
+                label: contact.displayName ?? contact.firstName ?? contact.phone ?? 'Cliente',
+                secondary: [contact.phone, contact.country].filter(Boolean).join(' · '),
+              }))}
+              placeholder="Buscar por nombre o teléfono (ej. Reseller, Juan)"
+              search={contactSearch}
             />
-          </label>
-          <label className="space-y-1 text-xs font-semibold text-content-secondary">
-            <span>País cliente rápido</span>
-            <Select value={quickCountry} onChange={(event) => setQuickCountry(event.target.value)}>
-              <option value="CL">Chile</option>
-              <option value="MX">México</option>
-              <option value="PE">Perú</option>
-              <option value="US">Estados Unidos</option>
-            </Select>
-          </label>
-        </div>
+            {showQuickClient ? (
+              <div className="space-y-3 rounded-xl border border-border-subtle bg-surface-muted p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-content-primary">
+                    Crear cliente rápido
+                  </span>
+                  <button
+                    className="text-xs text-content-muted hover:text-content-primary"
+                    onClick={() => setShowQuickClient(false)}
+                    type="button"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <label className="space-y-1 text-xs font-semibold text-content-secondary">
+                    <span>Nombre</span>
+                    <Input
+                      onChange={(event) => setQuickFirstName(event.target.value)}
+                      placeholder="Nombre"
+                      value={quickFirstName}
+                    />
+                  </label>
+                  <label className="space-y-1 text-xs font-semibold text-content-secondary">
+                    <span>Apellido (opcional)</span>
+                    <Input
+                      onChange={(event) => setQuickLastName(event.target.value)}
+                      placeholder="Apellido"
+                      value={quickLastName}
+                    />
+                  </label>
+                  <label className="space-y-1 text-xs font-semibold text-content-secondary">
+                    <span>Teléfono (opcional)</span>
+                    <Input
+                      onChange={(event) => setQuickPhone(event.target.value)}
+                      placeholder="+56912345678"
+                      value={quickPhone}
+                    />
+                  </label>
+                  <label className="space-y-1 text-xs font-semibold text-content-secondary">
+                    <span>País</span>
+                    <Select
+                      onChange={(event) => setQuickCountry(event.target.value)}
+                      value={quickCountry}
+                    >
+                      {COUNTRIES.map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {c.flag} {c.name} ({c.dialCode})
+                        </option>
+                      ))}
+                    </Select>
+                  </label>
+                </div>
+                <Button
+                  className="w-full"
+                  disabled={!quickFirstName.trim()}
+                  onClick={() => {
+                    void api
+                      .createContact({
+                        firstName: quickFirstName.trim(),
+                        ...(quickLastName.trim() ? { lastName: quickLastName.trim() } : {}),
+                        ...(quickPhone.trim() ? { phone: quickPhone.trim() } : {}),
+                        country: quickCountry,
+                        source: 'MANUAL',
+                      })
+                      .then((contact) => {
+                        form.setValue('contactId', contact.id);
+                        setContactSearch('');
+                        setShowQuickClient(false);
+                        setQuickFirstName('');
+                        setQuickLastName('');
+                        setQuickPhone('');
+                        void queryClient.invalidateQueries({ queryKey: ['contacts', 'new-sale'] });
+                        toast({ title: 'Cliente creado', tone: 'success' });
+                      })
+                      .catch((error: unknown) =>
+                        toast({
+                          title: 'No fue posible crear el cliente',
+                          description: error instanceof Error ? error.message : 'Revisa los datos.',
+                          tone: 'error',
+                        }),
+                      );
+                  }}
+                  size="sm"
+                  type="button"
+                >
+                  Guardar cliente y continuar
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        )}
         <CreatableCombobox
           createLabel="Crear producto"
           emptyLabel="Limpiar producto"

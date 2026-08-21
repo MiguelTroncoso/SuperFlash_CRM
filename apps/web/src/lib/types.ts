@@ -471,6 +471,12 @@ export interface OperationalDashboard {
     netIncome: Array<{ currency: string; amount: string }>;
     expenses: Array<{ currency: string; amount: string }>;
     profit: Array<{ currency: string; amount: string }>;
+    usdGrossBilling?: string;
+    usdGrossPayments?: string;
+    usdFees?: string;
+    usdNetIncome?: string;
+    usdExpenses?: string;
+    usdProfit?: string;
     renewals: number;
   };
   month: {
@@ -485,6 +491,12 @@ export interface OperationalDashboard {
     expenses: Array<{ currency: string; amount: string }>;
     profit: Array<{ currency: string; amount: string }>;
     averageTicket: Array<{ currency: string; amount: string }>;
+    usdGrossBilling?: string;
+    usdGrossPayments?: string;
+    usdFees?: string;
+    usdNetIncome?: string;
+    usdExpenses?: string;
+    usdProfit?: string;
     adSpend: string;
     costPerConversation: string;
     costPerDemo: string;
@@ -501,7 +513,12 @@ export interface OperationalDashboard {
     adSpend: string;
     grossRevenue: string;
   }>;
-  pendingCollections: Array<{ currency: string; balance: string }>;
+  pendingCollections:
+    | {
+        byCurrency: Array<{ currency: string; balance: string }>;
+        totalUsd: string;
+      }
+    | Array<{ currency: string; balance: string }>;
   renewalsDueSoon: number;
   criticalStock: number;
   sourceOfTruth: { manualActivity: string; financialSales: string; financialSalesCount: string };

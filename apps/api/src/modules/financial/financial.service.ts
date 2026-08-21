@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ExpenseFrequency, Prisma } from '@prisma/client';
 import { DateTime } from 'luxon';
+import { addCalendarMonths } from '@superflash/utils';
 
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -61,21 +62,25 @@ function assertDateRange(start: Date | undefined, end: Date | undefined): void {
 }
 
 function nextDate(date: Date, frequency: ExpenseFrequency): Date {
-  const value = DateTime.fromJSDate(date, { zone: 'UTC' });
-  const result =
-    frequency === ExpenseFrequency.WEEKLY
-      ? value.plus({ weeks: 1 })
-      : frequency === ExpenseFrequency.ANNUAL
-        ? value.plus({ years: 1 })
-        : value.plus({ months: 1 });
-  return result.toJSDate();
+  if (frequency === ExpenseFrequency.WEEKLY) {
+    const value = DateTime.fromJSDate(date, { zone: 'UTC' });
+    return value.plus({ weeks: 1 }).toJSDate();
+  }
+  if (frequency === ExpenseFrequency.ANNUAL) {
+    return addCalendarMonths(date, 12);
+  }
+  // Default MONTHLY
+  return addCalendarMonths(date, 1);
 }
+
+import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 
 @Injectable()
 export class FinancialService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly fx: ExchangeRatesService,
   ) {}
 
   async listCategories(user: AuthenticatedUser) {
@@ -266,12 +271,18 @@ export class FinancialService {
     const startDate = dto.startDate ? new Date(dto.startDate) : undefined;
     const endDate = dto.endDate ? new Date(dto.endDate) : undefined;
     assertDateRange(startDate, endDate);
+    const cleanAmount = assertNonNegativeAmount(dto.amount);
+    const fxResult = await this.fx.convertToUsd(user.organizationId, cleanAmount, currency);
     const data: Prisma.ExpenseUncheckedCreateInput = {
       organizationId: user.organizationId,
       categoryId: dto.categoryId ?? null,
       campaignId: dto.campaignId ?? null,
-      amount: assertNonNegativeAmount(dto.amount),
+      amount: cleanAmount,
       currency,
+      exchangeRateToUsd: fxResult.rate,
+      exchangeRateProvider: fxResult.provider,
+      exchangeRateCapturedAt: fxResult.capturedAt,
+      usdAmount: fxResult.usdAmount,
       expenseDate: new Date(dto.expenseDate),
       vendorName: cleanText(dto.vendorName),
       reference: cleanText(dto.reference),

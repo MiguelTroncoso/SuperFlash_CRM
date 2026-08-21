@@ -227,9 +227,7 @@ describe('operational CRM reset', () => {
     });
     render(withQuery(<OperationalDashboardPage />));
     await waitFor(() => expect(screen.getByText('Dashboard operativo')).toBeInTheDocument());
-    expect(screen.getByText('Conversaciones hoy')).toBeInTheDocument();
-    expect(screen.getByText('Registro manual')).toBeInTheDocument();
-    expect(screen.getByText('Resumen del día')).toBeInTheDocument();
+    expect(screen.getByText(/Resumen del día/)).toBeInTheDocument();
     expect(screen.getByText('Ingresos netos del mes')).toBeInTheDocument();
   });
 

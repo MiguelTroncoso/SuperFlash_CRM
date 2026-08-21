@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { toApiIsoDate, toDisplayDate } from '@superflash/utils';
 import { PageGrid, PageHeader } from '@/components/shared/page-header';
 import { QueryState } from '@/components/shared/query-state';
 import { Badge, StatusBadge } from '@/components/ui/badge';
@@ -46,7 +47,7 @@ function FinanceTabs(): React.ReactElement {
 
 export function FinancialDashboardPage(): React.ReactElement {
   const [month, setMonth] = useState('');
-  const [currency, setCurrency] = useState('CLP');
+  const [currency, setCurrency] = useState('USD');
   const query = useMemo(() => queryString({ month, currency }), [month, currency]);
   const dashboard = useQuery({
     queryKey: ['financial-dashboard', query],
@@ -331,11 +332,15 @@ export function FinancialExpensesPage(): React.ReactElement {
   const update = (key: keyof typeof form, value: string) =>
     setForm((current) => ({ ...current, [key]: value }));
   const submitExpense = () => {
+    const expenseDateIso = toApiIsoDate(form.expenseDate) ?? new Date().toISOString().slice(0, 10);
+    const startDateIso = form.startDate ? toApiIsoDate(form.startDate) : undefined;
+    const endDateIso = form.endDate ? toApiIsoDate(form.endDate) : undefined;
     const body: JsonRecord = {
       ...form,
+      expenseDate: expenseDateIso,
       ...(form.categoryId ? { categoryId: form.categoryId } : {}),
-      ...(form.startDate ? { startDate: form.startDate } : {}),
-      ...(form.endDate ? { endDate: form.endDate } : {}),
+      ...(startDateIso ? { startDate: startDateIso } : {}),
+      ...(endDateIso ? { endDate: endDateIso } : {}),
       ...(form.receiptUrl ? { receiptUrl: form.receiptUrl } : {}),
     };
     if (editingId) updateExpense.mutate({ id: editingId, body });
@@ -541,7 +546,7 @@ export function FinancialExpensesPage(): React.ReactElement {
                 {expenses.data.data.map((expense: FinancialExpense) => (
                   <tr key={expense.id}>
                     <td className="px-5 py-3 text-content-secondary">
-                      {new Date(expense.expenseDate).toLocaleDateString('es-CL')}
+                      {toDisplayDate(expense.expenseDate)}
                     </td>
                     <td className="px-5 py-3 font-semibold text-content-primary">
                       {expense.description ?? expense.vendorName ?? 'Sin descripción'}
