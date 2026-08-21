@@ -70,6 +70,8 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
     await transaction.user.deleteMany();
     await transaction.role.deleteMany();
     await transaction.permission.deleteMany();
+    await transaction.exchangeRate.deleteMany();
+    await transaction.countryConfig.deleteMany();
     await transaction.organization.deleteMany();
   });
 }

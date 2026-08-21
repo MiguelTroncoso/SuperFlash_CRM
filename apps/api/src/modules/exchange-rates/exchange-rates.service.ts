@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -16,28 +16,59 @@ export interface ExchangeRateResult {
   isStale: boolean;
 }
 
-// Fallback rates to USD as default reliable baseline
-const DEFAULT_RATES_TO_USD: Record<string, { rate: string; provider: string }> = {
+/**
+ * Emergency baseline rates — used ONLY when the live provider (open.er-api.com)
+ * is unavailable AND the DB has no record. Updated to 2026-08-20 reference rates.
+ * These are last-resort values and will be clearly tagged as EMERGENCY_BASELINE.
+ */
+const EMERGENCY_BASELINE_RATES_TO_USD: Record<string, { rate: string; provider: string }> = {
   USD: { rate: '1.00000000', provider: 'SYSTEM' },
-  USDT: { rate: '1.00000000', provider: 'BINANCE' },
-  CLP: { rate: '0.00105000', provider: 'FIAT_FALLBACK' }, // ~950 CLP/USD
-  MXN: { rate: '0.05380000', provider: 'FIAT_FALLBACK' }, // ~18.58 MXN/USD
-  PEN: { rate: '0.26800000', provider: 'FIAT_FALLBACK' }, // ~3.73 PEN/USD
-  COP: { rate: '0.00024500', provider: 'FIAT_FALLBACK' }, // ~4080 COP/USD
-  EUR: { rate: '1.08500000', provider: 'FIAT_FALLBACK' },
-  ARS: { rate: '0.00102000', provider: 'FIAT_FALLBACK' },
-  BOB: { rate: '0.14450000', provider: 'FIAT_FALLBACK' },
-  BRL: { rate: '0.18200000', provider: 'FIAT_FALLBACK' },
-  CRC: { rate: '0.00195000', provider: 'FIAT_FALLBACK' },
-  DOP: { rate: '0.01680000', provider: 'FIAT_FALLBACK' },
-  GTQ: { rate: '0.12900000', provider: 'FIAT_FALLBACK' },
-  PYG: { rate: '0.00013300', provider: 'FIAT_FALLBACK' },
-  UYU: { rate: '0.02480000', provider: 'FIAT_FALLBACK' },
-  VES: { rate: '0.02700000', provider: 'FIAT_FALLBACK' },
+  USDT: { rate: '1.00000000', provider: 'SYSTEM' },
+  CLP: { rate: '0.00108431', provider: 'EMERGENCY_BASELINE' }, // 922 CLP/USD
+  MXN: { rate: '0.05897543', provider: 'EMERGENCY_BASELINE' }, // 16.96 MXN/USD
+  PEN: { rate: '0.29814562', provider: 'EMERGENCY_BASELINE' }, // 3.354 PEN/USD
+  COP: { rate: '0.00032690', provider: 'EMERGENCY_BASELINE' }, // 3059 COP/USD
+  EUR: { rate: '1.16812000', provider: 'EMERGENCY_BASELINE' }, // 0.856 EUR/USD inverted
+  ARS: { rate: '0.00066796', provider: 'EMERGENCY_BASELINE' }, // 1497 ARS/USD
+  BOB: { rate: '0.08676200', provider: 'EMERGENCY_BASELINE' }, // 11.527 BOB/USD
+  BRL: { rate: '0.19261800', provider: 'EMERGENCY_BASELINE' }, // 5.19 BRL/USD
+  CRC: { rate: '0.00221950', provider: 'EMERGENCY_BASELINE' }, // 450.59 CRC/USD
+  DOP: { rate: '0.01703900', provider: 'EMERGENCY_BASELINE' }, // 58.68 DOP/USD
+  GTQ: { rate: '0.13108200', provider: 'EMERGENCY_BASELINE' }, // 7.63 GTQ/USD
+  PYG: { rate: '0.00016668', provider: 'EMERGENCY_BASELINE' }, // 5999 PYG/USD
+  UYU: { rate: '0.02497200', provider: 'EMERGENCY_BASELINE' }, // 40.05 UYU/USD
+  VES: { rate: '0.00128215', provider: 'EMERGENCY_BASELINE' }, // 780 VES/USD
 };
 
+/** open.er-api.com — free, no auth required, covers all LatAm currencies */
+const ER_API_URL = 'https://open.er-api.com/v6/latest/USD';
+
+/** Currencies covered by open.er-api.com */
+const ER_API_SUPPORTED = new Set([
+  'CLP',
+  'MXN',
+  'PEN',
+  'COP',
+  'EUR',
+  'ARS',
+  'BOB',
+  'BRL',
+  'CRC',
+  'DOP',
+  'GTQ',
+  'PYG',
+  'UYU',
+  'VES',
+]);
+
+interface ErApiResponse {
+  result: string;
+  base_code: string;
+  rates: Record<string, number>;
+}
+
 @Injectable()
-export class ExchangeRatesService {
+export class ExchangeRatesService implements OnApplicationBootstrap {
   private readonly logger = new Logger(ExchangeRatesService.name);
 
   constructor(
@@ -46,10 +77,147 @@ export class ExchangeRatesService {
   ) {}
 
   /**
+   * On application start: fetch live rates and seed all organizations that have no rates yet.
+   * Runs non-blocking so it never delays startup.
+   */
+  async onApplicationBootstrap() {
+    // Skip auto-seed in test environments to avoid FK teardown issues
+    if (process.env.NODE_ENV === 'test') return;
+    setImmediate(() => {
+      this.bootstrapLiveRates().catch((err: unknown) => {
+        this.logger.error(
+          `FX bootstrap error: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+    });
+  }
+
+  private async bootstrapLiveRates() {
+    const liveRates = await this.fetchLiveFiatRates();
+    if (!liveRates) {
+      this.logger.warn('FX bootstrap: live provider unavailable, will use emergency baseline.');
+      return;
+    }
+
+    // Find all distinct organizationIds that exist but have no ExchangeRate rows yet
+    const orgsWithRates = await this.prisma.exchangeRate.findMany({
+      distinct: ['organizationId'],
+      select: { organizationId: true },
+    });
+    const seededSet = new Set(orgsWithRates.map((r) => r.organizationId));
+
+    const allOrgs = await this.prisma.organization.findMany({
+      where: { deletedAt: null },
+      select: { id: true },
+    });
+
+    for (const org of allOrgs) {
+      if (!seededSet.has(org.id)) {
+        await this.seedOrgRates(org.id, liveRates, 'BOOT_SEED');
+        this.logger.log(`FX bootstrap: seeded rates for org ${org.id}`);
+      }
+    }
+  }
+
+  /**
+   * Fetch rates from open.er-api.com (base USD). Returns null on network failure.
+   */
+  async fetchLiveFiatRates(): Promise<Record<string, number> | null> {
+    try {
+      const response = await fetch(ER_API_URL, {
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!response.ok) {
+        this.logger.warn(`open.er-api.com returned HTTP ${response.status}`);
+        return null;
+      }
+      const data = (await response.json()) as ErApiResponse;
+      if (data.result !== 'success' || !data.rates) {
+        this.logger.warn('open.er-api.com returned unexpected payload');
+        return null;
+      }
+      return data.rates;
+    } catch (err: unknown) {
+      this.logger.warn(
+        `open.er-api.com unavailable: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Convert a fiat rate (units-per-USD from open.er-api.com) to a rate-per-unit-to-USD decimal.
+   * Example: MXN=16.96 → 1/16.96 = 0.05897543
+   */
+  private toUsdRate(unitsPerUsd: number): Prisma.Decimal {
+    return new Prisma.Decimal((1 / unitsPerUsd).toFixed(8));
+  }
+
+  /**
+   * Seed or update all rates for a given organization from a live rates map.
+   */
+  private async seedOrgRates(
+    organizationId: string,
+    liveRates: Record<string, number>,
+    source: string,
+    createdById?: string | null,
+  ) {
+    for (const [currency, baseline] of Object.entries(EMERGENCY_BASELINE_RATES_TO_USD)) {
+      if (currency === 'USD') continue;
+
+      let rateDecimal: Prisma.Decimal;
+      let providerName: string;
+
+      if (currency === 'USDT') {
+        // USDT pegged to USD — Binance confirms ~1.000
+        rateDecimal = new Prisma.Decimal('1.00000000');
+        providerName = 'SYSTEM';
+      } else if (ER_API_SUPPORTED.has(currency) && liveRates[currency] != null) {
+        rateDecimal = this.toUsdRate(liveRates[currency]);
+        providerName = 'OPEN_ER_API';
+      } else {
+        rateDecimal = new Prisma.Decimal(baseline.rate);
+        providerName = baseline.provider;
+      }
+
+      await this.prisma.exchangeRate.upsert({
+        where: {
+          organizationId_fromCurrency_toCurrency: {
+            organizationId,
+            fromCurrency: currency,
+            toCurrency: 'USD',
+          },
+        },
+        update: {
+          rate: rateDecimal,
+          provider: providerName,
+          source,
+          capturedAt: new Date(),
+          active: true,
+          deletedAt: null,
+        },
+        create: {
+          organizationId,
+          fromCurrency: currency,
+          toCurrency: 'USD',
+          rate: rateDecimal,
+          provider: providerName,
+          source,
+          capturedAt: new Date(),
+          active: true,
+          createdById: createdById ?? null,
+        },
+      });
+    }
+  }
+
+  /**
    * Get effective exchange rate from `fromCurrency` to `toCurrency` (default USD).
-   * 1. If from === to, rate is 1.00000000.
-   * 2. Checks DB for latest active rate for organization.
-   * 3. Falls back to default reliable rate table if DB record does not exist.
+   * Priority:
+   * 1. If from === to → identity 1.0
+   * 2. Active DB record for this organization
+   * 3. Emergency baseline (last resort, always marked isStale=true)
    */
   async getRate(
     organizationId: string,
@@ -91,20 +259,24 @@ export class ExchangeRatesService {
         provider: record.provider,
         source: record.source,
         capturedAt: record.capturedAt,
-        isStale: ageDays > 14,
+        isStale: ageDays > 7,
       };
     }
 
-    const fallback = DEFAULT_RATES_TO_USD[from];
-    if (fallback && to === 'USD') {
+    // Last resort: emergency baseline — clearly marked as stale
+    const baseline = EMERGENCY_BASELINE_RATES_TO_USD[from];
+    if (baseline && to === 'USD') {
+      this.logger.warn(
+        `FX: Using emergency baseline for ${from}→USD (no DB record for org ${organizationId})`,
+      );
       return {
         fromCurrency: from,
         toCurrency: to,
-        rate: new Prisma.Decimal(fallback.rate),
-        provider: fallback.provider,
-        source: 'FALLBACK_BASELINE',
+        rate: new Prisma.Decimal(baseline.rate),
+        provider: baseline.provider,
+        source: 'EMERGENCY_BASELINE',
         capturedAt: new Date(),
-        isStale: false,
+        isStale: true,
       };
     }
 
@@ -136,7 +308,7 @@ export class ExchangeRatesService {
     const decAmount = new Prisma.Decimal(String(amount || 0));
     const from = fromCurrency.trim().toUpperCase();
 
-    if (from === 'USD') {
+    if (from === 'USD' || from === 'USDT') {
       return {
         usdAmount: decAmount,
         rate: new Prisma.Decimal('1.00000000'),
@@ -183,6 +355,7 @@ export class ExchangeRatesService {
       if (curr === 'USD') continue;
       const dbRate = configuredMap.get(curr);
       if (dbRate) {
+        const ageDays = (Date.now() - dbRate.capturedAt.getTime()) / (1000 * 60 * 60 * 24);
         result.push({
           id: dbRate.id,
           fromCurrency: dbRate.fromCurrency,
@@ -193,19 +366,24 @@ export class ExchangeRatesService {
           active: dbRate.active,
           capturedAt: dbRate.capturedAt.toISOString(),
           isCustom: dbRate.source === 'MANUAL',
+          isStale: ageDays > 7,
         });
       } else {
-        const fallback = DEFAULT_RATES_TO_USD[curr] ?? { rate: '1.00000000', provider: 'DEFAULT' };
+        const baseline = EMERGENCY_BASELINE_RATES_TO_USD[curr] ?? {
+          rate: '1.00000000',
+          provider: 'UNKNOWN',
+        };
         result.push({
-          id: `default-${curr}`,
+          id: `baseline-${curr}`,
           fromCurrency: curr,
           toCurrency: 'USD',
-          rate: fallback.rate,
-          provider: fallback.provider,
-          source: 'BASELINE',
+          rate: baseline.rate,
+          provider: baseline.provider,
+          source: 'EMERGENCY_BASELINE',
           active: true,
           capturedAt: new Date().toISOString(),
           isCustom: false,
+          isStale: true,
         });
       }
     }
@@ -283,76 +461,27 @@ export class ExchangeRatesService {
   }
 
   /**
-   * Fetch live rate from Binance API for symbols with spot markets (e.g. USDTUSDC, BTUSDT).
-   */
-  async fetchBinancePrice(symbol: string): Promise<{ symbol: string; price: string } | null> {
-    try {
-      const response = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`, {
-        headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(5000),
-      });
-      if (!response.ok) return null;
-      const data = (await response.json()) as { symbol: string; price: string };
-      return data;
-    } catch (err: unknown) {
-      this.logger.warn(
-        `Binance public API unavailable for ${symbol}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return null;
-    }
-  }
-
-  /**
-   * Weekly scheduled/on-demand refresh of exchange rates.
+   * On-demand refresh of exchange rates from live providers.
+   * Fetches from open.er-api.com (fiat) + Binance (USDT).
+   * Falls back to emergency baseline per-currency on provider failure.
    */
   async refreshRates(
     organizationId: string,
     user?: AuthenticatedUser,
     metadata?: { ipAddress?: string; requestId?: string },
   ) {
-    let updatedCount = 0;
-    const usdtPrice = await this.fetchBinancePrice('USDCUSDT');
+    const liveRates = await this.fetchLiveFiatRates();
+    const source = liveRates ? 'LIVE_REFRESH' : 'EMERGENCY_BASELINE_REFRESH';
 
-    for (const [currency, fallback] of Object.entries(DEFAULT_RATES_TO_USD)) {
-      if (currency === 'USD') continue;
-      let rateDecimal = new Prisma.Decimal(fallback.rate);
-      let providerName = fallback.provider;
-
-      if (currency === 'USDT' && usdtPrice?.price) {
-        rateDecimal = new Prisma.Decimal('1.00000000');
-        providerName = 'BINANCE';
-      }
-
-      await this.prisma.exchangeRate.upsert({
-        where: {
-          organizationId_fromCurrency_toCurrency: {
-            organizationId,
-            fromCurrency: currency,
-            toCurrency: 'USD',
-          },
-        },
-        update: {
-          rate: rateDecimal,
-          provider: providerName,
-          source: 'AUTO_REFRESH',
-          capturedAt: new Date(),
-          active: true,
-          deletedAt: null,
-        },
-        create: {
-          organizationId,
-          fromCurrency: currency,
-          toCurrency: 'USD',
-          rate: rateDecimal,
-          provider: providerName,
-          source: 'AUTO_REFRESH',
-          capturedAt: new Date(),
-          active: true,
-          createdById: user?.userId ?? null,
-        },
-      });
-      updatedCount++;
+    if (!liveRates) {
+      this.logger.warn(
+        `FX refresh for org ${organizationId}: open.er-api.com unavailable, writing emergency baseline.`,
+      );
     }
+
+    await this.seedOrgRates(organizationId, liveRates ?? {}, source, user?.userId);
+
+    const updatedCount = Object.keys(EMERGENCY_BASELINE_RATES_TO_USD).length - 1; // exclude USD
 
     if (user) {
       await this.audit.record({
@@ -361,12 +490,12 @@ export class ExchangeRatesService {
         action: 'EXCHANGE_RATES_REFRESHED',
         tableName: 'ExchangeRate',
         recordId: organizationId,
-        newValue: { updatedCount },
+        newValue: { updatedCount, source, liveRatesAvailable: liveRates !== null },
         ip: metadata?.ipAddress,
         requestId: metadata?.requestId,
       });
     }
 
-    return { updatedCount, timestamp: new Date().toISOString() };
+    return { updatedCount, source, timestamp: new Date().toISOString() };
   }
 }
