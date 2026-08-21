@@ -81,6 +81,8 @@ export class ExchangeRatesService implements OnApplicationBootstrap {
    * Runs non-blocking so it never delays startup.
    */
   async onApplicationBootstrap() {
+    // Skip auto-seed in test environments to avoid FK teardown issues
+    if (process.env.NODE_ENV === 'test') return;
     setImmediate(() => {
       this.bootstrapLiveRates().catch((err: unknown) => {
         this.logger.error(
