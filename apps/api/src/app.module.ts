@@ -41,6 +41,8 @@ import { MarketingModule } from './modules/marketing/marketing.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { CommissionsModule } from './modules/commissions/commissions.module';
 import { HealthModule } from './modules/health/health.module';
+import { ExchangeRatesModule } from './modules/exchange-rates/exchange-rates.module';
+import { CountriesModule } from './modules/countries/countries.module';
 
 @Module({
   imports: [
@@ -99,6 +101,8 @@ import { HealthModule } from './modules/health/health.module';
     MarketingModule,
     CustomersModule,
     CommissionsModule,
+    ExchangeRatesModule,
+    CountriesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

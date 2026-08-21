@@ -3,20 +3,20 @@ import type { InputHTMLAttributes, TextareaHTMLAttributes } from 'react';
 
 import { cn } from '@/lib/utils';
 
-export function Input({
-  className,
-  ...props
-}: InputHTMLAttributes<HTMLInputElement>): React.ReactElement {
-  return (
-    <input
-      className={cn(
-        'h-10 w-full rounded-xl border border-border-default bg-surface-card px-3 text-sm text-content-primary outline-none transition placeholder:text-content-muted focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10',
-        className,
-      )}
-      {...props}
-    />
-  );
-}
+export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
+  function Input({ className, ...props }, ref): React.ReactElement {
+    return (
+      <input
+        className={cn(
+          'h-10 w-full rounded-xl border border-border-default bg-surface-card px-3 text-sm text-content-primary outline-none transition placeholder:text-content-muted focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10',
+          className,
+        )}
+        ref={ref}
+        {...props}
+      />
+    );
+  },
+);
 
 export function Select({
   className,

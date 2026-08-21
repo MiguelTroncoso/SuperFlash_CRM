@@ -28,7 +28,21 @@ function formatMoneyItem(item?: { currency: string; amount: string } | null): st
   return `${item.currency} ${num.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function money(items: Array<{ currency: string; amount: string }>): string {
+function formatUsd(amount?: string | null): string {
+  if (!amount) return '—';
+  const num = Number(amount);
+  if (!Number.isFinite(num)) return '—';
+  return `US$ ${num.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function money(
+  items: Array<{ currency: string; amount: string }> | undefined,
+  usdValue?: string,
+): string {
+  if (usdValue !== undefined && usdValue !== null) {
+    return formatUsd(usdValue);
+  }
+  if (!items || !items.length) return '—';
   const item = items[0];
   return formatMoneyItem(item);
 }
@@ -245,14 +259,14 @@ export function OperationalDashboardPage(): React.ReactElement {
             <MetricCard
               icon="$"
               label="Cobros recibidos hoy"
-              value={money(data.today.confirmedPayments)}
-              trend="Pagos confirmados"
+              value={money(data.today.confirmedPayments, data.today.usdGrossPayments)}
+              trend="Pagos confirmados (USD)"
             />
             <MetricCard
               icon="◉"
               label="Gastos de hoy"
-              value={money(data.today.expenses)}
-              trend="Expense real, separado de ad spend manual"
+              value={money(data.today.expenses, data.today.usdExpenses)}
+              trend="Expense real (USD)"
             />
           </section>
           <section
@@ -262,19 +276,23 @@ export function OperationalDashboardPage(): React.ReactElement {
             <MetricCard
               icon="✦"
               label="Resultado de hoy"
-              value={money(data.today.profit)}
-              trend="Cobros recibidos menos gastos"
+              value={money(data.today.profit, data.today.usdProfit)}
+              trend="Cobros recibidos menos gastos (USD)"
             />
             <MetricCard
               icon="%"
               label="Cobros pendientes"
-              value={money(
-                data.pendingCollections.map((item) => ({
-                  currency: item.currency,
-                  amount: item.balance,
-                })),
-              )}
-              trend="Saldo calculado desde pagos"
+              value={
+                Array.isArray(data.pendingCollections)
+                  ? money(
+                      data.pendingCollections.map((item) => ({
+                        currency: item.currency,
+                        amount: item.balance,
+                      })),
+                    )
+                  : formatUsd(data.pendingCollections.totalUsd)
+              }
+              trend="Saldo total por recaudar (USD)"
             />
             <MetricCard
               icon="⌁"
@@ -291,7 +309,7 @@ export function OperationalDashboardPage(): React.ReactElement {
           </section>
           <Card>
             <CardHeader>
-              <CardTitle>Resumen del día</CardTitle>
+              <CardTitle>Resumen del día (Consolidado USD)</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
               <div className="rounded-xl bg-surface-muted p-3">
@@ -301,22 +319,26 @@ export function OperationalDashboardPage(): React.ReactElement {
               <div className="rounded-xl bg-surface-muted p-3">
                 <p className="text-xs text-content-muted">Facturación bruta</p>
                 <p className="mt-1 font-bold text-content-primary">
-                  {money(data.today.grossBilling)}
+                  {money(data.today.grossBilling, data.today.usdGrossBilling)}
                 </p>
               </div>
               <div className="rounded-xl bg-surface-muted p-3">
                 <p className="text-xs text-content-muted">Cobros recibidos</p>
                 <p className="mt-1 font-bold text-content-primary">
-                  {money(data.today.confirmedPayments)}
+                  {money(data.today.confirmedPayments, data.today.usdGrossPayments)}
                 </p>
               </div>
               <div className="rounded-xl bg-surface-muted p-3">
                 <p className="text-xs text-content-muted">Gastos</p>
-                <p className="mt-1 font-bold text-content-primary">{money(data.today.expenses)}</p>
+                <p className="mt-1 font-bold text-content-primary">
+                  {money(data.today.expenses, data.today.usdExpenses)}
+                </p>
               </div>
               <div className="rounded-xl bg-surface-muted p-3">
                 <p className="text-xs text-content-muted">Resultado</p>
-                <p className="mt-1 font-bold text-content-primary">{money(data.today.profit)}</p>
+                <p className="mt-1 font-bold text-content-primary">
+                  {money(data.today.profit, data.today.usdProfit)}
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -333,19 +355,19 @@ export function OperationalDashboardPage(): React.ReactElement {
             <MetricCard
               icon="$"
               label="Ingresos netos del mes"
-              value={money(data.month.netIncome)}
-              trend="Cobros confirmados menos reembolsos"
+              value={money(data.month.netIncome, data.month.usdNetIncome)}
+              trend="Cobros confirmados menos comisiones (USD)"
             />
             <MetricCard
               icon="◉"
               label="Gastos del mes"
-              value={money(data.month.expenses)}
-              trend="Gastos reales registrados"
+              value={money(data.month.expenses, data.month.usdExpenses)}
+              trend="Gastos reales consolidados (USD)"
             />
             <MetricCard
               icon="⌁"
               label="Resultado del mes"
-              value={money(data.month.profit)}
+              value={money(data.month.profit, data.month.usdProfit)}
               trend={`ROAS ${data.month.roas} · CPA ${data.month.cpa}`}
             />
           </section>

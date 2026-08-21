@@ -586,6 +586,8 @@ model Organization {
   recurringExpenses            RecurringExpense[]
   productStockMovements        ProductStockMovement[]
   paymentFeeConfigs            PaymentFeeConfig[]
+  exchangeRates                ExchangeRate[]
+  countryConfigs               CountryConfig[]
 
   @@index([createdAt])
 }
@@ -1518,6 +1520,50 @@ model PaymentFeeConfig {
   @@index([createdAt])
 }
 
+model ExchangeRate {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @db.Uuid
+  fromCurrency    String
+  toCurrency      String    @default("USD")
+  rate            Decimal   @db.Decimal(18, 8)
+  provider        String
+  source          String    @default("AUTO")
+  capturedAt      DateTime  @default(now())
+  active          Boolean   @default(true)
+  createdById     String?   @db.Uuid
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, fromCurrency, toCurrency])
+  @@index([organizationId, active])
+  @@index([fromCurrency, toCurrency])
+  @@index([capturedAt])
+}
+
+model CountryConfig {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @db.Uuid
+  countryCode    String
+  name           String
+  dialCode       String
+  flag           String
+  active         Boolean   @default(true)
+  sortOrder      Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, countryCode])
+  @@index([organizationId, active, sortOrder])
+}
+
 model Subscription {
   id                  String             @id @default(uuid()) @db.Uuid
   organizationId      String             @db.Uuid
@@ -2030,9 +2076,13 @@ model Expense {
   categoryId         String?              @db.Uuid
   recurringExpenseId String?              @db.Uuid
   occurrenceKey      String?
-  amount             Decimal              @db.Decimal(14, 2)
-  currency           String
-  expenseDate        DateTime
+  amount                 Decimal              @db.Decimal(14, 2)
+  currency               String
+  exchangeRateToUsd      Decimal?             @db.Decimal(18, 8)
+  exchangeRateProvider   String?
+  exchangeRateCapturedAt DateTime?
+  usdAmount              Decimal?             @db.Decimal(14, 2)
+  expenseDate            DateTime
   vendorName         String?
   reference          String?
   description        String?

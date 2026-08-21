@@ -20,6 +20,7 @@ import {
   UpdateDailyMetricDto,
   UpsertDailyMetricDto,
 } from './dto/operational-dashboard.dto';
+import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 
 interface RequestMetadata {
   ipAddress?: string;
@@ -52,6 +53,13 @@ export interface RealSummary {
   expenses: MoneySummary[];
   profit: MoneySummary[];
   averageTicket: MoneySummary[];
+  // USD consolidated figures
+  usdGrossBilling: string;
+  usdGrossPayments: string;
+  usdFees: string;
+  usdNetIncome: string;
+  usdExpenses: string;
+  usdProfit: string;
 }
 
 function decimal(value: unknown): Prisma.Decimal {
@@ -123,6 +131,7 @@ export class OperationalDashboardService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly fx: ExchangeRatesService,
   ) {}
 
   async previewImport(dto: ImportDailyMetricsDto): Promise<DailyMetricImportPreview> {
@@ -259,12 +268,8 @@ export class OperationalDashboardService {
     });
   }
 
-  async deleteDailyMetric(
-    id: string,
-    user: AuthenticatedUser,
-    metadata: RequestMetadata,
-  ): Promise<void> {
-    await this.prisma.$transaction(async (transaction) => {
+  async deleteDailyMetric(id: string, user: AuthenticatedUser, metadata: RequestMetadata) {
+    return this.prisma.$transaction(async (transaction) => {
       const existing = await transaction.dailyMetric.findFirst({
         where: { id, organizationId: user.organizationId, deletedAt: null },
       });
@@ -285,18 +290,19 @@ export class OperationalDashboardService {
         tableName: 'DailyMetric',
         recordId: id,
         previousValue: this.auditValue(existing),
-        newValue: { deletedAt: new Date().toISOString() },
         ip: metadata.ipAddress,
         requestId: metadata.requestId,
       });
+      return { id };
     });
   }
 
   async dashboard(query: OperationalDashboardQueryDto, user: AuthenticatedUser) {
-    const dates = range(query, 'America/Santiago');
-    const today = DateTime.now().setZone('America/Santiago').startOf('day');
-    const todayDate = today.toUTC().toJSDate();
-    const tomorrowDate = today.plus({ days: 1 }).toUTC().toJSDate();
+    const timezone = 'America/Santiago';
+    const dates = range(query, timezone);
+    const today = DateTime.now().setZone(timezone);
+    const todayDate = today.startOf('day').toUTC().toJSDate();
+    const tomorrowDate = today.plus({ days: 1 }).startOf('day').toUTC().toJSDate();
     const manualWhere: Prisma.DailyMetricWhereInput = {
       organizationId: user.organizationId,
       deletedAt: null,
@@ -313,6 +319,7 @@ export class OperationalDashboardService {
       deletedAt: null,
       status: { in: [SaleStatus.CONFIRMED, SaleStatus.FULFILLED] },
       createdAt: { gte: dates.from, lt: dates.to },
+      ...(query.country ? { contact: { is: { country: query.country } } } : {}),
       ...(query.productId
         ? { items: { some: { productId: query.productId, deletedAt: null } } }
         : {}),
@@ -322,6 +329,10 @@ export class OperationalDashboardService {
       deletedAt: null,
       status: PaymentStatus.CONFIRMED,
       paymentDate: { gte: dates.from, lt: dates.to },
+      ...(query.country ? { sale: { is: { contact: { is: { country: query.country } } } } } : {}),
+      ...(query.productId
+        ? { sale: { is: { items: { some: { productId: query.productId, deletedAt: null } } } } }
+        : {}),
     };
     const todaySaleWhere: Prisma.SaleWhereInput = {
       ...saleWhere,
@@ -340,6 +351,7 @@ export class OperationalDashboardService {
       ...expenseWhere,
       expenseDate: { gte: todayDate, lt: tomorrowDate },
     };
+
     const [
       manual,
       todayManual,
@@ -415,12 +427,12 @@ export class OperationalDashboardService {
       this.prisma.payment.groupBy({
         where: paymentWhere,
         by: ['currency'],
-        _sum: { grossAmount: true, netAmount: true, refundedAmount: true },
+        _sum: { grossAmount: true, feeAmount: true, netAmount: true, refundedAmount: true },
       }),
       this.prisma.payment.groupBy({
         where: todayPaymentWhere,
         by: ['currency'],
-        _sum: { grossAmount: true, netAmount: true, refundedAmount: true },
+        _sum: { grossAmount: true, feeAmount: true, netAmount: true, refundedAmount: true },
       }),
       this.prisma.expense.groupBy({
         where: expenseWhere,
@@ -432,7 +444,7 @@ export class OperationalDashboardService {
         by: ['currency'],
         _sum: { amount: true },
       }),
-      this.pendingCollections(user.organizationId, dates, query.productId),
+      this.pendingCollections(user.organizationId, dates, query.productId, query.country),
       this.prisma.followUp.count({
         where: {
           organizationId: user.organizationId,
@@ -469,8 +481,20 @@ export class OperationalDashboardService {
         select: { stockQuantity: true, stockReserved: true, stockMinimum: true },
       }),
     ]);
-    const real: RealSummary = this.realSummary(sales, payments, expenses);
-    const todayReal: RealSummary = this.realSummary(todaySales, todayPayments, todayExpenses);
+
+    const real: RealSummary = await this.realSummaryAsync(
+      user.organizationId,
+      sales,
+      payments,
+      expenses,
+    );
+    const todayReal: RealSummary = await this.realSummaryAsync(
+      user.organizationId,
+      todaySales,
+      todayPayments,
+      todayExpenses,
+    );
+
     const manualSummary: ManualSummary = {
       conversations: manual._sum.conversations ?? 0,
       demos: manual._sum.demos ?? 0,
@@ -496,13 +520,22 @@ export class OperationalDashboardService {
         })),
       ),
     };
+
     const conversations = manualSummary.conversations;
     const demos = manualSummary.demos;
     const saleCount = real.salesCount;
-    const primaryManualCurrency =
-      manualMoney.find((row) => row.currency === 'USD') ?? manualMoney[0];
-    const adSpend = decimal(primaryManualCurrency?._sum.adSpend);
-    const grossRevenue = decimal(primaryManualCurrency?._sum.grossRevenue);
+
+    // Convert adSpend to USD
+    let totalAdSpendUsd = new Prisma.Decimal(0);
+    for (const row of manualMoney) {
+      const { usdAmount } = await this.fx.convertToUsd(
+        user.organizationId,
+        row._sum.adSpend ?? 0,
+        row.currency,
+      );
+      totalAdSpendUsd = totalAdSpendUsd.plus(usdAmount);
+    }
+
     return {
       period: { from: dates.from.toISOString(), to: dates.to.toISOString() },
       today: {
@@ -513,6 +546,13 @@ export class OperationalDashboardService {
         netIncome: todayReal.netIncome,
         expenses: todayReal.expenses,
         profit: todayReal.profit,
+        // Consolidated USD figures
+        usdGrossBilling: todayReal.usdGrossBilling,
+        usdGrossPayments: todayReal.usdGrossPayments,
+        usdFees: todayReal.usdFees,
+        usdNetIncome: todayReal.usdNetIncome,
+        usdExpenses: todayReal.usdExpenses,
+        usdProfit: todayReal.usdProfit,
         renewals: renewalsToday,
         followups,
       },
@@ -532,11 +572,20 @@ export class OperationalDashboardService {
         expenses: real.expenses,
         profit: real.profit,
         averageTicket: real.averageTicket,
-        adSpend: amount(adSpend),
-        costPerConversation: conversations ? adSpend.div(conversations).toFixed(2) : '0.00',
-        costPerDemo: demos ? adSpend.div(demos).toFixed(2) : '0.00',
-        cpa: saleCount ? adSpend.div(saleCount).toFixed(2) : '0.00',
-        roas: adSpend.greaterThan(0) ? grossRevenue.div(adSpend).toFixed(2) : '0.00',
+        // Consolidated USD figures
+        usdGrossBilling: real.usdGrossBilling,
+        usdGrossPayments: real.usdGrossPayments,
+        usdFees: real.usdFees,
+        usdNetIncome: real.usdNetIncome,
+        usdExpenses: real.usdExpenses,
+        usdProfit: real.usdProfit,
+        adSpend: totalAdSpendUsd.toFixed(2),
+        costPerConversation: conversations ? totalAdSpendUsd.div(conversations).toFixed(2) : '0.00',
+        costPerDemo: demos ? totalAdSpendUsd.div(demos).toFixed(2) : '0.00',
+        cpa: saleCount ? totalAdSpendUsd.div(saleCount).toFixed(2) : '0.00',
+        roas: totalAdSpendUsd.greaterThan(0)
+          ? new Prisma.Decimal(real.usdGrossBilling).div(totalAdSpendUsd).toFixed(2)
+          : '0.00',
       },
       manualActivity: manualSummary,
       financialReal: real,
@@ -798,7 +847,8 @@ export class OperationalDashboardService {
     } satisfies Prisma.InputJsonObject;
   }
 
-  private realSummary(
+  private async realSummaryAsync(
+    organizationId: string,
     sales: Array<{
       currency: string;
       _count: { _all: number };
@@ -808,23 +858,27 @@ export class OperationalDashboardService {
       currency: string;
       _sum: {
         grossAmount: Prisma.Decimal | null;
+        feeAmount: Prisma.Decimal | null;
         netAmount: Prisma.Decimal | null;
         refundedAmount: Prisma.Decimal | null;
       };
     }>,
     expenses: Array<{ currency: string; _sum: { amount: Prisma.Decimal | null } }>,
-  ): RealSummary {
+  ): Promise<RealSummary> {
     const gross = new Map<string, Prisma.Decimal>();
     const paid = new Map<string, Prisma.Decimal>();
+    const fees = new Map<string, Prisma.Decimal>();
     const net = new Map<string, Prisma.Decimal>();
     const costs = new Map<string, Prisma.Decimal>();
     let salesCount = 0;
+
     for (const row of sales) {
       salesCount += row._count._all;
       addMoney(gross, row.currency, row._sum.total);
     }
     for (const row of payments) {
       addMoney(paid, row.currency, row._sum.grossAmount);
+      addMoney(fees, row.currency, row._sum.feeAmount);
       addMoney(
         net,
         row.currency,
@@ -832,19 +886,56 @@ export class OperationalDashboardService {
       );
     }
     for (const row of expenses) addMoney(costs, row.currency, row._sum.amount);
+
     const currencies = new Set([...gross.keys(), ...paid.keys(), ...net.keys(), ...costs.keys()]);
     const map = (source: Map<string, Prisma.Decimal>): MoneySummary[] =>
       [...source.entries()].map(([currency, value]) => ({ currency, amount: value.toFixed(2) }));
+
     const profit = [...currencies].map((currency) => ({
       currency,
       amount: (net.get(currency) ?? new Prisma.Decimal(0))
         .minus(costs.get(currency) ?? new Prisma.Decimal(0))
         .toFixed(2),
     }));
+
     const averageTicket = [...gross.entries()].map(([currency, value]) => ({
       currency,
       amount: salesCount ? value.div(salesCount).toFixed(2) : '0.00',
     }));
+
+    // USD Conversions
+    let usdGrossBilling = new Prisma.Decimal(0);
+    for (const [curr, val] of gross.entries()) {
+      const { usdAmount } = await this.fx.convertToUsd(organizationId, val, curr);
+      usdGrossBilling = usdGrossBilling.plus(usdAmount);
+    }
+
+    let usdGrossPayments = new Prisma.Decimal(0);
+    for (const [curr, val] of paid.entries()) {
+      const { usdAmount } = await this.fx.convertToUsd(organizationId, val, curr);
+      usdGrossPayments = usdGrossPayments.plus(usdAmount);
+    }
+
+    let usdFees = new Prisma.Decimal(0);
+    for (const [curr, val] of fees.entries()) {
+      const { usdAmount } = await this.fx.convertToUsd(organizationId, val, curr);
+      usdFees = usdFees.plus(usdAmount);
+    }
+
+    let usdNetIncome = new Prisma.Decimal(0);
+    for (const [curr, val] of net.entries()) {
+      const { usdAmount } = await this.fx.convertToUsd(organizationId, val, curr);
+      usdNetIncome = usdNetIncome.plus(usdAmount);
+    }
+
+    let usdExpenses = new Prisma.Decimal(0);
+    for (const [curr, val] of costs.entries()) {
+      const { usdAmount } = await this.fx.convertToUsd(organizationId, val, curr);
+      usdExpenses = usdExpenses.plus(usdAmount);
+    }
+
+    const usdProfit = usdNetIncome.minus(usdExpenses);
+
     return {
       salesCount,
       billingGross: map(gross),
@@ -853,16 +944,28 @@ export class OperationalDashboardService {
       expenses: map(costs),
       profit,
       averageTicket,
+      usdGrossBilling: usdGrossBilling.toFixed(2),
+      usdGrossPayments: usdGrossPayments.toFixed(2),
+      usdFees: usdFees.toFixed(2),
+      usdNetIncome: usdNetIncome.toFixed(2),
+      usdExpenses: usdExpenses.toFixed(2),
+      usdProfit: usdProfit.toFixed(2),
     };
   }
 
-  private async pendingCollections(organizationId: string, dates: DateRange, productId?: string) {
+  private async pendingCollections(
+    organizationId: string,
+    dates: DateRange,
+    productId?: string,
+    country?: string,
+  ) {
     const sales = await this.prisma.sale.findMany({
       where: {
         organizationId,
         deletedAt: null,
         status: { in: [SaleStatus.CONFIRMED, SaleStatus.FULFILLED] },
         createdAt: { gte: dates.from, lt: dates.to },
+        ...(country ? { contact: { is: { country } } } : {}),
         ...(productId ? { items: { some: { productId, deletedAt: null } } } : {}),
       },
       select: {
@@ -876,18 +979,29 @@ export class OperationalDashboardService {
         },
       },
     });
+
     const summaries = new Map<string, Prisma.Decimal>();
+    let totalUsdPending = new Prisma.Decimal(0);
+
     for (const sale of sales) {
       const paid = sale.payments.reduce(
         (total, payment) => total.plus(payment.grossAmount).minus(payment.refundedAmount),
         new Prisma.Decimal(0),
       );
       const balance = new Prisma.Decimal(sale.total).minus(paid);
-      if (balance.greaterThan(0)) addMoney(summaries, sale.currency, balance);
+      if (balance.greaterThan(0)) {
+        addMoney(summaries, sale.currency, balance);
+        const { usdAmount } = await this.fx.convertToUsd(organizationId, balance, sale.currency);
+        totalUsdPending = totalUsdPending.plus(usdAmount);
+      }
     }
-    return [...summaries.entries()].map(([currency, balance]) => ({
-      currency,
-      balance: balance.toFixed(2),
-    }));
+
+    return {
+      byCurrency: [...summaries.entries()].map(([currency, balance]) => ({
+        currency,
+        balance: balance.toFixed(2),
+      })),
+      totalUsd: totalUsdPending.toFixed(2),
+    };
   }
 }
