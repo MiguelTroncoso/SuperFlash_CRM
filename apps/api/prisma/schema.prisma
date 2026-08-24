@@ -2912,3 +2912,13 @@ model CommunicationSyncCheckpoint {
   @@index([organizationId, cursorAt, cursorId])
   @@index([nextRetryAt])
 }
+
+model FxSchedulerLock {
+  key        String   @id
+  acquiredAt DateTime
+  expiresAt  DateTime @map("expires_at")
+  instanceId String   @map("instance_id")
+
+  @@map("FxSchedulerLock")
+}
+
