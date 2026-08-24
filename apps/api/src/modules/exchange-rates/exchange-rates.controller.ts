@@ -6,6 +6,7 @@ import { AuthenticatedUser } from '../auth/auth.types';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UpdateExchangeRateDto } from './dto/exchange-rates.dto';
 import { ExchangeRatesService } from './exchange-rates.service';
+import { FxSchedulerService } from './fx-scheduler.service';
 
 function extractMetadata(request: Request) {
   const forwarded = request.headers['x-forwarded-for'];
@@ -21,11 +22,19 @@ function extractMetadata(request: Request) {
 @Controller('exchange-rates')
 @UseGuards(JwtAuthGuard)
 export class ExchangeRatesController {
-  constructor(private readonly service: ExchangeRatesService) {}
+  constructor(
+    private readonly service: ExchangeRatesService,
+    private readonly scheduler: FxSchedulerService,
+  ) {}
 
   @Get()
   async list(@CurrentUser() user: AuthenticatedUser) {
     return this.service.list(user);
+  }
+
+  @Get('scheduler-status')
+  async schedulerStatus() {
+    return this.scheduler.getStatus();
   }
 
   @Patch()
