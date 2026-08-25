@@ -65,7 +65,7 @@ export function NewSaleDrawer({
       quantity: '1',
       currency: 'USD',
       note: '',
-      paymentMethod: 'MANUAL',
+      paymentMethod: 'TRANSFER',
       paidNow: false,
       paymentAmount: '',
       unitPrice: '',
@@ -122,6 +122,19 @@ export function NewSaleDrawer({
       ),
     enabled: open,
   });
+
+  const commissions = useQuery({
+    queryKey: ['payment-commissions'],
+    queryFn: api.getCommissionConfigs,
+    enabled: open,
+  });
+
+  const exchangeRates = useQuery({
+    queryKey: ['exchange-rates'],
+    queryFn: api.getExchangeRates,
+    enabled: open,
+  });
+
   const selectedOffer = (offers.data?.data ?? []).find(
     (offer) => offer.id === form.watch('productId'),
   );
@@ -175,11 +188,42 @@ export function NewSaleDrawer({
   const paymentAmount = form.watch('paymentAmount').trim();
   const paymentCoversTotal =
     paidNow && saleTotal > 0 && (!paymentAmount || Number(paymentAmount) >= saleTotal);
+
+  const paymentMethod = form.watch('paymentMethod');
+  const isPaypal = paymentMethod === 'PAYPAL';
+  const currentCurrency = form.watch('currency').toUpperCase();
+  const chargedAmount = Number(paymentAmount.trim() || saleTotal || 0);
+
+  const paypalConfig = (commissions.data ?? []).find((c) => c.method === 'PAYPAL');
+  const paypalPercentage = Number(paypalConfig?.percentage ?? 4.95);
+  const paypalFixedFee = Number(paypalConfig?.fixedFee ?? 0.49);
+
+  // In sale currency
+  const estimatedPaypalFee =
+    chargedAmount > 0 ? (chargedAmount * paypalPercentage) / 100 + paypalFixedFee : 0;
+  const estimatedPaypalNet = Math.max(0, chargedAmount - estimatedPaypalFee);
+
+  // FX for non-USD
+  const currencyRateRecord = (exchangeRates.data ?? []).find(
+    (r) =>
+      String(r.fromCurrency).toUpperCase() === currentCurrency &&
+      String(r.toCurrency).toUpperCase() === 'USD',
+  );
+  const fxRate = currencyRateRecord
+    ? Number(currencyRateRecord.rate)
+    : currentCurrency === 'USD' || currentCurrency === 'USDT'
+      ? 1
+      : null;
+  const chargedUsd = fxRate ? chargedAmount * fxRate : null;
+  const paypalFeeUsd = chargedUsd ? (chargedUsd * paypalPercentage) / 100 + paypalFixedFee : null;
+  const paypalNetUsd = chargedUsd && paypalFeeUsd ? Math.max(0, chargedUsd - paypalFeeUsd) : null;
+
   useEffect(() => {
     if (paymentCoversTotal && form.getValues('paymentDueAt')) {
       form.setValue('paymentDueAt', '');
     }
   }, [form, paymentCoversTotal]);
+
   const create = useMutation({
     mutationFn: async ({ values, confirm }: SaleSubmission) => {
       if (!values.contactId || !values.productId) {
@@ -188,6 +232,12 @@ export function NewSaleDrawer({
       const body: JsonRecord = {
         contactId: values.contactId,
         currency: values.currency.trim().toUpperCase(),
+        confirm,
+        paidNow: values.paidNow,
+        paymentMethod: values.paymentMethod,
+        ...(values.paidNow && values.paymentAmount.trim()
+          ? { paymentAmount: values.paymentAmount.trim() }
+          : {}),
         items: [
           {
             productId: values.productId,
@@ -204,32 +254,13 @@ export function NewSaleDrawer({
           },
         ],
         ...(values.discountAmount.trim() ? { discountAmount: values.discountAmount.trim() } : {}),
-        ...(values.paymentDueAt
+        ...(values.paymentDueAt && !values.paidNow
           ? { paymentDueAt: new Date(`${values.paymentDueAt}T23:59:59.000Z`).toISOString() }
           : {}),
         ...(values.note.trim() ? { note: values.note.trim() } : {}),
       };
       const sale = await api.createSale(body);
-      let result = sale;
-      if (confirm) {
-        const confirmedSale =
-          sale.status === 'DRAFT'
-            ? await api.confirmSale(
-                sale.id,
-                values.paidNow
-                  ? {
-                      payment: {
-                        amount: values.paymentAmount.trim() || sale.total,
-                        currency: sale.currency,
-                        method: values.paymentMethod,
-                      },
-                    }
-                  : undefined,
-              )
-            : sale;
-        result = confirmedSale;
-      }
-      return { sale: result, confirmed: confirm };
+      return { sale, confirmed: confirm };
     },
     onSuccess: ({ confirmed }, { values }) => {
       void queryClient.invalidateQueries({ queryKey: ['sales'] });
@@ -573,9 +604,19 @@ export function NewSaleDrawer({
             </strong>
           </div>
           <label className="space-y-1 text-sm font-semibold text-content-primary sm:col-span-2">
-            <span>Descuento</span>
+            <span>Descuento comercial</span>
             <Input inputMode="decimal" min="0" step="0.01" {...form.register('discountAmount')} />
           </label>
+          <div className="rounded-xl border border-brand-500/20 bg-brand-50/30 p-3 text-sm text-content-primary sm:col-span-2 dark:bg-brand-950/20">
+            Total de venta:{' '}
+            <strong className="text-base text-brand-600 dark:text-brand-400">
+              {form.watch('currency').toUpperCase()}{' '}
+              {saleTotal.toLocaleString('es-CL', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </strong>
+          </div>
           <label className="space-y-1 text-sm font-semibold text-content-primary">
             <span>Moneda</span>
             <Select
@@ -588,7 +629,7 @@ export function NewSaleDrawer({
             >
               {(pricingOptions.length
                 ? pricingOptions.map((option) => option.currency)
-                : ['USD', 'CLP', 'MXN', 'PEN', 'EUR']
+                : ['USD', 'CLP', 'MXN', 'PEN', 'EUR', 'BRL', 'COP']
               )
                 .filter((currency, index, values) => values.indexOf(currency) === index)
                 .map((currency) => (
@@ -598,6 +639,85 @@ export function NewSaleDrawer({
                 ))}
             </Select>
           </label>
+          <label className="space-y-1 text-sm font-semibold text-content-primary">
+            <span>Método de pago</span>
+            <Select {...form.register('paymentMethod')}>
+              <option value="TRANSFER">Transferencia bancaria</option>
+              <option value="PAYPAL">PayPal</option>
+              <option value="BINANCE">Binance / USDT</option>
+              <option value="CASH">Efectivo</option>
+              <option value="OTHER">Otro</option>
+            </Select>
+          </label>
+        </div>
+        <div className="space-y-3 rounded-xl border border-border-subtle bg-surface-muted p-4">
+          <label className="flex items-center gap-2 text-sm font-semibold text-content-primary">
+            <input type="checkbox" {...form.register('paidNow')} /> Pagó ahora
+          </label>
+          {form.watch('paidNow') ? (
+            <div className="space-y-3">
+              <label className="space-y-1 text-sm font-semibold text-content-primary">
+                <span>Monto pagado</span>
+                <Input
+                  aria-label="Monto pagado"
+                  inputMode="decimal"
+                  placeholder={`Total completo (${form.watch('currency')} ${saleTotal.toFixed(2)}) si queda vacío`}
+                  {...form.register('paymentAmount')}
+                />
+              </label>
+              {isPaypal ? (
+                <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-3.5 text-xs text-blue-950 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-200 space-y-2">
+                  <div className="flex items-center justify-between font-bold">
+                    <span>RESUMEN PAYPAL</span>
+                    <span className="text-[10px] font-normal text-blue-700 dark:text-blue-300">
+                      (Fee: {paypalPercentage}% + ${paypalFixedFee.toFixed(2)} USD)
+                    </span>
+                  </div>
+                  <div className="space-y-1 pt-1 border-t border-blue-200/60 dark:border-blue-800/40">
+                    <div className="flex justify-between">
+                      <span>Total cobrado:</span>
+                      <span className="font-semibold">
+                        {currentCurrency} {chargedAmount.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-amber-700 dark:text-amber-300 font-medium">
+                      <span>Comisión PayPal estimada:</span>
+                      <span>
+                        - {currentCurrency} {estimatedPaypalFee.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between font-bold text-emerald-700 dark:text-emerald-300 pt-1 border-t border-blue-200/40 dark:border-blue-800/30">
+                      <span>Neto estimado:</span>
+                      <span>
+                        {currentCurrency} {estimatedPaypalNet.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                  {currentCurrency !== 'USD' && fxRate ? (
+                    <div className="mt-2 pt-2 border-t border-blue-200/60 dark:border-blue-800/40 text-[11px] text-blue-800 dark:text-blue-300 space-y-0.5">
+                      <p className="font-semibold">Conversión USD (Consolidado):</p>
+                      <div className="flex justify-between">
+                        <span>Tasa FX ({currentCurrency}→USD):</span>
+                        <span>{fxRate.toFixed(6)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Equivalente USD Bruto:</span>
+                        <span>US$ {chargedUsd?.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-amber-700 dark:text-amber-300">
+                        <span>Comisión PayPal USD:</span>
+                        <span>- US$ {paypalFeeUsd?.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between font-bold text-emerald-700 dark:text-emerald-300">
+                        <span>Neto USD:</span>
+                        <span>US$ {paypalNetUsd?.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           {!paymentCoversTotal ? (
             <label className="space-y-1 text-sm font-semibold text-content-primary">
               <span>Fecha compromiso de pago</span>
@@ -605,32 +725,6 @@ export function NewSaleDrawer({
             </label>
           ) : null}
         </div>
-        <label className="space-y-1 text-sm font-semibold text-content-primary">
-          <span>Método de pago</span>
-          <Select {...form.register('paymentMethod')}>
-            <option value="TRANSFER">Transferencia</option>
-            <option value="PAYPAL">PayPal</option>
-            <option value="BINANCE">Binance</option>
-            <option value="MERCADOPAGO">Mercado Pago</option>
-            <option value="STRIPE">Stripe</option>
-            <option value="CASH">Efectivo</option>
-            <option value="MANUAL">Manual</option>
-            <option value="OTHER">Otro</option>
-          </Select>
-        </label>
-        <label className="flex items-center gap-2 text-sm font-semibold text-content-primary">
-          <input type="checkbox" {...form.register('paidNow')} /> Pagó ahora
-        </label>
-        {form.watch('paidNow') ? (
-          <label className="space-y-1 text-sm font-semibold text-content-primary">
-            <span>Monto pagado</span>
-            <Input
-              inputMode="decimal"
-              placeholder="Total completo si queda vacío"
-              {...form.register('paymentAmount')}
-            />
-          </label>
-        ) : null}
         <label className="space-y-1 text-sm font-semibold text-content-primary">
           <span>Nota</span>
           <Textarea {...form.register('note')} />

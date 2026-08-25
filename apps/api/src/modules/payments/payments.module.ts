@@ -7,9 +7,10 @@ import { PaymentsController, SalePaymentsController } from './payments.controlle
 import { PaymentsAccessPolicy } from './payments.policy';
 import { PaymentsService } from './payments.service';
 import { CommissionsModule } from '../commissions/commissions.module';
+import { ExchangeRatesModule } from '../exchange-rates/exchange-rates.module';
 
 @Module({
-  imports: [AuditModule, AuthModule, CommissionsModule],
+  imports: [AuditModule, AuthModule, CommissionsModule, ExchangeRatesModule],
   controllers: [PaymentsController, SalePaymentsController],
   providers: [PaymentsService, PaymentsAccessPolicy, CommercialAccessPolicy],
   exports: [PaymentsService],

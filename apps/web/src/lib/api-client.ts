@@ -577,6 +577,7 @@ export const api = {
   getCommissionConfigs: () => request<JsonRecord[]>('/commissions'),
   updateCommissionConfig: (body: JsonRecord) =>
     request<JsonRecord>('/commissions', { method: 'PATCH', ...jsonBody(body) }),
+  getExchangeRates: () => request<JsonRecord[]>('/exchange-rates'),
   getMarketingCampaigns: (query = '') =>
     request<Paginated<MarketingCampaign>>(`/marketing/campaigns${query}`),
   createMarketingCampaign: (body: JsonRecord) =>
