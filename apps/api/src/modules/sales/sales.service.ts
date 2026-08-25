@@ -23,6 +23,8 @@ import { OutboxService } from '../../infrastructure/outbox/outbox.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthenticatedUser } from '../auth/auth.types';
 import { SaleCatalogResolution, PricingService } from '../catalog/pricing/pricing.service';
+import { CommissionsService } from '../commissions/commissions.service';
+import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 import { isSupportedCurrency } from '../commercial/currency';
 import {
   CommercialClient,
@@ -156,6 +158,8 @@ export class SalesService {
     private readonly outbox: OutboxService,
     private readonly pricing: PricingService,
     private readonly access: SalesAccessPolicy,
+    private readonly commissions: CommissionsService,
+    private readonly fx: ExchangeRatesService,
   ) {}
 
   async create(
@@ -163,8 +167,73 @@ export class SalesService {
     context: CommercialRequestContext,
   ): Promise<Record<string, unknown>> {
     this.access.assertCreate(context.user);
+
+    if (dto.confirm) {
+      const saleId = await this.prisma.$transaction(async (transaction) => {
+        const id = await this.createInternal(transaction, dto, context, SaleStatus.CONFIRMED);
+        const transitionAt = new Date();
+        await this.consumeTrackedStock(transaction, id, context);
+        await this.ensureSubscriptionsForSale(transaction, id, context, transitionAt);
+        await this.markOpportunityPurchased(transaction, id, context, transitionAt);
+
+        if (dto.paidNow) {
+          const sale = await transaction.sale.findUnique({
+            where: { id },
+            select: { total: true, currency: true },
+          });
+          const amount = dto.paymentAmount?.trim() || sale?.total.toFixed(2) || '0.00';
+          await this.createConfirmedPayment(
+            transaction,
+            id,
+            {
+              amount,
+              currency: dto.currency || sale?.currency || 'USD',
+              method: dto.paymentMethod ?? PaymentMethod.TRANSFER,
+            },
+            context,
+            transitionAt,
+          );
+        }
+
+        await transaction.activity.create({
+          data: {
+            organizationId: context.user.organizationId,
+            userId: context.user.userId,
+            contactId: dto.contactId,
+            opportunityId: dto.opportunityId ?? null,
+            saleId: id,
+            type: ActivityType.STATUS_CHANGE,
+            title: 'Venta confirmada',
+            metadata: jsonObject({ status: SaleStatus.CONFIRMED }),
+            requestId: context.metadata.requestId ?? null,
+          },
+        });
+
+        await this.audit.recordWithClient(transaction, {
+          organizationId: context.user.organizationId,
+          userId: context.user.userId,
+          action: 'SALE_CONFIRMED',
+          tableName: 'Sale',
+          recordId: id,
+          newValue: jsonObject({ status: SaleStatus.CONFIRMED, paidNow: Boolean(dto.paidNow) }),
+          ip: context.metadata.ipAddress,
+          requestId: context.metadata.requestId,
+        });
+
+        await this.enqueueEvent(transaction, 'SaleCreated', id, context, {
+          status: SaleStatus.CONFIRMED,
+        });
+        await this.enqueueEvent(transaction, 'SaleConfirmed', id, context, {
+          status: SaleStatus.CONFIRMED,
+        });
+
+        return id;
+      });
+      return this.findOne(saleId, context.user);
+    }
+
     const saleId = await this.prisma.$transaction(async (transaction) => {
-      const id = await this.createInternal(transaction, dto, context);
+      const id = await this.createInternal(transaction, dto, context, SaleStatus.DRAFT);
       await this.enqueueEvent(transaction, 'SaleCreated', id, context, {
         status: SaleStatus.DRAFT,
       });
@@ -894,6 +963,7 @@ export class SalesService {
     transaction: CommercialClient,
     dto: CreateSaleDto,
     context: CommercialRequestContext,
+    targetStatus: SaleStatus = SaleStatus.DRAFT,
   ): Promise<string> {
     const user = context.user;
     const currency = normalizeCurrency(dto.currency);
@@ -960,6 +1030,7 @@ export class SalesService {
       );
     }
     const saleNumber = await nextSaleNumber(transaction, user.organizationId);
+    const isConfirmed = targetStatus === SaleStatus.CONFIRMED;
     const sale = await transaction.sale.create({
       data: {
         organizationId: user.organizationId,
@@ -967,14 +1038,17 @@ export class SalesService {
         contactId: dto.contactId,
         opportunityId,
         userId: user.userId,
-        status: SaleStatus.DRAFT,
+        status: targetStatus,
+        soldAt: isConfirmed ? new Date() : null,
+        paidNow: Boolean(dto.paidNow),
+        paymentMethod: dto.paymentMethod ?? null,
         subtotal,
         discountAmount: saleDiscount,
         taxAmount: saleTax,
         total,
         currency,
         note: dto.note?.trim() || null,
-        paymentDueAt: dto.paymentDueAt ? new Date(dto.paymentDueAt) : null,
+        paymentDueAt: dto.paidNow ? null : dto.paymentDueAt ? new Date(dto.paymentDueAt) : null,
       },
       select: { id: true },
     });
@@ -989,8 +1063,8 @@ export class SalesService {
         opportunityId,
         saleId: sale.id,
         type: ActivityType.SALE,
-        title: 'Venta creada',
-        metadata: jsonObject({ status: SaleStatus.DRAFT }),
+        title: isConfirmed ? 'Venta creada y confirmada' : 'Venta creada',
+        metadata: jsonObject({ status: targetStatus }),
         requestId: context.metadata.requestId ?? null,
       },
     });
@@ -1000,7 +1074,7 @@ export class SalesService {
       action: 'SALE_CREATED',
       tableName: 'Sale',
       recordId: sale.id,
-      newValue: jsonObject({ status: SaleStatus.DRAFT, total: total.toFixed(2), currency }),
+      newValue: jsonObject({ status: targetStatus, total: total.toFixed(2), currency }),
       ip: context.metadata.ipAddress,
       requestId: context.metadata.requestId,
     });
@@ -1763,6 +1837,17 @@ export class SalesService {
         COMMERCIAL_ERROR_CODES.PAYMENT_EXCEEDS_BALANCE,
         'El pago excede el saldo pendiente de la venta.',
       );
+    const fee = await this.commissions.calculate({
+      organizationId: context.user.organizationId,
+      method: payment.method,
+      grossAmount: amount,
+    });
+    const net = amount.sub(fee);
+
+    const fxGross = await this.fx.convertToUsd(context.user.organizationId, amount, currency);
+    const fxFee = await this.fx.convertToUsd(context.user.organizationId, fee, currency);
+    const fxNet = await this.fx.convertToUsd(context.user.organizationId, net, currency);
+
     const paymentId = randomUUID();
     await transaction.payment.create({
       data: {
@@ -1770,9 +1855,20 @@ export class SalesService {
         organizationId: context.user.organizationId,
         saleId,
         grossAmount: amount,
-        feeAmount: new Prisma.Decimal(0),
-        netAmount: amount,
+        feeAmount: fee,
+        netAmount: net,
         currency,
+        baseCurrency: 'USD',
+        exchangeRate: fxGross.rate,
+        exchangeRateSnapshot: {
+          rate: fxGross.rate.toFixed(8),
+          provider: fxGross.provider,
+          capturedAt: fxGross.capturedAt.toISOString(),
+          usdGross: fxGross.usdAmount.toFixed(2),
+          usdFee: fxFee.usdAmount.toFixed(2),
+          usdNet: fxNet.usdAmount.toFixed(2),
+          feeMethod: payment.method,
+        },
         method: payment.method,
         status: PaymentStatus.CONFIRMED,
         paymentDate: occurredAt,

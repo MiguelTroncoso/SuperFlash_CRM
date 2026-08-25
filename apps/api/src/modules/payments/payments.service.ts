@@ -18,6 +18,7 @@ import { isSupportedCurrency } from '../commercial/currency';
 import { ListPaymentsQueryDto, CreatePaymentDto, RefundPaymentDto } from './dto/payments.dto';
 import { PaymentsAccessPolicy } from './payments.policy';
 import { CommissionsService } from '../commissions/commissions.service';
+import { ExchangeRatesService } from '../exchange-rates/exchange-rates.service';
 
 function paymentFingerprint(input: {
   saleId: string;
@@ -53,6 +54,7 @@ export class PaymentsService {
     private readonly outbox: OutboxService,
     private readonly access: PaymentsAccessPolicy,
     private readonly commissions: CommissionsService,
+    private readonly fx: ExchangeRatesService,
   ) {}
 
   async create(
@@ -117,6 +119,10 @@ export class PaymentsService {
             return { id: existing.id, created: false };
           }
         }
+        const fxGross = await this.fx.convertToUsd(context.user.organizationId, gross, currency);
+        const fxFee = await this.fx.convertToUsd(context.user.organizationId, fee, currency);
+        const fxNet = await this.fx.convertToUsd(context.user.organizationId, net, currency);
+
         const payment = await transaction.payment.create({
           data: {
             organizationId: context.user.organizationId,
@@ -125,6 +131,17 @@ export class PaymentsService {
             feeAmount: fee,
             netAmount: net,
             currency,
+            baseCurrency: 'USD',
+            exchangeRate: fxGross.rate,
+            exchangeRateSnapshot: {
+              rate: fxGross.rate.toFixed(8),
+              provider: fxGross.provider,
+              capturedAt: fxGross.capturedAt.toISOString(),
+              usdGross: fxGross.usdAmount.toFixed(2),
+              usdFee: fxFee.usdAmount.toFixed(2),
+              usdNet: fxNet.usdAmount.toFixed(2),
+              feeMethod: dto.method,
+            },
             method: dto.method,
             reference,
             idempotencyKey,

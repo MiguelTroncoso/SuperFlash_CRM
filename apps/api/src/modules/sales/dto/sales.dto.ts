@@ -126,6 +126,27 @@ export class CreateSaleDto {
   @IsDateString()
   paymentDueAt?: string;
 
+  @IsOptional()
+  @IsBoolean()
+  confirm?: boolean;
+
+  @IsOptional()
+  @IsEnum(PaymentMethod)
+  paymentMethod?: PaymentMethod;
+
+  @IsOptional()
+  @IsBoolean()
+  paidNow?: boolean;
+
+  @IsOptional()
+  @IsDecimal({ decimal_digits: '0,2' })
+  paymentAmount?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  idempotencyKey?: string;
+
   @IsArray()
   @ApiProperty({ type: [CreateSaleItemDto], minItems: 1 })
   @ArrayMinSize(1)
